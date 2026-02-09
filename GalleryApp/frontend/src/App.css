@@ -8,6 +8,33 @@
   flex-direction: column;
 }
 
+.app-root-dragover {
+  outline: 2px dashed #2563eb;
+  outline-offset: -6px;
+}
+
+.page-drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.26);
+}
+
+.page-drop-overlay p {
+  margin: 0;
+  padding: 0.8rem 1.1rem;
+  border-radius: 0.6rem;
+  border: 1px solid #93c5fd;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
 .top-header {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -649,6 +676,20 @@
   margin-left: 0;
   margin-right: 0;
   margin-bottom: 0;
+}
+
+.media-upload-group-toggle {
+  margin-right: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #334155;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+
+.media-upload-group-toggle input {
+  margin: 0;
 }
 
 .media-action-btn {

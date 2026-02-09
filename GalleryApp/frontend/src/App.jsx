@@ -25,6 +25,8 @@ function App() {
   const [activePage, setActivePage] = useState("gallery");
   const [uploadItems, setUploadItems] = useState([]);
   const [uploadState, setUploadState] = useState({ type: "", message: "" });
+  const [isGroupUploadEnabled, setIsGroupUploadEnabled] = useState(false);
+  const [isDragOverPage, setIsDragOverPage] = useState(false);
   const [backgroundUploadState, setBackgroundUploadState] = useState({
     total: 0,
     queued: 0,
@@ -70,6 +72,7 @@ function App() {
   const uploadTaskSequenceRef = useRef(1);
   const activeUploadTaskIdRef = useRef(null);
   const activeUploadXhrRef = useRef(null);
+  const pageDragCounterRef = useRef(0);
   const getExtensionFromPath = (value) => {
     if (!value) {
       return "";
@@ -502,12 +505,11 @@ function App() {
     });
     setIsUploadOpen(false);
     setUploadState({ type: "", message: "" });
+    setIsGroupUploadEnabled(false);
   };
 
-  const handleUploadPickerChange = (event) => {
-    const nextFiles = Array.from(event.target.files || []);
-    event.target.value = "";
-
+  const prepareUploadItems = (files) => {
+    const nextFiles = Array.from(files || []);
     if (nextFiles.length === 0) {
       return;
     }
@@ -530,7 +532,14 @@ function App() {
       return nextItems;
     });
     setUploadState({ type: "", message: "" });
+    setIsGroupUploadEnabled(false);
     setIsUploadOpen(true);
+  };
+
+  const handleUploadPickerChange = (event) => {
+    const nextFiles = Array.from(event.target.files || []);
+    event.target.value = "";
+    prepareUploadItems(nextFiles);
   };
 
   const updateActiveUploadDraft = (patch) => {
@@ -893,6 +902,24 @@ function App() {
       return;
     }
 
+    if (isGroupUploadEnabled) {
+      const unsupportedFile = uploadItems.find((item) => !allowedExtensions.has(getExtension(item.file.name)));
+      if (unsupportedFile) {
+        setUploadState({ type: "error", message: `Unsupported file type: ${unsupportedFile.file.name}` });
+        return;
+      }
+
+      uploadItems.forEach((item) => {
+        enqueueBackgroundUpload({
+          file: item.file,
+          draft: normalizedDraft
+        });
+      });
+
+      closeUploadModal();
+      return;
+    }
+
     enqueueBackgroundUpload({
       file: activeItem.file,
       draft: normalizedDraft
@@ -1104,6 +1131,52 @@ function App() {
     return "Uploading";
   };
   const isGalleryPage = activePage === "gallery";
+  const isFileDragEvent = (event) => Array.from(event.dataTransfer?.types || []).includes("Files");
+  const handleRootDragEnter = (event) => {
+    if (!isGalleryPage || !isFileDragEvent(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    pageDragCounterRef.current += 1;
+    setIsDragOverPage(true);
+  };
+  const handleRootDragOver = (event) => {
+    if (!isGalleryPage || !isFileDragEvent(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "copy";
+    if (!isDragOverPage) {
+      setIsDragOverPage(true);
+    }
+  };
+  const handleRootDragLeave = (event) => {
+    if (!isGalleryPage || !isFileDragEvent(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    pageDragCounterRef.current = Math.max(pageDragCounterRef.current - 1, 0);
+    if (pageDragCounterRef.current === 0) {
+      setIsDragOverPage(false);
+    }
+  };
+  const handleRootDrop = (event) => {
+    if (!isGalleryPage || !isFileDragEvent(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    pageDragCounterRef.current = 0;
+    setIsDragOverPage(false);
+    prepareUploadItems(event.dataTransfer.files);
+  };
   const isSelectedMediaFavorite = Boolean(selectedMedia?.isFavorite);
   const toggleSelectedMediaFavorite = async () => {
     if (!selectedMedia?.id || isFavoriteUpdating) {
@@ -1151,7 +1224,13 @@ function App() {
   };
 
   return (
-    <main className="app-root">
+    <main
+      className={`app-root${isDragOverPage ? " app-root-dragover" : ""}`}
+      onDragEnter={handleRootDragEnter}
+      onDragOver={handleRootDragOver}
+      onDragLeave={handleRootDragLeave}
+      onDrop={handleRootDrop}
+    >
       <header className="top-header">
         <div className="top-brand-group">
           <button
@@ -1283,6 +1362,11 @@ function App() {
           style={{ display: "none" }}
         />
       </header>
+      {isGalleryPage && isDragOverPage ? (
+        <div className="page-drop-overlay">
+          <p>Drop files to upload</p>
+        </div>
+      ) : null}
 
       {isSlideMenuOpen ? (
         <div
@@ -1485,6 +1569,16 @@ function App() {
               ) : null}
 
               <div className="media-action-row media-action-row-spaced">
+                <label className="media-upload-group-toggle">
+                  <input
+                    type="checkbox"
+                    checked={isGroupUploadEnabled}
+                    onChange={(event) => {
+                      setIsGroupUploadEnabled(event.target.checked);
+                    }}
+                  />
+                  group
+                </label>
                 <button
                   type="button"
                   className="media-action-btn"
