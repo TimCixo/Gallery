@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using Microsoft.AspNetCore.Http;
 
 namespace GalleryApp.Api;
 
@@ -10,6 +11,8 @@ public class Program
 
         var dbPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "gallery.db");
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
+        var mediaRootPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "Media");
+        Directory.CreateDirectory(mediaRootPath);
 
         var connectionString = new SqliteConnectionStringBuilder
         {
@@ -41,8 +44,80 @@ public class Program
                 timestampUtc = DateTime.UtcNow
             }));
 
+        app.MapPost("/api/upload", async (HttpRequest request) =>
+        {
+            if (!request.HasFormContentType)
+            {
+                return Results.BadRequest(new { error = "Content type must be multipart/form-data." });
+            }
+
+            var form = await request.ReadFormAsync();
+            if (form.Files.Count == 0)
+            {
+                return Results.BadRequest(new { error = "No files were provided." });
+            }
+
+            var uploadDate = DateTime.UtcNow;
+            var dateFolderName = uploadDate.ToString("yyyy-MM-dd");
+            var targetDirectory = Path.Combine(mediaRootPath, dateFolderName);
+            Directory.CreateDirectory(targetDirectory);
+
+            var savedFiles = new List<object>();
+
+            foreach (var file in form.Files)
+            {
+                if (file.Length == 0)
+                {
+                    continue;
+                }
+
+                if (!IsAllowedMediaFile(file.FileName))
+                {
+                    return Results.BadRequest(new { error = $"Unsupported file type: {file.FileName}" });
+                }
+
+                var safeOriginalName = Path.GetFileName(file.FileName);
+                var uniqueName = BuildUniqueFileName(targetDirectory, safeOriginalName);
+                var destinationPath = Path.Combine(targetDirectory, uniqueName);
+
+                await using var stream = File.Create(destinationPath);
+                await file.CopyToAsync(stream);
+
+                savedFiles.Add(new
+                {
+                    originalName = safeOriginalName,
+                    storedName = uniqueName,
+                    relativePath = Path.Combine("App_Data", "Media", dateFolderName, uniqueName)
+                });
+            }
+
+            return Results.Ok(new
+            {
+                uploadedAtUtc = uploadDate,
+                dateFolder = dateFolderName,
+                files = savedFiles
+            });
+        });
+
         app.Run();
     }
+
+    private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".webp",
+        ".bmp",
+        ".svg",
+        ".mp4",
+        ".webm",
+        ".mov",
+        ".avi",
+        ".mkv",
+        ".m4v"
+    };
 
     private static void EnsureDatabase(IServiceProvider services)
     {
@@ -65,5 +140,42 @@ public class Program
             ON CONFLICT(Id) DO NOTHING;
             """;
         command.ExecuteNonQuery();
+    }
+
+    private static bool IsAllowedMediaFile(string fileName)
+    {
+        var extension = Path.GetExtension(fileName);
+        return !string.IsNullOrWhiteSpace(extension) && AllowedExtensions.Contains(extension);
+    }
+
+    private static string BuildUniqueFileName(string directoryPath, string originalName)
+    {
+        var baseName = Path.GetFileNameWithoutExtension(originalName);
+        var extension = Path.GetExtension(originalName);
+
+        if (string.IsNullOrWhiteSpace(baseName))
+        {
+            baseName = "file";
+        }
+
+        var safeBaseName = SanitizeFileName(baseName);
+        var candidate = $"{safeBaseName}{extension}";
+        var counter = 1;
+
+        while (File.Exists(Path.Combine(directoryPath, candidate)))
+        {
+            candidate = $"{safeBaseName}_{counter}{extension}";
+            counter++;
+        }
+
+        return candidate;
+    }
+
+    private static string SanitizeFileName(string value)
+    {
+        var invalidChars = Path.GetInvalidFileNameChars();
+        var cleaned = new string(value.Select(ch => invalidChars.Contains(ch) ? '_' : ch).ToArray()).Trim();
+
+        return string.IsNullOrWhiteSpace(cleaned) ? "file" : cleaned;
     }
 }

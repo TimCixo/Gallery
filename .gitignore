@@ -10,5 +10,6 @@
 *.db
 GalleryApp/backend/App_Data/*
 !GalleryApp/backend/App_Data/.gitkeep
+!GalleryApp/backend/App_Data/Media/.gitkeep
 GalleryApp/App_Data/*
 !GalleryApp/App_Data/.gitkeep
