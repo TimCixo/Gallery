@@ -1,5 +1,9 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Http;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Webp;
 
 namespace GalleryApp.Api;
 
@@ -71,17 +75,51 @@ public class Program
                     continue;
                 }
 
-                if (!IsAllowedMediaFile(file.FileName))
+                var safeOriginalName = Path.GetFileName(file.FileName);
+                if (!IsAllowedMediaFile(safeOriginalName))
                 {
-                    return Results.BadRequest(new { error = $"Unsupported file type: {file.FileName}" });
+                    return Results.BadRequest(new { error = $"Unsupported file type: {safeOriginalName}" });
                 }
 
-                var safeOriginalName = Path.GetFileName(file.FileName);
-                var uniqueName = BuildUniqueFileName(targetDirectory, safeOriginalName);
-                var destinationPath = Path.Combine(targetDirectory, uniqueName);
+                var extension = Path.GetExtension(safeOriginalName).ToLowerInvariant();
+                string uniqueName;
+                string destinationPath;
 
-                await using var stream = File.Create(destinationPath);
-                await file.CopyToAsync(stream);
+                try
+                {
+                    if (IsGifFile(extension))
+                    {
+                        uniqueName = BuildUniqueFileName(targetDirectory, safeOriginalName);
+                        destinationPath = Path.Combine(targetDirectory, uniqueName);
+
+                        await using var stream = File.Create(destinationPath);
+                        await file.CopyToAsync(stream);
+                    }
+                    else if (IsImageFile(extension))
+                    {
+                        var webpName = Path.ChangeExtension(safeOriginalName, ".webp");
+                        uniqueName = BuildUniqueFileName(targetDirectory, webpName);
+                        destinationPath = Path.Combine(targetDirectory, uniqueName);
+
+                        await ConvertImageToWebpAsync(file, destinationPath);
+                    }
+                    else if (IsVideoFile(extension))
+                    {
+                        var mp4Name = Path.ChangeExtension(safeOriginalName, ".mp4");
+                        uniqueName = BuildUniqueFileName(targetDirectory, mp4Name);
+                        destinationPath = Path.Combine(targetDirectory, uniqueName);
+
+                        await ConvertVideoToMp4Async(file, destinationPath, extension);
+                    }
+                    else
+                    {
+                        return Results.BadRequest(new { error = $"Unsupported file type: {safeOriginalName}" });
+                    }
+                }
+                catch (MediaConversionException ex)
+                {
+                    return Results.BadRequest(new { error = ex.Message });
+                }
 
                 savedFiles.Add(new
                 {
@@ -110,7 +148,24 @@ public class Program
         ".gif",
         ".webp",
         ".bmp",
-        ".svg",
+        ".mp4",
+        ".webm",
+        ".mov",
+        ".avi",
+        ".mkv",
+        ".m4v"
+    };
+    private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".webp",
+        ".bmp"
+    };
+    private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
         ".mp4",
         ".webm",
         ".mov",
@@ -148,6 +203,12 @@ public class Program
         return !string.IsNullOrWhiteSpace(extension) && AllowedExtensions.Contains(extension);
     }
 
+    private static bool IsImageFile(string extension) => ImageExtensions.Contains(extension);
+
+    private static bool IsVideoFile(string extension) => VideoExtensions.Contains(extension);
+
+    private static bool IsGifFile(string extension) => extension.Equals(".gif", StringComparison.OrdinalIgnoreCase);
+
     private static string BuildUniqueFileName(string directoryPath, string originalName)
     {
         var baseName = Path.GetFileNameWithoutExtension(originalName);
@@ -178,4 +239,96 @@ public class Program
 
         return string.IsNullOrWhiteSpace(cleaned) ? "file" : cleaned;
     }
+
+    private static async Task ConvertImageToWebpAsync(IFormFile file, string destinationPath)
+    {
+        await using var inputStream = file.OpenReadStream();
+
+        try
+        {
+            using var image = await Image.LoadAsync(inputStream);
+            await image.SaveAsync(destinationPath, new WebpEncoder { Quality = 85 });
+        }
+        catch (UnknownImageFormatException)
+        {
+            throw new MediaConversionException($"Unsupported image content: {file.FileName}");
+        }
+    }
+
+    private static async Task ConvertVideoToMp4Async(IFormFile file, string destinationPath, string sourceExtension)
+    {
+        if (sourceExtension.Equals(".mp4", StringComparison.OrdinalIgnoreCase))
+        {
+            await using var stream = File.Create(destinationPath);
+            await file.CopyToAsync(stream);
+            return;
+        }
+
+        var tempInputPath = Path.Combine(Path.GetTempPath(), $"gallery-upload-{Guid.NewGuid()}{sourceExtension}");
+
+        try
+        {
+            await using (var tempInputStream = File.Create(tempInputPath))
+            {
+                await file.CopyToAsync(tempInputStream);
+            }
+
+            var processStartInfo = new ProcessStartInfo
+            {
+                FileName = "ffmpeg",
+                Arguments = $"-y -i \"{tempInputPath}\" -c:v libx264 -preset fast -crf 23 -c:a aac -movflags +faststart \"{destinationPath}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = new Process { StartInfo = processStartInfo };
+            try
+            {
+                process.Start();
+            }
+            catch (Win32Exception)
+            {
+                throw new MediaConversionException("Video conversion requires ffmpeg installed and available in PATH.");
+            }
+
+            var stdOutTask = process.StandardOutput.ReadToEndAsync();
+            var stdErrTask = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            _ = await stdOutTask;
+            var stdErr = await stdErrTask;
+
+            if (process.ExitCode != 0)
+            {
+                if (File.Exists(destinationPath))
+                {
+                    File.Delete(destinationPath);
+                }
+
+                var details = FirstNonEmptyLine(stdErr);
+                throw new MediaConversionException(string.IsNullOrWhiteSpace(details)
+                    ? $"Video conversion failed: {file.FileName}"
+                    : $"Video conversion failed: {file.FileName}. {details}");
+            }
+        }
+        finally
+        {
+            if (File.Exists(tempInputPath))
+            {
+                File.Delete(tempInputPath);
+            }
+        }
+    }
+
+    private static string FirstNonEmptyLine(string value)
+    {
+        return value
+            .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim())
+            .FirstOrDefault(line => !string.IsNullOrWhiteSpace(line))
+            ?? string.Empty;
+    }
+
+    private sealed class MediaConversionException(string message) : Exception(message);
 }

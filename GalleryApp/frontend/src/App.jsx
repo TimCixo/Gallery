@@ -9,7 +9,6 @@ function App() {
     ".gif",
     ".webp",
     ".bmp",
-    ".svg",
     ".mp4",
     ".webm",
     ".mov",
