@@ -76,7 +76,6 @@ function App() {
   const [pendingTagDelete, setPendingTagDelete] = useState(null);
   const [isDeletingTagEntity, setIsDeletingTagEntity] = useState(false);
   const [mediaModalError, setMediaModalError] = useState("");
-  const [isMediaPinned, setIsMediaPinned] = useState(true);
   const [isFavoriteUpdating, setIsFavoriteUpdating] = useState(false);
   const [mediaTagCatalog, setMediaTagCatalog] = useState([]);
   const [isMediaTagCatalogLoading, setIsMediaTagCatalogLoading] = useState(false);
@@ -1049,7 +1048,6 @@ function App() {
     setIsDeletingMedia(false);
     setShowDeleteConfirm(false);
     setMediaModalError("");
-    setIsMediaPinned(true);
     setIsFavoriteUpdating(false);
     setIsTagDropdownOpen(false);
     setActiveTagDropdownIndex(-1);
@@ -1111,13 +1109,6 @@ function App() {
         return false;
       }
 
-      if (!isMediaPinned) {
-        const modal = target.closest(".media-modal");
-        if (modal && modal.scrollHeight > modal.clientHeight) {
-          return true;
-        }
-      }
-
       const modalMeta = target.closest(".media-modal-meta");
       if (modalMeta && modalMeta.scrollHeight > modalMeta.clientHeight) {
         return true;
@@ -1167,7 +1158,7 @@ function App() {
       window.removeEventListener("touchmove", handleTouchMove);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [selectedMedia, isMediaPinned]);
+  }, [selectedMedia]);
 
   const handlePageChange = (nextPage) => {
     if (isMediaLoading) {
@@ -3187,38 +3178,30 @@ function App() {
           onClick={() => setSelectedMedia(null)}
         >
           <div
-            className={`media-modal${isMediaPinned ? "" : " media-modal-unpinned"}`}
+            className={`media-modal${isEditingMedia ? " media-modal-editing" : ""}`}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="media-modal-header media-modal-header-empty" />
 
-            <div className="media-modal-content">
-              {isVideoFile(selectedMedia) ? (
-                <video
-                  src={resolveOriginalMediaUrl(selectedMedia)}
-                  controls
-                  autoPlay
-                />
-              ) : (
-                <img
-                  src={resolveOriginalMediaUrl(selectedMedia)}
-                  alt={getDisplayName(selectedMedia.name)}
-                />
-              )}
-            </div>
+            {!isEditingMedia ? (
+              <div className="media-modal-content">
+                {isVideoFile(selectedMedia) ? (
+                  <video
+                    src={resolveOriginalMediaUrl(selectedMedia)}
+                    controls
+                    autoPlay
+                  />
+                ) : (
+                  <img
+                    src={resolveOriginalMediaUrl(selectedMedia)}
+                    alt={getDisplayName(selectedMedia.name)}
+                  />
+                )}
+              </div>
+            ) : null}
 
             <div className="media-modal-meta">
               <div className="media-favorite-row">
-                <button
-                  type="button"
-                  className={`media-icon-btn${isMediaPinned ? " is-active" : ""}`}
-                  onClick={() => setIsMediaPinned((current) => !current)}
-                  aria-label={isMediaPinned ? "Unpin media modal" : "Pin media modal"}
-                  title={isMediaPinned ? "Unpin media modal" : "Pin media modal"}
-                  aria-pressed={isMediaPinned}
-                >
-                  {"\uD83D\uDCCC"}
-                </button>
                 <button
                   type="button"
                   className={`media-favorite-btn${isSelectedMediaFavorite ? " is-active" : ""}`}
