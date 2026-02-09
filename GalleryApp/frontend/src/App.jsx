@@ -34,6 +34,18 @@ function App() {
   const [totalFiles, setTotalFiles] = useState(0);
   const [failedPreviewPaths, setFailedPreviewPaths] = useState(new Set());
   const [selectedMedia, setSelectedMedia] = useState(null);
+  const [isEditingMedia, setIsEditingMedia] = useState(false);
+  const [isSavingMedia, setIsSavingMedia] = useState(false);
+  const [isDeletingMedia, setIsDeletingMedia] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [mediaModalError, setMediaModalError] = useState("");
+  const [mediaDraft, setMediaDraft] = useState({
+    title: "",
+    description: "",
+    source: "",
+    parent: "",
+    child: ""
+  });
   const imageExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".bmp"]);
   const videoExtensions = new Set([".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v"]);
   const getExtensionFromPath = (value) => {
@@ -121,6 +133,13 @@ function App() {
 
     return String(fileName).replace(/\.[^/.]+$/, "");
   };
+  const createMediaDraft = (file) => ({
+    title: file?.title || "",
+    description: file?.description || "",
+    source: file?.source || "",
+    parent: file?.parent == null ? "" : String(file.parent),
+    child: file?.child == null ? "" : String(file.child)
+  });
 
   useEffect(() => {
     fetch("/api/health")
@@ -164,6 +183,13 @@ function App() {
     if (!selectedMedia) {
       return undefined;
     }
+
+    setIsEditingMedia(false);
+    setIsSavingMedia(false);
+    setIsDeletingMedia(false);
+    setShowDeleteConfirm(false);
+    setMediaModalError("");
+    setMediaDraft(createMediaDraft(selectedMedia));
 
     const handleEsc = (event) => {
       if (event.key === "Escape") {
@@ -309,6 +335,158 @@ function App() {
       });
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const parseNullableId = (value, label) => {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    if (!/^\d+$/.test(trimmed)) {
+      throw new Error(`${label} must be a positive integer.`);
+    }
+
+    const parsed = Number.parseInt(trimmed, 10);
+    if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+      throw new Error(`${label} must be a positive integer.`);
+    }
+
+    return parsed;
+  };
+
+  const readResponsePayload = async (response) => {
+    const text = await response.text();
+    if (!text) {
+      return {};
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { error: text };
+    }
+  };
+
+  const handleStartEditMedia = () => {
+    if (!selectedMedia?.id) {
+      setMediaModalError("Cannot edit media without id.");
+      return;
+    }
+
+    setMediaModalError("");
+    setShowDeleteConfirm(false);
+    setMediaDraft(createMediaDraft(selectedMedia));
+    setIsEditingMedia(true);
+  };
+
+  const handleCancelEditMedia = () => {
+    setIsEditingMedia(false);
+    setMediaModalError("");
+    setMediaDraft(createMediaDraft(selectedMedia));
+  };
+
+  const handleSaveMedia = async () => {
+    if (!selectedMedia?.id) {
+      setMediaModalError("Cannot edit media without id.");
+      return;
+    }
+
+    setMediaModalError("");
+
+    let parent = null;
+    let child = null;
+    try {
+      parent = parseNullableId(mediaDraft.parent, "Parent");
+      child = parseNullableId(mediaDraft.child, "Child");
+    } catch (error) {
+      setMediaModalError(error instanceof Error ? error.message : "Validation failed.");
+      return;
+    }
+
+    if (parent === selectedMedia.id || child === selectedMedia.id) {
+      setMediaModalError("Parent and Child cannot reference current media id.");
+      return;
+    }
+
+    const title = mediaDraft.title.trim();
+    const description = mediaDraft.description.trim();
+    const source = mediaDraft.source.trim();
+
+    if (source) {
+      try {
+        const url = new URL(source);
+        if (url.protocol !== "http:" && url.protocol !== "https:") {
+          throw new Error("Source URL must start with http:// or https://");
+        }
+      } catch {
+        setMediaModalError("Source must be a valid absolute URL.");
+        return;
+      }
+    }
+
+    setIsSavingMedia(true);
+    try {
+      const response = await fetch(`/api/media/${selectedMedia.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title || null,
+          description: description || null,
+          source: source || null,
+          parent,
+          child
+        })
+      });
+
+      const result = await readResponsePayload(response);
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to update media.");
+      }
+
+      const patch = {
+        title: result.title ?? null,
+        description: result.description ?? null,
+        source: result.source ?? null,
+        parent: result.parent ?? null,
+        child: result.child ?? null
+      };
+
+      setMediaFiles((current) => current.map((file) => (file.id === selectedMedia.id ? { ...file, ...patch } : file)));
+      setSelectedMedia((current) => (current && current.id === selectedMedia.id ? { ...current, ...patch } : current));
+      setIsEditingMedia(false);
+    } catch (error) {
+      setMediaModalError(error instanceof Error ? error.message : "Failed to update media.");
+    } finally {
+      setIsSavingMedia(false);
+    }
+  };
+
+  const handleConfirmDeleteMedia = async () => {
+    if (!selectedMedia?.id) {
+      setMediaModalError("Cannot delete media without id.");
+      return;
+    }
+
+    setMediaModalError("");
+    setIsDeletingMedia(true);
+    try {
+      const response = await fetch(`/api/media/${selectedMedia.id}`, {
+        method: "DELETE"
+      });
+      const result = await readResponsePayload(response);
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to delete media.");
+      }
+
+      setSelectedMedia(null);
+      await loadMedia(currentPage);
+    } catch (error) {
+      setMediaModalError(error instanceof Error ? error.message : "Failed to delete media.");
+    } finally {
+      setIsDeletingMedia(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -644,16 +822,40 @@ function App() {
                 <tbody>
                   <tr>
                     <th scope="row">Title</th>
-                    <td>{selectedMedia.title || "-"}</td>
+                    <td>
+                      {isEditingMedia ? (
+                        <input
+                          type="text"
+                          className="media-edit-input"
+                          value={mediaDraft.title}
+                          onChange={(event) => setMediaDraft((current) => ({ ...current, title: event.target.value }))}
+                        />
+                      ) : (selectedMedia.title || "-")}
+                    </td>
                   </tr>
                   <tr>
                     <th scope="row">Description</th>
-                    <td>{selectedMedia.description || "-"}</td>
+                    <td>
+                      {isEditingMedia ? (
+                        <textarea
+                          className="media-edit-input media-edit-textarea"
+                          value={mediaDraft.description}
+                          onChange={(event) => setMediaDraft((current) => ({ ...current, description: event.target.value }))}
+                        />
+                      ) : (selectedMedia.description || "-")}
+                    </td>
                   </tr>
                   <tr>
                     <th scope="row">Source</th>
                     <td>
-                      {selectedMedia.source ? (
+                      {isEditingMedia ? (
+                        <input
+                          type="text"
+                          className="media-edit-input"
+                          value={mediaDraft.source}
+                          onChange={(event) => setMediaDraft((current) => ({ ...current, source: event.target.value }))}
+                        />
+                      ) : selectedMedia.source ? (
                         <a
                           href={selectedMedia.source}
                           target="_blank"
@@ -670,11 +872,33 @@ function App() {
                   </tr>
                   <tr>
                     <th scope="row">Parent Link</th>
-                    <td>{selectedMedia.parent ?? "-"}</td>
+                    <td>
+                      {isEditingMedia ? (
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          className="media-edit-input"
+                          value={mediaDraft.parent}
+                          onChange={(event) => setMediaDraft((current) => ({ ...current, parent: event.target.value }))}
+                        />
+                      ) : (selectedMedia.parent ?? "-")}
+                    </td>
                   </tr>
                   <tr>
                     <th scope="row">Child Link</th>
-                    <td>{selectedMedia.child ?? "-"}</td>
+                    <td>
+                      {isEditingMedia ? (
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          className="media-edit-input"
+                          value={mediaDraft.child}
+                          onChange={(event) => setMediaDraft((current) => ({ ...current, child: event.target.value }))}
+                        />
+                      ) : (selectedMedia.child ?? "-")}
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -701,9 +925,88 @@ function App() {
                     </tr>
                   </tbody>
                 </table>
+
+                {mediaModalError ? (
+                  <p className="media-action-error">{mediaModalError}</p>
+                ) : null}
+
+                {isEditingMedia ? (
+                  <div className="media-action-row">
+                    <button
+                      type="button"
+                      className="media-action-btn media-action-primary"
+                      onClick={handleSaveMedia}
+                      disabled={isSavingMedia || isDeletingMedia}
+                    >
+                      {isSavingMedia ? "Saving..." : "Okay"}
+                    </button>
+                    <button
+                      type="button"
+                      className="media-action-btn"
+                      onClick={handleCancelEditMedia}
+                      disabled={isSavingMedia || isDeletingMedia}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="media-action-row">
+                    <button
+                      type="button"
+                      className="media-action-btn media-action-primary"
+                      onClick={handleStartEditMedia}
+                      disabled={!selectedMedia.id || isDeletingMedia}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="media-action-btn media-action-danger"
+                      onClick={() => {
+                        setMediaModalError("");
+                        setShowDeleteConfirm(true);
+                      }}
+                      disabled={!selectedMedia.id || isDeletingMedia}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+
               </details>
             </div>
           </div>
+          {showDeleteConfirm && !isEditingMedia ? (
+            <div
+              className="media-confirm-overlay"
+              onClick={() => !isDeletingMedia && setShowDeleteConfirm(false)}
+            >
+              <div
+                className="media-confirm-dialog"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <p>Are you sure?</p>
+                <div className="media-delete-buttons">
+                  <button
+                    type="button"
+                    className="media-action-btn media-action-danger"
+                    onClick={handleConfirmDeleteMedia}
+                    disabled={isDeletingMedia}
+                  >
+                    {isDeletingMedia ? "Deleting..." : "Yes"}
+                  </button>
+                  <button
+                    type="button"
+                    className="media-action-btn"
+                    onClick={() => setShowDeleteConfirm(false)}
+                    disabled={isDeletingMedia}
+                  >
+                    No
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </main>

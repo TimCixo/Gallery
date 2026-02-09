@@ -162,6 +162,149 @@ public class Program
             return Results.NotFound(new { error = "Preview is supported only for video and gif files." });
         });
 
+        app.MapPut("/api/media/{id:long}", (long id, MediaUpdateRequest request) =>
+        {
+            if (id <= 0)
+            {
+                return Results.BadRequest(new { error = "Invalid media id." });
+            }
+
+            var title = NormalizeOptionalText(request.Title);
+            var description = NormalizeOptionalText(request.Description);
+            var source = NormalizeOptionalText(request.Source);
+            var parent = request.Parent;
+            var child = request.Child;
+
+            if (source is not null && !IsValidHttpUrl(source))
+            {
+                return Results.BadRequest(new { error = "Source must be a valid absolute http/https URL." });
+            }
+
+            if (parent.HasValue && parent.Value <= 0)
+            {
+                return Results.BadRequest(new { error = "Parent must be a positive id." });
+            }
+
+            if (child.HasValue && child.Value <= 0)
+            {
+                return Results.BadRequest(new { error = "Child must be a positive id." });
+            }
+
+            if (parent == id || child == id)
+            {
+                return Results.BadRequest(new { error = "Parent and Child cannot reference the same media item." });
+            }
+
+            using var connection = new SqliteConnection(connectionString);
+            connection.Open();
+
+            if (!MediaRecordExists(connection, id))
+            {
+                return Results.NotFound(new { error = "Media record not found." });
+            }
+
+            if (parent.HasValue && !MediaRecordExists(connection, parent.Value))
+            {
+                return Results.BadRequest(new { error = "Parent media id was not found." });
+            }
+
+            if (child.HasValue && !MediaRecordExists(connection, child.Value))
+            {
+                return Results.BadRequest(new { error = "Child media id was not found." });
+            }
+
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                UPDATE Media
+                SET
+                    Title = $title,
+                    Description = $description,
+                    Source = $source,
+                    Parent = $parent,
+                    Child = $child
+                WHERE Id = $id;
+                """;
+            command.Parameters.AddWithValue("$title", title ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("$description", description ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("$source", source ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("$parent", parent ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("$child", child ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("$id", id);
+            command.ExecuteNonQuery();
+
+            return Results.Ok(new
+            {
+                id,
+                title,
+                description,
+                source,
+                parent,
+                child
+            });
+        });
+
+        app.MapDelete("/api/media/{id:long}", (long id) =>
+        {
+            if (id <= 0)
+            {
+                return Results.BadRequest(new { error = "Invalid media id." });
+            }
+
+            using var connection = new SqliteConnection(connectionString);
+            connection.Open();
+
+            using var pathCommand = connection.CreateCommand();
+            pathCommand.CommandText = """
+                SELECT Path
+                FROM Media
+                WHERE Id = $id;
+                """;
+            pathCommand.Parameters.AddWithValue("$id", id);
+            var rawPath = pathCommand.ExecuteScalar() as string;
+            if (string.IsNullOrWhiteSpace(rawPath))
+            {
+                return Results.NotFound(new { error = "Media record not found." });
+            }
+
+            var normalizedRelativePath = rawPath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+            var rootPath = Path.GetFullPath(mediaRootPath + Path.DirectorySeparatorChar);
+            var absolutePath = Path.GetFullPath(Path.Combine(mediaRootPath, normalizedRelativePath));
+            if (!absolutePath.StartsWith(rootPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.BadRequest(new { error = "Stored media path is invalid." });
+            }
+
+            if (File.Exists(absolutePath))
+            {
+                try
+                {
+                    File.Delete(absolutePath);
+                }
+                catch (IOException ex)
+                {
+                    return Results.Problem($"Failed to delete file: {ex.Message}");
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    return Results.Problem($"Failed to delete file: {ex.Message}");
+                }
+            }
+
+            using var transaction = connection.BeginTransaction();
+            using var deleteCommand = connection.CreateCommand();
+            deleteCommand.Transaction = transaction;
+            deleteCommand.CommandText = """
+                UPDATE Media SET Parent = NULL WHERE Parent = $id;
+                UPDATE Media SET Child = NULL WHERE Child = $id;
+                DELETE FROM Media WHERE Id = $id;
+                """;
+            deleteCommand.Parameters.AddWithValue("$id", id);
+            deleteCommand.ExecuteNonQuery();
+            transaction.Commit();
+
+            return Results.Ok(new { id });
+        });
+
         app.MapPost("/api/upload", async (HttpRequest request) =>
         {
             if (!request.HasFormContentType)
@@ -652,6 +795,42 @@ public class Program
         command.ExecuteNonQuery();
     }
 
+    private static bool MediaRecordExists(SqliteConnection connection, long id)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM Media
+                WHERE Id = $id
+            );
+            """;
+        command.Parameters.AddWithValue("$id", id);
+        var result = command.ExecuteScalar();
+        return Convert.ToInt64(result) == 1;
+    }
+
+    private static string? NormalizeOptionalText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return value.Trim();
+    }
+
+    private static bool IsValidHttpUrl(string value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        return uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+            || uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static Dictionary<string, MediaMetadata> LoadMediaMetadataByPath(string connectionString)
     {
         var result = new Dictionary<string, MediaMetadata>(StringComparer.OrdinalIgnoreCase);
@@ -688,6 +867,13 @@ public class Program
     }
 
     private sealed class MediaConversionException(string message) : Exception(message);
+
+    private sealed record MediaUpdateRequest(
+        string? Title,
+        string? Description,
+        string? Source,
+        long? Parent,
+        long? Child);
 
     private sealed record MediaMetadata(
         long Id,
