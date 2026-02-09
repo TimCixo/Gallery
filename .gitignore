@@ -1,0 +1,14 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/.vite/
+.vs/
+*.user
+*.suo
+*.log
+*.db
+GalleryApp/backend/App_Data/*
+!GalleryApp/backend/App_Data/.gitkeep
+GalleryApp/App_Data/*
+!GalleryApp/App_Data/.gitkeep
