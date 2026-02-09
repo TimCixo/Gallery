@@ -494,8 +494,17 @@ public class Program
                 FOREIGN KEY (Child) REFERENCES Media(Id)
             );
 
+            CREATE TABLE IF NOT EXISTS Collections (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Lable TEXT NOT NULL,
+                Description TEXT NULL,
+                Cover INTEGER NULL,
+                FOREIGN KEY (Cover) REFERENCES Media(Id) ON DELETE SET NULL
+            );
+
             CREATE INDEX IF NOT EXISTS IX_Media_Parent ON Media(Parent);
             CREATE INDEX IF NOT EXISTS IX_Media_Child ON Media(Child);
+            CREATE INDEX IF NOT EXISTS IX_Collections_Cover ON Collections(Cover);
 
             INSERT INTO AppInfo (Id, Name, CreatedAtUtc)
             VALUES (1, 'GalleryApp', CURRENT_TIMESTAMP)
