@@ -65,11 +65,12 @@ public class Program
                 timestampUtc = DateTime.UtcNow
             }));
 
-        app.MapGet("/api/media", (int? page, int? pageSize) =>
+        app.MapGet("/api/media", (int? page, int? pageSize, string? search) =>
         {
             var normalizedPageSize = Math.Clamp(pageSize ?? 36, 1, 100);
             var normalizedPage = Math.Max(page ?? 1, 1);
-            var metadataByPath = LoadMediaMetadataByPath(connectionString);
+            var searchCriteria = ParseMediaSearchCriteria(search);
+            var metadataByPath = LoadMediaMetadataByPath(connectionString, searchCriteria);
 
             if (!Directory.Exists(mediaRootPath))
             {
@@ -94,6 +95,11 @@ public class Program
                 {
                     var relativePath = Path.GetRelativePath(mediaRootPath, path).Replace("\\", "/");
                     metadataByPath.TryGetValue(relativePath, out var metadata);
+                    if (searchCriteria.HasFilters && metadata is null)
+                    {
+                        return null;
+                    }
+
                     var extension = Path.GetExtension(path);
                     var mediaType = IsImageFile(extension) ? "image" : IsVideoFile(extension) ? "video" : "file";
                     var fileInfo = new FileInfo(path);
@@ -118,6 +124,8 @@ public class Program
                         modifiedAtUtc = fileInfo.LastWriteTimeUtc
                     };
                 })
+                .Where(file => file is not null)
+                .Select(file => file!)
                 .OrderByDescending(file => file.modifiedAtUtc)
                 .ToArray();
 
@@ -595,7 +603,6 @@ public class Program
         ".mkv",
         ".m4v"
     };
-
     private static void EnsureDatabase(IServiceProvider services)
     {
         using var scope = services.CreateScope();
@@ -1038,7 +1045,9 @@ public class Program
             || uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static Dictionary<string, MediaMetadata> LoadMediaMetadataByPath(string connectionString)
+    private static Dictionary<string, MediaMetadata> LoadMediaMetadataByPath(
+        string connectionString,
+        MediaSearchCriteria? criteria = null)
     {
         var result = new Dictionary<string, MediaMetadata>(StringComparer.OrdinalIgnoreCase);
 
@@ -1046,7 +1055,12 @@ public class Program
         connection.Open();
 
         using var command = connection.CreateCommand();
-        command.CommandText = """
+        var whereClauses = BuildMediaSearchWhereClauses(command, criteria);
+        var whereSql = whereClauses.Count == 0
+            ? string.Empty
+            : $"{Environment.NewLine}            WHERE {string.Join($"{Environment.NewLine}              AND ", whereClauses)}";
+
+        command.CommandText = $"""
             SELECT
                 m.Id,
                 m.Path,
@@ -1061,7 +1075,7 @@ public class Program
                     INNER JOIN Collections c ON c.Id = cm.CollectionId
                     WHERE cm.MediaId = m.Id AND c.Lable = 'Favorites'
                 ) AS IsFavorite
-            FROM Media m;
+            FROM Media m{whereSql};
             """;
 
         using var reader = command.ExecuteReader();
@@ -1087,6 +1101,194 @@ public class Program
         return result;
     }
 
+    private static List<string> BuildMediaSearchWhereClauses(SqliteCommand command, MediaSearchCriteria? criteria)
+    {
+        var whereClauses = new List<string>();
+        if (criteria is null || !criteria.HasFilters)
+        {
+            return whereClauses;
+        }
+
+        var parameterIndex = 0;
+
+        AddContainsClauses(criteria.PathTerms, "m.Path");
+        AddContainsClauses(criteria.TitleTerms, "IFNULL(m.Title, '')");
+        AddContainsClauses(criteria.DescriptionTerms, "IFNULL(m.Description, '')");
+        AddContainsClauses(criteria.SourceTerms, "IFNULL(m.Source, '')");
+
+        if (criteria.Ids.Count > 0)
+        {
+            var idParams = new List<string>();
+            foreach (var id in criteria.Ids.Distinct())
+            {
+                var paramName = $"$p{parameterIndex++}";
+                idParams.Add(paramName);
+                command.Parameters.AddWithValue(paramName, id);
+            }
+
+            whereClauses.Add(idParams.Count == 1
+                ? $"m.Id = {idParams[0]}"
+                : $"m.Id IN ({string.Join(", ", idParams)})");
+        }
+
+        return whereClauses;
+
+        void AddContainsClauses(IEnumerable<string> terms, string sqlField)
+        {
+            foreach (var term in terms.Where(value => !string.IsNullOrWhiteSpace(value)))
+            {
+                var paramName = $"$p{parameterIndex++}";
+                command.Parameters.AddWithValue(paramName, $"%{term.Trim().ToLowerInvariant()}%");
+                whereClauses.Add($"LOWER({sqlField}) LIKE {paramName}");
+            }
+        }
+    }
+
+    private static MediaSearchCriteria ParseMediaSearchCriteria(string? search)
+    {
+        var criteria = new MediaSearchCriteria();
+        if (string.IsNullOrWhiteSpace(search))
+        {
+            return criteria;
+        }
+
+        var text = search.Trim();
+        var index = 0;
+
+        while (index < text.Length)
+        {
+            while (index < text.Length && char.IsWhiteSpace(text[index]))
+            {
+                index++;
+            }
+
+            if (index >= text.Length)
+            {
+                break;
+            }
+
+            if (text[index] != '@')
+            {
+                while (index < text.Length && !char.IsWhiteSpace(text[index]))
+                {
+                    index++;
+                }
+
+                continue;
+            }
+
+            var tagStart = index + 1;
+            var separatorIndex = text.IndexOf(':', tagStart);
+            if (separatorIndex < 0)
+            {
+                break;
+            }
+
+            var hasWhitespaceBeforeSeparator = false;
+            for (var i = tagStart; i < separatorIndex; i++)
+            {
+                if (char.IsWhiteSpace(text[i]))
+                {
+                    hasWhitespaceBeforeSeparator = true;
+                    break;
+                }
+            }
+
+            if (hasWhitespaceBeforeSeparator || separatorIndex == tagStart)
+            {
+                index++;
+                continue;
+            }
+
+            var tag = text.Substring(tagStart, separatorIndex - tagStart).Trim().ToLowerInvariant();
+            index = separatorIndex + 1;
+
+            while (index < text.Length && char.IsWhiteSpace(text[index]))
+            {
+                index++;
+            }
+
+            if (index >= text.Length)
+            {
+                break;
+            }
+
+            string rawValue;
+            if (text[index] == '"' || text[index] == '“' || text[index] == '”')
+            {
+                var openingQuote = text[index];
+                var closingQuote = openingQuote == '“' ? '”' : '"';
+                var valueStart = index + 1;
+                var closingQuoteIndex = text.IndexOf(closingQuote, valueStart);
+                if (closingQuoteIndex < 0 && closingQuote != '"')
+                {
+                    closingQuoteIndex = text.IndexOf('"', valueStart);
+                }
+
+                if (closingQuoteIndex < 0)
+                {
+                    rawValue = text[valueStart..];
+                    index = text.Length;
+                }
+                else
+                {
+                    rawValue = text.Substring(valueStart, closingQuoteIndex - valueStart);
+                    index = closingQuoteIndex + 1;
+                }
+
+                if (index < text.Length && !char.IsWhiteSpace(text[index]))
+                {
+                    while (index < text.Length && !char.IsWhiteSpace(text[index]))
+                    {
+                        index++;
+                    }
+
+                    continue;
+                }
+            }
+            else
+            {
+                var valueStart = index;
+                while (index < text.Length && !char.IsWhiteSpace(text[index]))
+                {
+                    index++;
+                }
+
+                rawValue = text.Substring(valueStart, index - valueStart);
+            }
+
+            var value = rawValue.Trim();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                continue;
+            }
+
+            switch (tag)
+            {
+                case "path":
+                    criteria.PathTerms.Add(value);
+                    break;
+                case "title":
+                    criteria.TitleTerms.Add(value);
+                    break;
+                case "description":
+                    criteria.DescriptionTerms.Add(value);
+                    break;
+                case "source":
+                    criteria.SourceTerms.Add(value);
+                    break;
+                case "id":
+                    if (long.TryParse(value, out var parsedId) && parsedId > 0)
+                    {
+                        criteria.Ids.Add(parsedId);
+                    }
+                    break;
+            }
+        }
+
+        return criteria;
+    }
+
     private sealed class MediaConversionException(string message) : Exception(message);
 
     private sealed record MediaUpdateRequest(
@@ -1106,4 +1308,20 @@ public class Program
         long? Parent,
         long? Child,
         bool IsFavorite);
+
+    private sealed class MediaSearchCriteria
+    {
+        public List<string> PathTerms { get; } = [];
+        public List<string> TitleTerms { get; } = [];
+        public List<string> DescriptionTerms { get; } = [];
+        public List<string> SourceTerms { get; } = [];
+        public List<long> Ids { get; } = [];
+
+        public bool HasFilters =>
+            PathTerms.Count > 0
+            || TitleTerms.Count > 0
+            || DescriptionTerms.Count > 0
+            || SourceTerms.Count > 0
+            || Ids.Count > 0;
+    }
 }

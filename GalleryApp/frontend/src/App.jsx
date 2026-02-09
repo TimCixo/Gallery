@@ -3,6 +3,8 @@ import "./App.css";
 
 function App() {
   const PAGE_SIZE = 36;
+  const searchTagNames = new Set(["path", "title", "description", "id", "source"]);
+  const searchTagOptions = ["path", "title", "description", "id", "source"];
   const allowedExtensions = new Set([
     ".jpg",
     ".jpeg",
@@ -73,6 +75,159 @@ function App() {
   const activeUploadTaskIdRef = useRef(null);
   const activeUploadXhrRef = useRef(null);
   const pageDragCounterRef = useRef(0);
+  const searchInputRef = useRef(null);
+  const searchHighlightRef = useRef(null);
+  const [searchCaretPosition, setSearchCaretPosition] = useState(0);
+  const [isSearchInputFocused, setIsSearchInputFocused] = useState(false);
+  const [activeSearchSuggestionIndex, setActiveSearchSuggestionIndex] = useState(0);
+  const syncSearchHighlightScroll = () => {
+    if (!searchInputRef.current || !searchHighlightRef.current) {
+      return;
+    }
+
+    searchHighlightRef.current.scrollLeft = searchInputRef.current.scrollLeft;
+  };
+  const parseSearchSegments = (value) => {
+    const text = String(value || "");
+    if (!text) {
+      return [];
+    }
+
+    const segments = [];
+    let index = 0;
+    while (index < text.length) {
+      if (text[index] === " ") {
+        const start = index;
+        while (index < text.length && text[index] === " ") {
+          index += 1;
+        }
+
+        segments.push({ text: text.slice(start, index), isTag: false });
+        continue;
+      }
+
+      const tokenStart = index;
+      let tokenEnd = tokenStart;
+      while (tokenEnd < text.length && text[tokenEnd] !== " ") {
+        tokenEnd += 1;
+      }
+      const token = text.slice(tokenStart, tokenEnd);
+      const separatorIndex = token.indexOf(":");
+      const tagName = separatorIndex > 1 ? token.slice(1, separatorIndex).toLowerCase() : "";
+      const isTag = token.startsWith("@") && (separatorIndex < 0 || searchTagNames.has(tagName));
+      segments.push({ text: text.slice(tokenStart, tokenEnd), isTag });
+      index = tokenEnd;
+    }
+
+    return segments;
+  };
+  const handleSearchInputChange = (event) => {
+    setInputValue(event.target.value);
+    const caretPosition = event.target.selectionStart ?? event.target.value.length;
+    setSearchCaretPosition(caretPosition);
+    setActiveSearchSuggestionIndex(0);
+  };
+  const updateSearchCaretPosition = (event) => {
+    const caretPosition = event.target.selectionStart ?? event.target.value.length;
+    setSearchCaretPosition(caretPosition);
+  };
+  const getSearchTokenRange = (text, caret) => {
+    const normalizedText = String(text || "");
+    const normalizedCaret = Math.max(0, Math.min(caret ?? normalizedText.length, normalizedText.length));
+    let start = normalizedCaret;
+    while (start > 0 && normalizedText[start - 1] !== " ") {
+      start -= 1;
+    }
+
+    let end = normalizedCaret;
+    while (end < normalizedText.length && normalizedText[end] !== " ") {
+      end += 1;
+    }
+
+    return {
+      start,
+      end,
+      token: normalizedText.slice(start, end),
+      tokenBeforeCaret: normalizedText.slice(start, normalizedCaret)
+    };
+  };
+  const searchTokenRange = getSearchTokenRange(inputValue, searchCaretPosition);
+  const searchTagSuggestions = (() => {
+    if (!searchTokenRange.tokenBeforeCaret.startsWith("@")) {
+      return [];
+    }
+
+    if (searchTokenRange.tokenBeforeCaret.includes(":") || searchTokenRange.token.includes(":")) {
+      return [];
+    }
+
+    const typedTagPrefix = searchTokenRange.tokenBeforeCaret.slice(1).toLowerCase();
+    return searchTagOptions.filter((tag) => tag.startsWith(typedTagPrefix));
+  })();
+  const hasSearchSuggestions = isSearchInputFocused && searchTagSuggestions.length > 0;
+  const applySearchTagSuggestion = (tagName) => {
+    const prefix = inputValue.slice(0, searchTokenRange.start);
+    const suffix = inputValue.slice(searchTokenRange.end);
+    const insertedToken = `@${tagName}:`;
+    const nextValue = `${prefix}${insertedToken}${suffix}`;
+    const nextCaret = prefix.length + insertedToken.length;
+
+    setInputValue(nextValue);
+    setSearchCaretPosition(nextCaret);
+    setActiveSearchSuggestionIndex(0);
+
+    requestAnimationFrame(() => {
+      if (!searchInputRef.current) {
+        return;
+      }
+
+      searchInputRef.current.focus();
+      searchInputRef.current.setSelectionRange(nextCaret, nextCaret);
+      syncSearchHighlightScroll();
+    });
+  };
+  const handleSearchInputKeyDown = (event) => {
+    if (!hasSearchSuggestions) {
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveSearchSuggestionIndex((current) => (current + 1) % searchTagSuggestions.length);
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveSearchSuggestionIndex((current) => (
+        (current - 1 + searchTagSuggestions.length) % searchTagSuggestions.length
+      ));
+      return;
+    }
+
+    if (event.key === "Enter" || event.key === "Tab") {
+      event.preventDefault();
+      const selectedTag = searchTagSuggestions[Math.max(0, Math.min(activeSearchSuggestionIndex, searchTagSuggestions.length - 1))];
+      if (selectedTag) {
+        applySearchTagSuggestion(selectedTag);
+      }
+      return;
+    }
+
+    if (event.key === "Escape") {
+      setIsSearchInputFocused(false);
+    }
+  };
+  useEffect(() => {
+    syncSearchHighlightScroll();
+  }, [inputValue]);
+  useEffect(() => {
+    if (activeSearchSuggestionIndex < searchTagSuggestions.length) {
+      return;
+    }
+
+    setActiveSearchSuggestionIndex(0);
+  }, [searchTagSuggestions.length, activeSearchSuggestionIndex]);
   const getExtensionFromPath = (value) => {
     if (!value) {
       return "";
@@ -262,12 +417,21 @@ function App() {
       .catch(() => setHealth("backend unavailable"));
   }, []);
 
-  const loadMedia = async (page = 1) => {
+  const loadMedia = async (page = 1, searchText = submittedText) => {
     setIsMediaLoading(true);
     setMediaError("");
 
     try {
-      const response = await fetch(`/api/media?page=${page}&pageSize=${PAGE_SIZE}`);
+      const query = new URLSearchParams({
+        page: String(page),
+        pageSize: String(PAGE_SIZE)
+      });
+      const normalizedSearchText = String(searchText || "").trim();
+      if (normalizedSearchText) {
+        query.set("search", normalizedSearchText);
+      }
+
+      const response = await fetch(`/api/media?${query.toString()}`);
       if (!response.ok) {
         throw new Error("Failed to fetch media files.");
       }
@@ -290,7 +454,7 @@ function App() {
   };
 
   useEffect(() => {
-    loadMedia(1);
+    loadMedia(1, "");
   }, []);
 
   useEffect(() => {
@@ -430,7 +594,7 @@ function App() {
       return;
     }
 
-    loadMedia(nextPage);
+    loadMedia(nextPage, submittedText);
   };
 
   const renderPagination = () => (
@@ -491,7 +655,9 @@ function App() {
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    setSubmittedText(inputValue.trim());
+    const nextSubmittedText = inputValue.trim();
+    setSubmittedText(nextSubmittedText);
+    loadMedia(1, nextSubmittedText);
   };
 
   const openUploadPicker = () => {
@@ -666,7 +832,7 @@ function App() {
             }
           }
 
-          await loadMedia(1);
+          await loadMedia(1, submittedText);
           setBackgroundUploadState((current) => ({
             ...current,
             completed: current.completed + 1,
@@ -1089,7 +1255,7 @@ function App() {
       }
 
       setSelectedMedia(null);
-      await loadMedia(currentPage);
+      await loadMedia(currentPage, submittedText);
       await loadFavorites(favoritesPage);
     } catch (error) {
       setMediaModalError(error instanceof Error ? error.message : "Failed to delete media.");
@@ -1214,8 +1380,12 @@ function App() {
   };
   const openGalleryPage = (event) => {
     event.preventDefault();
+    setInputValue("");
+    setSubmittedText("");
     setActivePage("gallery");
+    setSelectedMedia(null);
     setIsSlideMenuOpen(false);
+    loadMedia(1, "");
   };
   const openFavoritesPage = () => {
     setActivePage("favorites");
@@ -1258,13 +1428,58 @@ function App() {
           className="top-form"
           onSubmit={handleSubmit}
         >
-          <input
-            className="top-input"
-            type="text"
-            value={inputValue}
-            onChange={(event) => setInputValue(event.target.value)}
-            placeholder="Type text..."
-          />
+          <div className="top-input-wrap">
+            <div
+              ref={searchHighlightRef}
+              className="top-input-highlight"
+              aria-hidden="true"
+            >
+              {inputValue ? (
+                parseSearchSegments(inputValue).map((segment, index) => (
+                  <span
+                    key={`${index}-${segment.text}`}
+                    className={segment.isTag ? "top-input-segment is-tag" : "top-input-segment"}
+                  >
+                    {segment.text}
+                  </span>
+                ))
+              ) : (
+                <span className="top-input-placeholder">@title:cat @id:42</span>
+              )}
+            </div>
+            <input
+              ref={searchInputRef}
+              className="top-input"
+              type="text"
+              value={inputValue}
+              onChange={handleSearchInputChange}
+              onFocus={() => setIsSearchInputFocused(true)}
+              onBlur={() => setIsSearchInputFocused(false)}
+              onClick={updateSearchCaretPosition}
+              onKeyUp={updateSearchCaretPosition}
+              onKeyDown={handleSearchInputKeyDown}
+              onScroll={syncSearchHighlightScroll}
+              placeholder="@title:cat @id:42"
+            />
+            {hasSearchSuggestions ? (
+              <ul className="top-search-suggestions">
+                {searchTagSuggestions.map((tagName, index) => (
+                  <li key={tagName}>
+                    <button
+                      type="button"
+                      className={`top-search-suggestion${index === activeSearchSuggestionIndex ? " is-active" : ""}`}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        applySearchTagSuggestion(tagName);
+                      }}
+                    >
+                      @{tagName}:
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
           <button
             type="submit"
             style={{
