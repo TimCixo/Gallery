@@ -25,6 +25,46 @@ function App() {
   const [invalidFileNames, setInvalidFileNames] = useState([]);
   const [uploadState, setUploadState] = useState({ type: "", message: "" });
   const [isUploading, setIsUploading] = useState(false);
+  const [mediaFiles, setMediaFiles] = useState([]);
+  const [isMediaLoading, setIsMediaLoading] = useState(true);
+  const [mediaError, setMediaError] = useState("");
+  const [failedPreviewPaths, setFailedPreviewPaths] = useState(new Set());
+  const imageExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".bmp"]);
+  const getExtensionFromPath = (value) => {
+    if (!value) {
+      return "";
+    }
+
+    const cleanValue = String(value).split("?")[0];
+    const dotIndex = cleanValue.lastIndexOf(".");
+    return dotIndex >= 0 ? cleanValue.slice(dotIndex).toLowerCase() : "";
+  };
+  const resolveTileUrl = (file) => {
+    if (file?.tileUrl) {
+      return file.tileUrl;
+    }
+
+    if (file?.previewUrl) {
+      return file.previewUrl;
+    }
+
+    const original = file?.originalUrl || file?.url || "";
+    if (file?.mediaType === "image" && original) {
+      return original;
+    }
+
+    if (imageExtensions.has(getExtensionFromPath(original))) {
+      return original;
+    }
+
+    if ((file?.mediaType === "video" || file?.mediaType === "gif") && file?.relativePath) {
+      return `/api/media/preview?path=${encodeURIComponent(file.relativePath)}`;
+    }
+
+    return "";
+  };
+  const visibleMediaFiles = mediaFiles
+    .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) }));
   const fileInputRef = useRef(null);
   const getFileKey = (file) => `${file.name}-${file.size}-${file.lastModified}`;
   const getExtension = (fileName) => {
@@ -37,6 +77,30 @@ function App() {
       .then((response) => response.json())
       .then((data) => setHealth(`${data.status} (${data.timestampUtc})`))
       .catch(() => setHealth("backend unavailable"));
+  }, []);
+
+  const loadMedia = async () => {
+    setIsMediaLoading(true);
+    setMediaError("");
+
+    try {
+      const response = await fetch("/api/media");
+      if (!response.ok) {
+        throw new Error("Failed to fetch media files.");
+      }
+
+      const result = await response.json();
+      setMediaFiles(Array.isArray(result.files) ? result.files : []);
+      setFailedPreviewPaths(new Set());
+    } catch (error) {
+      setMediaError(error instanceof Error ? error.message : "Failed to fetch media files.");
+    } finally {
+      setIsMediaLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadMedia();
   }, []);
 
   const handleSubmit = (event) => {
@@ -131,6 +195,7 @@ function App() {
       });
       setSelectedFiles([]);
       setInvalidFileNames([]);
+      await loadMedia();
     } catch (error) {
       setUploadState({
         type: "error",
@@ -198,6 +263,61 @@ function App() {
         <p>React frontend is running.</p>
         <p>Backend health: {health}</p>
         {submittedText ? <p>Last submitted: {submittedText}</p> : null}
+      </section>
+
+      <section className="media-section">
+        <div className="media-header">
+          <h2>Media files</h2>
+          <button
+            type="button"
+            className="media-refresh"
+            onClick={loadMedia}
+            disabled={isMediaLoading}
+          >
+            {isMediaLoading ? "Loading..." : "Refresh"}
+          </button>
+        </div>
+
+        {mediaError ? <p className="media-state error">{mediaError}</p> : null}
+        {!mediaError && isMediaLoading ? <p className="media-state">Loading media...</p> : null}
+        {!mediaError && !isMediaLoading && mediaFiles.length === 0 ? (
+          <p className="media-state">No files in backend/App_Data/Media.</p>
+        ) : null}
+        {!mediaError && !isMediaLoading && mediaFiles.length > 0 && visibleMediaFiles.length === 0 ? (
+          <p className="media-state">No preview images available for current files.</p>
+        ) : null}
+
+        {!mediaError && visibleMediaFiles.length > 0 ? (
+          <div className="media-grid">
+            {visibleMediaFiles.map((file) => (
+              <article
+                key={file.relativePath}
+                className="media-tile"
+              >
+                <div className="media-preview">
+                  {file._tileUrl && !failedPreviewPaths.has(file.relativePath) ? (
+                    <img
+                      src={file._tileUrl}
+                      alt={file.name}
+                      loading="lazy"
+                      onError={() => {
+                        setFailedPreviewPaths((prev) => new Set(prev).add(file.relativePath));
+                      }}
+                    />
+                  ) : (
+                    <div className="media-fallback">Preview unavailable</div>
+                  )}
+                </div>
+                <p
+                  className="media-name"
+                  title={file.name}
+                >
+                  {file.name}
+                </p>
+              </article>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       {isUploadOpen ? (

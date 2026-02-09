@@ -2,7 +2,9 @@ using System.ComponentModel;
 using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.FileProviders;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Formats.Webp;
 
 namespace GalleryApp.Api;
@@ -40,6 +42,11 @@ public class Program
         EnsureDatabase(app.Services);
 
         app.UseCors("Frontend");
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = new PhysicalFileProvider(mediaRootPath),
+            RequestPath = "/media"
+        });
 
         app.MapGet("/api/health", () =>
             Results.Ok(new
@@ -47,6 +54,75 @@ public class Program
                 status = "ok",
                 timestampUtc = DateTime.UtcNow
             }));
+
+        app.MapGet("/api/media", () =>
+        {
+            if (!Directory.Exists(mediaRootPath))
+            {
+                Directory.CreateDirectory(mediaRootPath);
+                return Results.Ok(new { files = Array.Empty<object>() });
+            }
+
+            var files = Directory
+                .EnumerateFiles(mediaRootPath, "*", SearchOption.AllDirectories)
+                .Where(path =>
+                {
+                    return IsAllowedMediaFile(path);
+                })
+                .Select(path =>
+                {
+                    var relativePath = Path.GetRelativePath(mediaRootPath, path).Replace("\\", "/");
+                    var extension = Path.GetExtension(path);
+                    var mediaType = IsImageFile(extension) ? "image" : IsVideoFile(extension) ? "video" : "file";
+                    var fileInfo = new FileInfo(path);
+                    var originalUrl = BuildMediaUrl(relativePath);
+                    var tileUrl = BuildTileUrl(relativePath, extension, fileInfo.LastWriteTimeUtc.Ticks);
+
+                    return new
+                    {
+                        name = Path.GetFileName(path),
+                        relativePath,
+                        originalUrl,
+                        tileUrl,
+                        mediaType,
+                        sizeBytes = fileInfo.Length,
+                        modifiedAtUtc = fileInfo.LastWriteTimeUtc
+                    };
+                })
+                .OrderByDescending(file => file.modifiedAtUtc)
+                .ToArray();
+
+            return Results.Ok(new { files });
+        });
+
+        app.MapGet("/api/media/preview", (string path) =>
+        {
+            if (!TryResolveMediaFilePath(mediaRootPath, path, out var absolutePath, out var extension))
+            {
+                return Results.NotFound(new { error = "Media file not found." });
+            }
+
+            try
+            {
+                if (IsVideoFile(extension))
+                {
+                    var bytes = GenerateVideoPreviewJpeg(absolutePath);
+                    return Results.File(bytes, "image/jpeg");
+                }
+
+                if (IsGifFile(extension))
+                {
+                    var bytes = GenerateGifPreviewJpeg(absolutePath);
+                    return Results.File(bytes, "image/jpeg");
+                }
+            }
+            catch (MediaConversionException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+
+            return Results.NotFound(new { error = "Preview is supported only for video and gif files." });
+        });
 
         app.MapPost("/api/upload", async (HttpRequest request) =>
         {
@@ -209,6 +285,54 @@ public class Program
 
     private static bool IsGifFile(string extension) => extension.Equals(".gif", StringComparison.OrdinalIgnoreCase);
 
+    private static string BuildMediaUrl(string relativePath)
+    {
+        return $"/media/{Uri.EscapeDataString(relativePath).Replace("%2F", "/")}";
+    }
+
+    private static string BuildTileUrl(string relativePath, string extension, long modifiedTicks)
+    {
+        if (IsVideoFile(extension) || IsGifFile(extension))
+        {
+            return $"/api/media/preview?path={Uri.EscapeDataString(relativePath)}&v={modifiedTicks}";
+        }
+
+        return BuildMediaUrl(relativePath);
+    }
+
+    private static bool TryResolveMediaFilePath(
+        string mediaRootPath,
+        string relativePath,
+        out string absolutePath,
+        out string extension)
+    {
+        absolutePath = string.Empty;
+        extension = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            return false;
+        }
+
+        var normalizedRelativePath = relativePath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+        var rootPath = Path.GetFullPath(mediaRootPath + Path.DirectorySeparatorChar);
+        var candidatePath = Path.GetFullPath(Path.Combine(mediaRootPath, normalizedRelativePath));
+
+        if (!candidatePath.StartsWith(rootPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!File.Exists(candidatePath) || !IsAllowedMediaFile(candidatePath))
+        {
+            return false;
+        }
+
+        absolutePath = candidatePath;
+        extension = Path.GetExtension(candidatePath).ToLowerInvariant();
+        return true;
+    }
+
     private static string BuildUniqueFileName(string directoryPath, string originalName)
     {
         var baseName = Path.GetFileNameWithoutExtension(originalName);
@@ -275,7 +399,7 @@ public class Program
 
             var processStartInfo = new ProcessStartInfo
             {
-                FileName = "ffmpeg",
+                FileName = ResolveFfmpegExecutable(),
                 Arguments = $"-y -i \"{tempInputPath}\" -c:v libx264 -preset fast -crf 23 -c:a aac -movflags +faststart \"{destinationPath}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -290,7 +414,7 @@ public class Program
             }
             catch (Win32Exception)
             {
-                throw new MediaConversionException("Video conversion requires ffmpeg installed and available in PATH.");
+                throw new MediaConversionException("Video conversion requires ffmpeg available in PATH or FFMPEG_PATH.");
             }
 
             var stdOutTask = process.StandardOutput.ReadToEndAsync();
@@ -321,6 +445,87 @@ public class Program
         }
     }
 
+    private static byte[] GenerateGifPreviewJpeg(string sourcePath)
+    {
+        try
+        {
+            using var image = Image.Load(sourcePath);
+            while (image.Frames.Count > 1)
+            {
+                image.Frames.RemoveFrame(image.Frames.Count - 1);
+            }
+
+            using var stream = new MemoryStream();
+            image.Save(stream, new JpegEncoder { Quality = 85 });
+            return stream.ToArray();
+        }
+        catch (UnknownImageFormatException)
+        {
+            throw new MediaConversionException($"Unsupported image content: {Path.GetFileName(sourcePath)}");
+        }
+    }
+
+    private static byte[] GenerateVideoPreviewJpeg(string sourcePath)
+    {
+        try
+        {
+            var tempPreviewPath = Path.Combine(Path.GetTempPath(), $"gallery-preview-{Guid.NewGuid()}.jpg");
+            try
+            {
+                var processStartInfo = new ProcessStartInfo
+                {
+                    FileName = ResolveFfmpegExecutable(),
+                    Arguments = $"-y -ss 00:00:00.500 -i \"{sourcePath}\" -frames:v 1 -q:v 3 -vf \"scale=640:-1\" \"{tempPreviewPath}\"",
+                    RedirectStandardOutput = false,
+                    RedirectStandardError = false,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var process = new Process { StartInfo = processStartInfo };
+                try
+                {
+                    process.Start();
+                }
+                catch (Win32Exception)
+                {
+                    throw new MediaConversionException("Video preview requires ffmpeg available in PATH or FFMPEG_PATH.");
+                }
+
+                if (!process.WaitForExit(15000))
+                {
+                    try
+                    {
+                        process.Kill(entireProcessTree: true);
+                    }
+                    catch
+                    {
+                    }
+
+                    throw new MediaConversionException($"Preview generation timed out: {Path.GetFileName(sourcePath)}");
+                }
+
+                if (process.ExitCode != 0 || !File.Exists(tempPreviewPath))
+                {
+                    throw new MediaConversionException($"Preview generation failed: {Path.GetFileName(sourcePath)}");
+                }
+
+                return File.ReadAllBytes(tempPreviewPath);
+            }
+            finally
+            {
+                if (File.Exists(tempPreviewPath))
+                {
+                    File.Delete(tempPreviewPath);
+                }
+            }
+        }
+        catch (IOException ex)
+        {
+            throw new MediaConversionException($"Preview generation failed: {Path.GetFileName(sourcePath)}. {ex.Message}");
+        }
+    }
+
     private static string FirstNonEmptyLine(string value)
     {
         return value
@@ -328,6 +533,17 @@ public class Program
             .Select(line => line.Trim())
             .FirstOrDefault(line => !string.IsNullOrWhiteSpace(line))
             ?? string.Empty;
+    }
+
+    private static string ResolveFfmpegExecutable()
+    {
+        var configuredPath = Environment.GetEnvironmentVariable("FFMPEG_PATH");
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            return configuredPath;
+        }
+
+        return "ffmpeg";
     }
 
     private sealed class MediaConversionException(string message) : Exception(message);
