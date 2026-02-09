@@ -1634,6 +1634,7 @@ public class Program
         AddContainsClauses(criteria.TitleTerms, "IFNULL(m.Title, '')");
         AddContainsClauses(criteria.DescriptionTerms, "IFNULL(m.Description, '')");
         AddContainsClauses(criteria.SourceTerms, "IFNULL(m.Source, '')");
+        AddTagClauses(criteria.TagFilters);
 
         if (criteria.Ids.Count > 0)
         {
@@ -1661,6 +1662,33 @@ public class Program
                 whereClauses.Add($"LOWER({sqlField}) LIKE {paramName}");
             }
         }
+
+        void AddTagClauses(IEnumerable<MediaSearchTagFilter> filters)
+        {
+            foreach (var filter in filters)
+            {
+                if (string.IsNullOrWhiteSpace(filter.TagTypeName) || string.IsNullOrWhiteSpace(filter.TagName))
+                {
+                    continue;
+                }
+
+                var typeParamName = $"$p{parameterIndex++}";
+                var tagParamName = $"$p{parameterIndex++}";
+                command.Parameters.AddWithValue(typeParamName, filter.TagTypeName.Trim().ToLowerInvariant());
+                command.Parameters.AddWithValue(tagParamName, $"%{filter.TagName.Trim().ToLowerInvariant()}%");
+                whereClauses.Add($"""
+                    EXISTS (
+                        SELECT 1
+                        FROM MediaTags mt
+                        INNER JOIN Tags t ON t.Id = mt.TagId
+                        INNER JOIN TagTypes tt ON tt.Id = t.TagTypeId
+                        WHERE mt.MediaId = m.Id
+                          AND LOWER(tt.Name) = {typeParamName}
+                          AND LOWER(t.Name) LIKE {tagParamName}
+                    )
+                    """);
+            }
+        }
     }
 
     private static MediaSearchCriteria ParseMediaSearchCriteria(string? search)
@@ -1686,7 +1714,10 @@ public class Program
                 break;
             }
 
-            if (text[index] != '@')
+            var hasAtPrefix = text[index] == '@';
+            var tagStart = hasAtPrefix ? index + 1 : index;
+            var separatorIndex = text.IndexOf(':', tagStart);
+            if (separatorIndex < 0)
             {
                 while (index < text.Length && !char.IsWhiteSpace(text[index]))
                 {
@@ -1694,13 +1725,6 @@ public class Program
                 }
 
                 continue;
-            }
-
-            var tagStart = index + 1;
-            var separatorIndex = text.IndexOf(':', tagStart);
-            if (separatorIndex < 0)
-            {
-                break;
             }
 
             var hasWhitespaceBeforeSeparator = false;
@@ -1715,7 +1739,10 @@ public class Program
 
             if (hasWhitespaceBeforeSeparator || separatorIndex == tagStart)
             {
-                index++;
+                while (index < text.Length && !char.IsWhiteSpace(text[index]))
+                {
+                    index++;
+                }
                 continue;
             }
 
@@ -1801,6 +1828,11 @@ public class Program
                     {
                         criteria.Ids.Add(parsedId);
                     }
+                    break;
+                default:
+                    criteria.TagFilters.Add(new MediaSearchTagFilter(
+                        TagTypeName: tag,
+                        TagName: value));
                     break;
             }
         }
@@ -1913,12 +1945,18 @@ public class Program
         public List<string> DescriptionTerms { get; } = [];
         public List<string> SourceTerms { get; } = [];
         public List<long> Ids { get; } = [];
+        public List<MediaSearchTagFilter> TagFilters { get; } = [];
 
         public bool HasFilters =>
             PathTerms.Count > 0
             || TitleTerms.Count > 0
             || DescriptionTerms.Count > 0
             || SourceTerms.Count > 0
-            || Ids.Count > 0;
+            || Ids.Count > 0
+            || TagFilters.Count > 0;
     }
+
+    private sealed record MediaSearchTagFilter(
+        string TagTypeName,
+        string TagName);
 }

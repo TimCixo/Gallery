@@ -3,8 +3,8 @@ import "./App.css";
 
 function App() {
   const PAGE_SIZE = 36;
-  const searchTagNames = new Set(["path", "title", "description", "id", "source"]);
-  const searchTagOptions = ["path", "title", "description", "id", "source"];
+  const baseSearchTagOptions = ["path", "title", "description", "id", "source"];
+  const baseSearchTagNames = new Set(baseSearchTagOptions);
   const allowedExtensions = new Set([
     ".jpg",
     ".jpeg",
@@ -104,9 +104,67 @@ function App() {
   const mediaTagHighlightRef = useRef(null);
   const searchInputRef = useRef(null);
   const searchHighlightRef = useRef(null);
+  const mediaLoadAbortRef = useRef(null);
+  const mediaLoadRequestIdRef = useRef(0);
   const [searchCaretPosition, setSearchCaretPosition] = useState(0);
   const [isSearchInputFocused, setIsSearchInputFocused] = useState(false);
   const [activeSearchSuggestionIndex, setActiveSearchSuggestionIndex] = useState(0);
+  const searchTagTypeOptions = (() => {
+    const map = new Map();
+
+    tagTypes.forEach((tagType) => {
+      const name = String(tagType?.name || "").trim();
+      if (!name) {
+        return;
+      }
+
+      const lowerName = name.toLowerCase();
+      const color = /^#[0-9A-Fa-f]{6}$/.test(String(tagType?.color || "").trim())
+        ? String(tagType.color).trim()
+        : "#94a3b8";
+      if (!map.has(lowerName)) {
+        map.set(lowerName, {
+          lowerName,
+          label: name,
+          color
+        });
+      }
+    });
+
+    mediaTagCatalog.forEach((tag) => {
+      const typeName = String(tag?.tagTypeName || "").trim();
+      if (!typeName) {
+        return;
+      }
+
+      const lowerName = typeName.toLowerCase();
+      if (map.has(lowerName)) {
+        return;
+      }
+
+      const color = /^#[0-9A-Fa-f]{6}$/.test(String(tag?.tagTypeColor || "").trim())
+        ? String(tag.tagTypeColor).trim()
+        : "#94a3b8";
+      map.set(lowerName, {
+        lowerName,
+        label: typeName,
+        color
+      });
+    });
+
+    return Array.from(map.values());
+  })();
+  const searchTagTypeMap = (() => {
+    const map = new Map();
+    searchTagTypeOptions.forEach((item) => {
+      map.set(item.lowerName, item);
+    });
+    return map;
+  })();
+  const searchTagOptions = Array.from(new Set([
+    ...baseSearchTagOptions,
+    ...searchTagTypeOptions.map((item) => item.lowerName)
+  ]));
   const syncSearchHighlightScroll = () => {
     if (!searchInputRef.current || !searchHighlightRef.current) {
       return;
@@ -140,9 +198,27 @@ function App() {
       }
       const token = text.slice(tokenStart, tokenEnd);
       const separatorIndex = token.indexOf(":");
-      const tagName = separatorIndex > 1 ? token.slice(1, separatorIndex).toLowerCase() : "";
-      const isTag = token.startsWith("@") && (separatorIndex < 0 || searchTagNames.has(tagName));
-      segments.push({ text: text.slice(tokenStart, tokenEnd), isTag });
+      const tokenWithoutAtPrefix = token.startsWith("@") ? token.slice(1) : token;
+      const normalizedToken = tokenWithoutAtPrefix.trim().toLowerCase();
+      const tagName = separatorIndex > 0
+        ? tokenWithoutAtPrefix.slice(0, separatorIndex - (token.startsWith("@") ? 1 : 0)).trim().toLowerCase()
+        : "";
+      const normalizedTokenTagName = separatorIndex < 0
+        ? normalizedToken
+        : tagName;
+      const tagType = searchTagTypeMap.get(normalizedTokenTagName);
+      const isKnownSearchTag = baseSearchTagNames.has(normalizedTokenTagName);
+      const isTypedKnownPrefix = separatorIndex < 0 && searchTagOptions.some((option) => option.startsWith(normalizedTokenTagName));
+      const isTag = Boolean(normalizedTokenTagName) && (
+        isKnownSearchTag
+        || tagType != null
+        || isTypedKnownPrefix
+      );
+      segments.push({
+        text: text.slice(tokenStart, tokenEnd),
+        isTag,
+        color: tagType?.color || ""
+      });
       index = tokenEnd;
     }
 
@@ -179,23 +255,99 @@ function App() {
     };
   };
   const searchTokenRange = getSearchTokenRange(inputValue, searchCaretPosition);
-  const searchTagSuggestions = (() => {
-    if (!searchTokenRange.tokenBeforeCaret.startsWith("@")) {
+  const searchSuggestions = (() => {
+    const tokenBeforeCaret = searchTokenRange.tokenBeforeCaret;
+    const token = searchTokenRange.token;
+    const tokenBeforeCaretWithoutAtPrefix = tokenBeforeCaret.startsWith("@")
+      ? tokenBeforeCaret.slice(1)
+      : tokenBeforeCaret;
+    const tokenWithoutAtPrefix = token.startsWith("@") ? token.slice(1) : token;
+    const separatorIndex = tokenWithoutAtPrefix.indexOf(":");
+    if (separatorIndex < 0) {
+      if (tokenBeforeCaretWithoutAtPrefix.includes(":")) {
+        return [];
+      }
+
+      const typedTagPrefix = tokenBeforeCaretWithoutAtPrefix.trim().toLowerCase();
+      return searchTagOptions
+        .filter((tagName) => tagName.startsWith(typedTagPrefix))
+        .slice(0, 40)
+        .map((tagName) => ({
+          kind: "tagName",
+          key: `tag-${tagName}`,
+          tagName,
+          label: `${tagName}:`,
+          color: searchTagTypeMap.get(tagName)?.color || ""
+        }));
+    }
+
+    if (!tokenBeforeCaretWithoutAtPrefix.includes(":")) {
       return [];
     }
 
-    if (searchTokenRange.tokenBeforeCaret.includes(":") || searchTokenRange.token.includes(":")) {
+    if (separatorIndex <= 0) {
       return [];
     }
 
-    const typedTagPrefix = searchTokenRange.tokenBeforeCaret.slice(1).toLowerCase();
-    return searchTagOptions.filter((tag) => tag.startsWith(typedTagPrefix));
+    const tagName = tokenWithoutAtPrefix.slice(0, separatorIndex).trim().toLowerCase();
+    if (!tagName || baseSearchTagNames.has(tagName) || !searchTagTypeMap.has(tagName)) {
+      return [];
+    }
+
+    const typedTagValuePrefix = tokenBeforeCaretWithoutAtPrefix
+      .slice(tokenBeforeCaretWithoutAtPrefix.indexOf(":") + 1)
+      .trimStart()
+      .replace(/^"/, "")
+      .toLowerCase();
+
+    const candidates = [];
+    const seen = new Set();
+    mediaTagCatalog.forEach((tag) => {
+      const candidateType = String(tag?.tagTypeName || "").trim().toLowerCase();
+      const candidateName = String(tag?.name || "").trim();
+      if (!candidateName || candidateType !== tagName) {
+        return;
+      }
+
+      const normalizedCandidate = candidateName.toLowerCase();
+      if (typedTagValuePrefix && !normalizedCandidate.includes(typedTagValuePrefix)) {
+        return;
+      }
+      if (seen.has(normalizedCandidate)) {
+        return;
+      }
+
+      seen.add(normalizedCandidate);
+      candidates.push(candidateName);
+    });
+
+    candidates.sort((left, right) => left.localeCompare(right));
+    return candidates.slice(0, 40).map((tagValue) => ({
+      kind: "tagValue",
+      key: `value-${tagName}-${tagValue.toLowerCase()}`,
+      tagName,
+      tagValue,
+      label: tagValue,
+      color: searchTagTypeMap.get(tagName)?.color || ""
+    }));
   })();
-  const hasSearchSuggestions = isSearchInputFocused && searchTagSuggestions.length > 0;
-  const applySearchTagSuggestion = (tagName) => {
+  const hasSearchSuggestions = isSearchInputFocused && searchSuggestions.length > 0;
+  const formatSearchTagValue = (value) => (/\s/.test(value) ? `"${value.replace(/"/g, "")}"` : value);
+  const applySearchSuggestion = (suggestion) => {
     const prefix = inputValue.slice(0, searchTokenRange.start);
     const suffix = inputValue.slice(searchTokenRange.end);
-    const insertedToken = `@${tagName}:`;
+    if (!suggestion) {
+      return;
+    }
+
+    let insertedToken = `${suggestion.tagName}:`;
+    if (suggestion.kind === "tagValue") {
+      insertedToken = `${suggestion.tagName}:${formatSearchTagValue(suggestion.tagValue)}`;
+      if (!suffix.startsWith(" ")) {
+        insertedToken += " ";
+      }
+    }
+
     const nextValue = `${prefix}${insertedToken}${suffix}`;
     const nextCaret = prefix.length + insertedToken.length;
 
@@ -220,23 +372,23 @@ function App() {
 
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setActiveSearchSuggestionIndex((current) => (current + 1) % searchTagSuggestions.length);
+      setActiveSearchSuggestionIndex((current) => (current + 1) % searchSuggestions.length);
       return;
     }
 
     if (event.key === "ArrowUp") {
       event.preventDefault();
       setActiveSearchSuggestionIndex((current) => (
-        (current - 1 + searchTagSuggestions.length) % searchTagSuggestions.length
+        (current - 1 + searchSuggestions.length) % searchSuggestions.length
       ));
       return;
     }
 
     if (event.key === "Enter" || event.key === "Tab") {
       event.preventDefault();
-      const selectedTag = searchTagSuggestions[Math.max(0, Math.min(activeSearchSuggestionIndex, searchTagSuggestions.length - 1))];
-      if (selectedTag) {
-        applySearchTagSuggestion(selectedTag);
+      const selectedSuggestion = searchSuggestions[Math.max(0, Math.min(activeSearchSuggestionIndex, searchSuggestions.length - 1))];
+      if (selectedSuggestion) {
+        applySearchSuggestion(selectedSuggestion);
       }
       return;
     }
@@ -249,12 +401,12 @@ function App() {
     syncSearchHighlightScroll();
   }, [inputValue]);
   useEffect(() => {
-    if (activeSearchSuggestionIndex < searchTagSuggestions.length) {
+    if (activeSearchSuggestionIndex < searchSuggestions.length) {
       return;
     }
 
     setActiveSearchSuggestionIndex(0);
-  }, [searchTagSuggestions.length, activeSearchSuggestionIndex]);
+  }, [searchSuggestions.length, activeSearchSuggestionIndex]);
   const getExtensionFromPath = (value) => {
     if (!value) {
       return "";
@@ -789,6 +941,13 @@ function App() {
   }, []);
 
   const loadMedia = async (page = 1, searchText = submittedText) => {
+    mediaLoadAbortRef.current?.abort();
+    const controller = new AbortController();
+    mediaLoadAbortRef.current = controller;
+    mediaLoadRequestIdRef.current += 1;
+    const requestId = mediaLoadRequestIdRef.current;
+    const timeoutId = window.setTimeout(() => controller.abort(), 20000);
+
     setIsMediaLoading(true);
     setMediaError("");
 
@@ -802,12 +961,15 @@ function App() {
         query.set("search", normalizedSearchText);
       }
 
-      const response = await fetch(`/api/media?${query.toString()}`);
+      const response = await fetch(`/api/media?${query.toString()}`, { signal: controller.signal });
       if (!response.ok) {
         throw new Error("Failed to fetch media files.");
       }
 
       const result = await response.json();
+      if (requestId !== mediaLoadRequestIdRef.current) {
+        return;
+      }
       setMediaFiles(Array.isArray(result.files) ? result.files : []);
       setCurrentPage(Number.isInteger(result.page) ? result.page : page);
       setTotalPages(Number.isInteger(result.totalPages) ? result.totalPages : 0);
@@ -815,17 +977,36 @@ function App() {
       setFailedPreviewPaths(new Set());
       setSelectedMedia(null);
     } catch (error) {
+      if (requestId !== mediaLoadRequestIdRef.current) {
+        return;
+      }
       setMediaFiles([]);
       setTotalPages(0);
       setTotalFiles(0);
-      setMediaError(error instanceof Error ? error.message : "Failed to fetch media files.");
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setMediaError("Media request timed out. Try again.");
+      } else {
+        setMediaError(error instanceof Error ? error.message : "Failed to fetch media files.");
+      }
     } finally {
-      setIsMediaLoading(false);
+      window.clearTimeout(timeoutId);
+      if (requestId === mediaLoadRequestIdRef.current) {
+        setIsMediaLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     loadMedia(1, "");
+  }, []);
+
+  useEffect(() => () => {
+    mediaLoadAbortRef.current?.abort();
+  }, []);
+
+  useEffect(() => {
+    void loadTagTypes();
+    void loadMediaTagCatalog();
   }, []);
 
   useEffect(() => {
@@ -2282,12 +2463,13 @@ function App() {
                   <span
                     key={`${index}-${segment.text}`}
                     className={segment.isTag ? "top-input-segment is-tag" : "top-input-segment"}
+                    style={segment.isTag && segment.color ? { outlineColor: segment.color } : undefined}
                   >
                     {segment.text}
                   </span>
                 ))
               ) : (
-                <span className="top-input-placeholder">@title:cat @id:42</span>
+                <span className="top-input-placeholder">title:cat id:42</span>
               )}
             </div>
             <input
@@ -2302,21 +2484,22 @@ function App() {
               onKeyUp={updateSearchCaretPosition}
               onKeyDown={handleSearchInputKeyDown}
               onScroll={syncSearchHighlightScroll}
-              placeholder="@title:cat @id:42"
+              placeholder="title:cat id:42"
             />
             {hasSearchSuggestions ? (
               <ul className="top-search-suggestions">
-                {searchTagSuggestions.map((tagName, index) => (
-                  <li key={tagName}>
+                {searchSuggestions.map((suggestion, index) => (
+                  <li key={suggestion.key}>
                     <button
                       type="button"
                       className={`top-search-suggestion${index === activeSearchSuggestionIndex ? " is-active" : ""}`}
+                      style={suggestion.color ? { outlineColor: suggestion.color } : undefined}
                       onMouseDown={(event) => {
                         event.preventDefault();
-                        applySearchTagSuggestion(tagName);
+                        applySearchSuggestion(suggestion);
                       }}
                     >
-                      @{tagName}:
+                      {suggestion.label}
                     </button>
                   </li>
                 ))}
