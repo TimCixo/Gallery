@@ -468,6 +468,27 @@ function App() {
 
     return date.toLocaleString();
   };
+  const formatFileSize = (value) => {
+    const bytes = Number(value);
+    if (!Number.isFinite(bytes) || bytes < 0) {
+      return "-";
+    }
+
+    if (bytes === 0) {
+      return "0 B";
+    }
+
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    let size = bytes;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex += 1;
+    }
+
+    const fractionDigits = size >= 100 || unitIndex === 0 ? 0 : size >= 10 ? 1 : 2;
+    return `${size.toFixed(fractionDigits)} ${units[unitIndex]} (${bytes.toLocaleString()} B)`;
+  };
   const getMediaShortType = (file) => {
     const source = resolveOriginalMediaUrl(file) || file?.name || "";
     const extension = getExtensionFromPath(source);
@@ -3247,6 +3268,10 @@ function App() {
                     <tr>
                       <th scope="row">Name</th>
                       <td>{selectedMedia.name || "-"}</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">File Size</th>
+                      <td>{formatFileSize(selectedMedia.sizeBytes)}</td>
                     </tr>
                   </tbody>
                 </table>
