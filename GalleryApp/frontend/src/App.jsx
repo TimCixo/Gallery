@@ -29,7 +29,9 @@ function App() {
   const [isMediaLoading, setIsMediaLoading] = useState(true);
   const [mediaError, setMediaError] = useState("");
   const [failedPreviewPaths, setFailedPreviewPaths] = useState(new Set());
+  const [selectedMedia, setSelectedMedia] = useState(null);
   const imageExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".bmp"]);
+  const videoExtensions = new Set([".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v"]);
   const getExtensionFromPath = (value) => {
     if (!value) {
       return "";
@@ -65,6 +67,30 @@ function App() {
   };
   const visibleMediaFiles = mediaFiles
     .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) }));
+  const resolveOriginalMediaUrl = (file) => file?.originalUrl || file?.url || file?._tileUrl || "";
+  const isVideoFile = (file) => {
+    if (!file) {
+      return false;
+    }
+
+    if (file.mediaType === "video") {
+      return true;
+    }
+
+    return videoExtensions.has(getExtensionFromPath(resolveOriginalMediaUrl(file) || file.name));
+  };
+  const formatMediaDate = (value) => {
+    if (!value) {
+      return "Unknown";
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "Unknown";
+    }
+
+    return date.toLocaleString();
+  };
   const fileInputRef = useRef(null);
   const getFileKey = (file) => `${file.name}-${file.size}-${file.lastModified}`;
   const getExtension = (fileName) => {
@@ -102,6 +128,21 @@ function App() {
   useEffect(() => {
     loadMedia();
   }, []);
+
+  useEffect(() => {
+    if (!selectedMedia) {
+      return undefined;
+    }
+
+    const handleEsc = (event) => {
+      if (event.key === "Escape") {
+        setSelectedMedia(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [selectedMedia]);
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -293,6 +334,15 @@ function App() {
               <article
                 key={file.relativePath}
                 className="media-tile"
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedMedia(file)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setSelectedMedia(file);
+                  }
+                }}
               >
                 <div className="media-preview">
                   {file._tileUrl && !failedPreviewPaths.has(file.relativePath) ? (
@@ -498,6 +548,55 @@ function App() {
               >
                 {isUploading ? "Uploading..." : "Upload"}
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {selectedMedia ? (
+        <div
+          className="media-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setSelectedMedia(null)}
+        >
+          <div
+            className="media-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="media-modal-close"
+              onClick={() => setSelectedMedia(null)}
+            >
+              Close
+            </button>
+
+            <div className="media-modal-content">
+              {isVideoFile(selectedMedia) ? (
+                <video
+                  src={resolveOriginalMediaUrl(selectedMedia)}
+                  controls
+                  autoPlay
+                />
+              ) : (
+                <img
+                  src={resolveOriginalMediaUrl(selectedMedia)}
+                  alt={selectedMedia.name}
+                />
+              )}
+            </div>
+
+            <div className="media-modal-meta">
+              <p
+                className="media-modal-name"
+                title={selectedMedia.name}
+              >
+                {selectedMedia.name}
+              </p>
+              <p className="media-modal-date">
+                Created: {formatMediaDate(selectedMedia.createdAtUtc || selectedMedia.modifiedAtUtc)}
+              </p>
             </div>
           </div>
         </div>
