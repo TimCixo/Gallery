@@ -110,6 +110,7 @@ public class Program
                         source = metadata?.Source,
                         parent = metadata?.Parent,
                         child = metadata?.Child,
+                        isFavorite = metadata?.IsFavorite ?? false,
                         originalUrl,
                         tileUrl,
                         mediaType,
@@ -117,6 +118,92 @@ public class Program
                         modifiedAtUtc = fileInfo.LastWriteTimeUtc
                     };
                 })
+                .OrderByDescending(file => file.modifiedAtUtc)
+                .ToArray();
+
+            var totalCount = allFiles.Length;
+            var totalPages = totalCount == 0
+                ? 0
+                : (int)Math.Ceiling(totalCount / (double)normalizedPageSize);
+            var effectivePage = totalPages == 0
+                ? 1
+                : Math.Min(normalizedPage, totalPages);
+            var skip = totalPages == 0 ? 0 : (effectivePage - 1) * normalizedPageSize;
+            var files = allFiles
+                .Skip(skip)
+                .Take(normalizedPageSize)
+                .ToArray();
+
+            return Results.Ok(new
+            {
+                page = effectivePage,
+                pageSize = normalizedPageSize,
+                totalCount,
+                totalPages,
+                files
+            });
+        });
+
+        app.MapGet("/api/favorites", (int? page, int? pageSize) =>
+        {
+            var normalizedPageSize = Math.Clamp(pageSize ?? 36, 1, 100);
+            var normalizedPage = Math.Max(page ?? 1, 1);
+            var metadataByPath = LoadMediaMetadataByPath(connectionString);
+
+            if (!Directory.Exists(mediaRootPath))
+            {
+                Directory.CreateDirectory(mediaRootPath);
+                return Results.Ok(new
+                {
+                    page = 1,
+                    pageSize = normalizedPageSize,
+                    totalCount = 0,
+                    totalPages = 0,
+                    files = Array.Empty<object>()
+                });
+            }
+
+            var allFiles = Directory
+                .EnumerateFiles(mediaRootPath, "*", SearchOption.AllDirectories)
+                .Where(path =>
+                {
+                    return IsAllowedMediaFile(path);
+                })
+                .Select(path =>
+                {
+                    var relativePath = Path.GetRelativePath(mediaRootPath, path).Replace("\\", "/");
+                    metadataByPath.TryGetValue(relativePath, out var metadata);
+                    if (metadata is null || !metadata.IsFavorite)
+                    {
+                        return null;
+                    }
+
+                    var extension = Path.GetExtension(path);
+                    var mediaType = IsImageFile(extension) ? "image" : IsVideoFile(extension) ? "video" : "file";
+                    var fileInfo = new FileInfo(path);
+                    var originalUrl = BuildMediaUrl(relativePath);
+                    var tileUrl = BuildTileUrl(relativePath, extension, fileInfo.LastWriteTimeUtc.Ticks);
+
+                    return new
+                    {
+                        id = metadata.Id,
+                        name = Path.GetFileName(path),
+                        relativePath,
+                        title = metadata.Title,
+                        description = metadata.Description,
+                        source = metadata.Source,
+                        parent = metadata.Parent,
+                        child = metadata.Child,
+                        isFavorite = true,
+                        originalUrl,
+                        tileUrl,
+                        mediaType,
+                        sizeBytes = fileInfo.Length,
+                        modifiedAtUtc = fileInfo.LastWriteTimeUtc
+                    };
+                })
+                .Where(file => file is not null)
+                .Select(file => file!)
                 .OrderByDescending(file => file.modifiedAtUtc)
                 .ToArray();
 
@@ -253,6 +340,50 @@ public class Program
             });
         });
 
+        app.MapPut("/api/media/{id:long}/favorite", (long id, FavoriteUpdateRequest request) =>
+        {
+            if (id <= 0)
+            {
+                return Results.BadRequest(new { error = "Invalid media id." });
+            }
+
+            using var connection = new SqliteConnection(connectionString);
+            connection.Open();
+
+            if (!MediaRecordExists(connection, id))
+            {
+                return Results.NotFound(new { error = "Media record not found." });
+            }
+
+            var favoritesCollectionId = EnsureFavoritesCollection(connection);
+
+            using var command = connection.CreateCommand();
+            if (request.IsFavorite)
+            {
+                command.CommandText = """
+                    INSERT OR IGNORE INTO CollectionsMedia (CollectionId, MediaId)
+                    VALUES ($collectionId, $mediaId);
+                    """;
+            }
+            else
+            {
+                command.CommandText = """
+                    DELETE FROM CollectionsMedia
+                    WHERE CollectionId = $collectionId AND MediaId = $mediaId;
+                    """;
+            }
+
+            command.Parameters.AddWithValue("$collectionId", favoritesCollectionId);
+            command.Parameters.AddWithValue("$mediaId", id);
+            command.ExecuteNonQuery();
+
+            return Results.Ok(new
+            {
+                id,
+                isFavorite = request.IsFavorite
+            });
+        });
+
         app.MapDelete("/api/media/{id:long}", (long id) =>
         {
             if (id <= 0)
@@ -306,6 +437,7 @@ public class Program
             deleteCommand.CommandText = """
                 UPDATE Media SET Parent = NULL WHERE Parent = $id;
                 UPDATE Media SET Child = NULL WHERE Child = $id;
+                DELETE FROM CollectionsMedia WHERE MediaId = $id;
                 DELETE FROM Media WHERE Id = $id;
                 """;
             deleteCommand.Parameters.AddWithValue("$id", id);
@@ -502,9 +634,27 @@ public class Program
                 FOREIGN KEY (Cover) REFERENCES Media(Id) ON DELETE SET NULL
             );
 
+            CREATE TABLE IF NOT EXISTS CollectionsMedia (
+                CollectionId INTEGER NOT NULL,
+                MediaId INTEGER NOT NULL,
+                PRIMARY KEY (CollectionId, MediaId),
+                FOREIGN KEY (CollectionId) REFERENCES Collections(Id) ON DELETE CASCADE,
+                FOREIGN KEY (MediaId) REFERENCES Media(Id) ON DELETE CASCADE
+            );
+
             CREATE INDEX IF NOT EXISTS IX_Media_Parent ON Media(Parent);
             CREATE INDEX IF NOT EXISTS IX_Media_Child ON Media(Child);
             CREATE INDEX IF NOT EXISTS IX_Collections_Cover ON Collections(Cover);
+            CREATE INDEX IF NOT EXISTS IX_CollectionsMedia_CollectionId ON CollectionsMedia(CollectionId);
+            CREATE INDEX IF NOT EXISTS IX_CollectionsMedia_MediaId ON CollectionsMedia(MediaId);
+
+            INSERT INTO Collections (Lable, Description, Cover)
+            SELECT 'Favorites', NULL, NULL
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM Collections
+                WHERE Lable = 'Favorites'
+            );
 
             INSERT INTO AppInfo (Id, Name, CreatedAtUtc)
             VALUES (1, 'GalleryApp', CURRENT_TIMESTAMP)
@@ -839,6 +989,34 @@ public class Program
         return Convert.ToInt64(result) == 1;
     }
 
+    private static long EnsureFavoritesCollection(SqliteConnection connection)
+    {
+        using var findCommand = connection.CreateCommand();
+        findCommand.CommandText = """
+            SELECT Id
+            FROM Collections
+            WHERE Lable = 'Favorites'
+            ORDER BY Id
+            LIMIT 1;
+            """;
+
+        var existingId = findCommand.ExecuteScalar();
+        if (existingId is not null && existingId != DBNull.Value)
+        {
+            return Convert.ToInt64(existingId);
+        }
+
+        using var insertCommand = connection.CreateCommand();
+        insertCommand.CommandText = """
+            INSERT INTO Collections (Lable, Description, Cover)
+            VALUES ('Favorites', NULL, NULL);
+
+            SELECT last_insert_rowid();
+            """;
+
+        return Convert.ToInt64(insertCommand.ExecuteScalar());
+    }
+
     private static string? NormalizeOptionalText(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -869,8 +1047,21 @@ public class Program
 
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Id, Path, Title, Description, Source, Parent, Child
-            FROM Media;
+            SELECT
+                m.Id,
+                m.Path,
+                m.Title,
+                m.Description,
+                m.Source,
+                m.Parent,
+                m.Child,
+                EXISTS (
+                    SELECT 1
+                    FROM CollectionsMedia cm
+                    INNER JOIN Collections c ON c.Id = cm.CollectionId
+                    WHERE cm.MediaId = m.Id AND c.Lable = 'Favorites'
+                ) AS IsFavorite
+            FROM Media m;
             """;
 
         using var reader = command.ExecuteReader();
@@ -889,7 +1080,8 @@ public class Program
                 Description: reader.IsDBNull(3) ? null : reader.GetString(3),
                 Source: reader.IsDBNull(4) ? null : reader.GetString(4),
                 Parent: reader.IsDBNull(5) ? null : reader.GetInt64(5),
-                Child: reader.IsDBNull(6) ? null : reader.GetInt64(6));
+                Child: reader.IsDBNull(6) ? null : reader.GetInt64(6),
+                IsFavorite: !reader.IsDBNull(7) && reader.GetInt64(7) == 1);
         }
 
         return result;
@@ -904,11 +1096,14 @@ public class Program
         long? Parent,
         long? Child);
 
+    private sealed record FavoriteUpdateRequest(bool IsFavorite);
+
     private sealed record MediaMetadata(
         long Id,
         string? Title,
         string? Description,
         string? Source,
         long? Parent,
-        long? Child);
+        long? Child,
+        bool IsFavorite);
 }

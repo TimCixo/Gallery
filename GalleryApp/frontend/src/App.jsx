@@ -22,6 +22,7 @@ function App() {
   const [submittedText, setSubmittedText] = useState("");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isSlideMenuOpen, setIsSlideMenuOpen] = useState(false);
+  const [activePage, setActivePage] = useState("gallery");
   const [uploadItems, setUploadItems] = useState([]);
   const [uploadState, setUploadState] = useState({ type: "", message: "" });
   const [backgroundUploadState, setBackgroundUploadState] = useState({
@@ -37,6 +38,12 @@ function App() {
   const [mediaFiles, setMediaFiles] = useState([]);
   const [isMediaLoading, setIsMediaLoading] = useState(true);
   const [mediaError, setMediaError] = useState("");
+  const [favoritesFiles, setFavoritesFiles] = useState([]);
+  const [isFavoritesLoading, setIsFavoritesLoading] = useState(false);
+  const [favoritesError, setFavoritesError] = useState("");
+  const [favoritesPage, setFavoritesPage] = useState(1);
+  const [favoritesTotalPages, setFavoritesTotalPages] = useState(0);
+  const [favoritesTotalFiles, setFavoritesTotalFiles] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [totalFiles, setTotalFiles] = useState(0);
@@ -48,6 +55,7 @@ function App() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [mediaModalError, setMediaModalError] = useState("");
   const [isMediaPinned, setIsMediaPinned] = useState(true);
+  const [isFavoriteUpdating, setIsFavoriteUpdating] = useState(false);
   const [mediaDraft, setMediaDraft] = useState({
     title: "",
     description: "",
@@ -96,6 +104,8 @@ function App() {
     return "";
   };
   const visibleMediaFiles = mediaFiles
+    .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) }));
+  const visibleFavoriteFiles = favoritesFiles
     .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) }));
   const resolveOriginalMediaUrl = (file) => file?.originalUrl || file?.url || file?._tileUrl || "";
   const isVideoFile = (file) => {
@@ -281,6 +291,12 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (activePage === "favorites") {
+      loadFavorites(1);
+    }
+  }, [activePage]);
+
+  useEffect(() => {
     if (!selectedMedia) {
       return undefined;
     }
@@ -291,6 +307,7 @@ function App() {
     setShowDeleteConfirm(false);
     setMediaModalError("");
     setIsMediaPinned(true);
+    setIsFavoriteUpdating(false);
     setMediaDraft(createMediaDraft(selectedMedia));
 
     const handleEsc = (event) => {
@@ -429,6 +446,40 @@ function App() {
         type="button"
         onClick={() => handlePageChange(currentPage + 1)}
         disabled={isMediaLoading || totalPages === 0 || currentPage >= totalPages}
+      >
+        Next
+      </button>
+    </div>
+  );
+
+  const handleFavoritesPageChange = (nextPage) => {
+    if (isFavoritesLoading) {
+      return;
+    }
+
+    if (nextPage < 1 || (favoritesTotalPages > 0 && nextPage > favoritesTotalPages) || nextPage === favoritesPage) {
+      return;
+    }
+
+    loadFavorites(nextPage);
+  };
+
+  const renderFavoritesPagination = () => (
+    <div className="media-pagination">
+      <button
+        type="button"
+        onClick={() => handleFavoritesPageChange(favoritesPage - 1)}
+        disabled={isFavoritesLoading || favoritesPage <= 1 || favoritesTotalPages === 0}
+      >
+        Prev
+      </button>
+      <p>
+        Page {favoritesTotalPages === 0 ? 0 : favoritesPage} of {favoritesTotalPages}
+      </p>
+      <button
+        type="button"
+        onClick={() => handleFavoritesPageChange(favoritesPage + 1)}
+        disabled={isFavoritesLoading || favoritesTotalPages === 0 || favoritesPage >= favoritesTotalPages}
       >
         Next
       </button>
@@ -654,6 +705,32 @@ function App() {
       if (backgroundUploadQueueRef.current.length > 0) {
         void runBackgroundUploadQueue();
       }
+    }
+  };
+
+  const loadFavorites = async (page = 1) => {
+    setIsFavoritesLoading(true);
+    setFavoritesError("");
+
+    try {
+      const response = await fetch(`/api/favorites?page=${page}&pageSize=${PAGE_SIZE}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch favorites.");
+      }
+
+      const result = await response.json();
+      setFavoritesFiles(Array.isArray(result.files) ? result.files : []);
+      setFavoritesPage(Number.isInteger(result.page) ? result.page : page);
+      setFavoritesTotalPages(Number.isInteger(result.totalPages) ? result.totalPages : 0);
+      setFavoritesTotalFiles(Number.isInteger(result.totalCount) ? result.totalCount : 0);
+    } catch (error) {
+      setFavoritesFiles([]);
+      setFavoritesPage(1);
+      setFavoritesTotalPages(0);
+      setFavoritesTotalFiles(0);
+      setFavoritesError(error instanceof Error ? error.message : "Failed to fetch favorites.");
+    } finally {
+      setIsFavoritesLoading(false);
     }
   };
 
@@ -986,6 +1063,7 @@ function App() {
 
       setSelectedMedia(null);
       await loadMedia(currentPage);
+      await loadFavorites(favoritesPage);
     } catch (error) {
       setMediaModalError(error instanceof Error ? error.message : "Failed to delete media.");
     } finally {
@@ -1025,6 +1103,52 @@ function App() {
 
     return "Uploading";
   };
+  const isGalleryPage = activePage === "gallery";
+  const isSelectedMediaFavorite = Boolean(selectedMedia?.isFavorite);
+  const toggleSelectedMediaFavorite = async () => {
+    if (!selectedMedia?.id || isFavoriteUpdating) {
+      return;
+    }
+
+    const nextIsFavorite = !Boolean(selectedMedia.isFavorite);
+    const mediaId = selectedMedia.id;
+
+    setIsFavoriteUpdating(true);
+    setMediaModalError("");
+    try {
+      const response = await fetch(`/api/media/${mediaId}/favorite`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isFavorite: nextIsFavorite })
+      });
+      const result = await readResponsePayload(response);
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to update favorites.");
+      }
+
+      setSelectedMedia((current) => (
+        current && current.id === mediaId ? { ...current, isFavorite: nextIsFavorite } : current
+      ));
+      setMediaFiles((current) => current.map((file) => (
+        file.id === mediaId ? { ...file, isFavorite: nextIsFavorite } : file
+      )));
+      await loadFavorites(favoritesPage);
+    } catch (error) {
+      setMediaModalError(error instanceof Error ? error.message : "Failed to update favorites.");
+    } finally {
+      setIsFavoriteUpdating(false);
+    }
+  };
+  const openGalleryPage = (event) => {
+    event.preventDefault();
+    setActivePage("gallery");
+    setIsSlideMenuOpen(false);
+  };
+  const openFavoritesPage = () => {
+    setActivePage("favorites");
+    setIsSlideMenuOpen(false);
+    setSelectedMedia(null);
+  };
 
   return (
     <main className="app-root">
@@ -1045,6 +1169,7 @@ function App() {
           <a
             className="top-brand"
             href="/"
+            onClick={openGalleryPage}
           >
             Gallery
           </a>
@@ -1176,13 +1301,20 @@ function App() {
               <p>Menu</p>
             </div>
             <nav className="slide-menu-nav">
-              <button type="button" className="slide-menu-item">Favorites</button>
+              <button
+                type="button"
+                className="slide-menu-item"
+                onClick={openFavoritesPage}
+              >
+                Favorite
+              </button>
               <button type="button" className="slide-menu-item">Collections</button>
             </nav>
           </aside>
         </div>
       ) : null}
 
+      {isGalleryPage ? (
       <section className="media-section">
         {mediaError ? <p className="media-state error">{mediaError}</p> : null}
         {!mediaError && isMediaLoading ? <p className="media-state">Loading media...</p> : null}
@@ -1232,6 +1364,53 @@ function App() {
           </>
         ) : null}
       </section>
+      ) : (
+        <section className="favorites-page">
+          {favoritesError ? <p className="media-state error">{favoritesError}</p> : null}
+          {!favoritesError && isFavoritesLoading ? <p className="media-state">Loading favorites...</p> : null}
+          {!favoritesError && !isFavoritesLoading && favoritesTotalFiles === 0 ? (
+            <p className="media-state">No favorite media yet.</p>
+          ) : null}
+          {!favoritesError && favoritesTotalFiles > 0 ? (
+            <>
+              {renderFavoritesPagination()}
+              <div className="media-grid">
+                {visibleFavoriteFiles.map((file) => (
+                  <article
+                    key={file.relativePath}
+                    className="media-tile"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedMedia(file)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedMedia(file);
+                      }
+                    }}
+                  >
+                    <div className="media-preview">
+                      {file._tileUrl && !failedPreviewPaths.has(file.relativePath) ? (
+                        <img
+                          src={file._tileUrl}
+                          alt={getDisplayName(file.name)}
+                          loading="lazy"
+                          onError={() => {
+                            setFailedPreviewPaths((prev) => new Set(prev).add(file.relativePath));
+                          }}
+                        />
+                      ) : (
+                        <div className="media-fallback">Preview unavailable</div>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+              {renderFavoritesPagination()}
+            </>
+          ) : null}
+        </section>
+      )}
 
       <footer className="app-footer">
         <p>React frontend is running.</p>
@@ -1371,6 +1550,19 @@ function App() {
             </div>
 
             <div className="media-modal-meta">
+              <div className="media-favorite-row">
+                <button
+                  type="button"
+                  className={`media-favorite-btn${isSelectedMediaFavorite ? " is-active" : ""}`}
+                  aria-label={isSelectedMediaFavorite ? "Remove from favorites" : "Add to favorites"}
+                  title={isSelectedMediaFavorite ? "Remove from favorites" : "Add to favorites"}
+                  aria-pressed={isSelectedMediaFavorite}
+                  onClick={toggleSelectedMediaFavorite}
+                  disabled={isFavoriteUpdating || !selectedMedia?.id}
+                >
+                  ❤
+                </button>
+              </div>
               {renderMediaMetaTable({
                 file: selectedMedia,
                 draft: mediaDraft,

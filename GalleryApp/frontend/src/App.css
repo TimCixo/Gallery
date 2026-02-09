@@ -219,6 +219,16 @@
   flex: 1;
 }
 
+.favorites-page {
+  flex: 1;
+  padding: 0 1rem 1.25rem;
+}
+
+.favorites-page p {
+  margin: 0;
+  color: #475569;
+}
+
 .slide-menu-overlay {
   position: fixed;
   inset: 0;
@@ -477,6 +487,35 @@
   flex: 0 0 auto;
   min-height: auto;
   overflow: visible;
+}
+
+.media-favorite-row {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 0.7rem;
+}
+
+.media-favorite-btn {
+  width: 2.2rem;
+  height: 2.2rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.media-favorite-btn:hover {
+  background: #e2e8f0;
+}
+
+.media-favorite-btn.is-active {
+  border-color: #fda4af;
+  background: #ffe4e6;
+  color: #be123c;
 }
 
 .media-pin-toggle {
