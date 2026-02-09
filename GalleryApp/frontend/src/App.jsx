@@ -95,11 +95,31 @@ function App() {
 
     return date.toLocaleString();
   };
+  const getMediaShortType = (file) => {
+    const source = resolveOriginalMediaUrl(file) || file?.name || "";
+    const extension = getExtensionFromPath(source);
+    if (extension === ".gif") {
+      return "gif";
+    }
+
+    if (isVideoFile(file)) {
+      return "vid";
+    }
+
+    return "img";
+  };
   const fileInputRef = useRef(null);
   const getFileKey = (file) => `${file.name}-${file.size}-${file.lastModified}`;
   const getExtension = (fileName) => {
     const dotIndex = fileName.lastIndexOf(".");
     return dotIndex >= 0 ? fileName.slice(dotIndex).toLowerCase() : "";
+  };
+  const getDisplayName = (fileName) => {
+    if (!fileName) {
+      return "";
+    }
+
+    return String(fileName).replace(/\.[^/.]+$/, "");
   };
 
   useEffect(() => {
@@ -375,24 +395,18 @@ function App() {
                 >
                   <div className="media-preview">
                     {file._tileUrl && !failedPreviewPaths.has(file.relativePath) ? (
-                      <img
-                        src={file._tileUrl}
-                        alt={file.name}
-                        loading="lazy"
-                        onError={() => {
-                          setFailedPreviewPaths((prev) => new Set(prev).add(file.relativePath));
+                    <img
+                      src={file._tileUrl}
+                      alt={getDisplayName(file.name)}
+                      loading="lazy"
+                      onError={() => {
+                        setFailedPreviewPaths((prev) => new Set(prev).add(file.relativePath));
                         }}
                       />
                     ) : (
                       <div className="media-fallback">Preview unavailable</div>
                     )}
                   </div>
-                  <p
-                    className="media-name"
-                    title={file.name}
-                  >
-                    {file.name}
-                  </p>
                 </article>
               ))}
             </div>
@@ -620,21 +634,44 @@ function App() {
               ) : (
                 <img
                   src={resolveOriginalMediaUrl(selectedMedia)}
-                  alt={selectedMedia.name}
+                  alt={getDisplayName(selectedMedia.name)}
                 />
               )}
             </div>
 
             <div className="media-modal-meta">
-              <p
-                className="media-modal-name"
-                title={selectedMedia.name}
-              >
-                {selectedMedia.name}
-              </p>
-              <p className="media-modal-date">
-                Created: {formatMediaDate(selectedMedia.createdAtUtc || selectedMedia.modifiedAtUtc)}
-              </p>
+              <table className="media-meta-table">
+                <tbody>
+                  <tr>
+                    <th scope="row">Id</th>
+                    <td></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Title</th>
+                    <td>{getDisplayName(selectedMedia.name)}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Type</th>
+                    <td>{getMediaShortType(selectedMedia)}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Created At</th>
+                    <td>{formatMediaDate(selectedMedia.createdAtUtc || selectedMedia.modifiedAtUtc)}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Tags</th>
+                    <td></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Parent Link</th>
+                    <td></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Child Link</th>
+                    <td></td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
