@@ -173,6 +173,8 @@ public class Program
             Directory.CreateDirectory(targetDirectory);
 
             var savedFiles = new List<object>();
+            await using var dbConnection = new SqliteConnection(connectionString);
+            await dbConnection.OpenAsync();
 
             foreach (var file in form.Files)
             {
@@ -190,12 +192,16 @@ public class Program
                 var extension = Path.GetExtension(safeOriginalName).ToLowerInvariant();
                 string uniqueName;
                 string destinationPath;
+                long mediaId = 0;
+                string relativePath;
 
                 try
                 {
+                    mediaId = CreatePendingMediaRecord(dbConnection);
+
                     if (IsGifFile(extension))
                     {
-                        uniqueName = BuildUniqueFileName(targetDirectory, safeOriginalName);
+                        uniqueName = $"{mediaId}{extension}";
                         destinationPath = Path.Combine(targetDirectory, uniqueName);
 
                         await using var stream = File.Create(destinationPath);
@@ -203,16 +209,14 @@ public class Program
                     }
                     else if (IsImageFile(extension))
                     {
-                        var webpName = Path.ChangeExtension(safeOriginalName, ".webp");
-                        uniqueName = BuildUniqueFileName(targetDirectory, webpName);
+                        uniqueName = $"{mediaId}.webp";
                         destinationPath = Path.Combine(targetDirectory, uniqueName);
 
                         await ConvertImageToWebpAsync(file, destinationPath);
                     }
                     else if (IsVideoFile(extension))
                     {
-                        var mp4Name = Path.ChangeExtension(safeOriginalName, ".mp4");
-                        uniqueName = BuildUniqueFileName(targetDirectory, mp4Name);
+                        uniqueName = $"{mediaId}.mp4";
                         destinationPath = Path.Combine(targetDirectory, uniqueName);
 
                         await ConvertVideoToMp4Async(file, destinationPath, extension);
@@ -221,17 +225,26 @@ public class Program
                     {
                         return Results.BadRequest(new { error = $"Unsupported file type: {safeOriginalName}" });
                     }
+
+                    relativePath = Path.Combine(dateFolderName, uniqueName).Replace("\\", "/");
+                    UpdateMediaPath(dbConnection, mediaId, relativePath);
                 }
                 catch (MediaConversionException ex)
                 {
+                    if (mediaId > 0)
+                    {
+                        DeleteMediaRecord(dbConnection, mediaId);
+                    }
+
                     return Results.BadRequest(new { error = ex.Message });
                 }
 
                 savedFiles.Add(new
                 {
+                    id = mediaId,
                     originalName = safeOriginalName,
                     storedName = uniqueName,
-                    relativePath = Path.Combine("App_Data", "Media", dateFolderName, uniqueName)
+                    relativePath
                 });
             }
 
@@ -290,11 +303,28 @@ public class Program
 
         using var command = connection.CreateCommand();
         command.CommandText = """
+            PRAGMA foreign_keys = ON;
+
             CREATE TABLE IF NOT EXISTS AppInfo (
                 Id INTEGER PRIMARY KEY CHECK (Id = 1),
                 Name TEXT NOT NULL,
                 CreatedAtUtc TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS Media (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Path TEXT NOT NULL,
+                Title TEXT NULL,
+                Description TEXT NULL,
+                Source TEXT NULL,
+                Parent INTEGER NULL,
+                Child INTEGER NULL,
+                FOREIGN KEY (Parent) REFERENCES Media(Id),
+                FOREIGN KEY (Child) REFERENCES Media(Id)
+            );
+
+            CREATE INDEX IF NOT EXISTS IX_Media_Parent ON Media(Parent);
+            CREATE INDEX IF NOT EXISTS IX_Media_Child ON Media(Child);
 
             INSERT INTO AppInfo (Id, Name, CreatedAtUtc)
             VALUES (1, 'GalleryApp', CURRENT_TIMESTAMP)
@@ -540,7 +570,7 @@ public class Program
                     throw new MediaConversionException($"Preview generation failed: {Path.GetFileName(sourcePath)}");
                 }
 
-                return File.ReadAllBytes(tempPreviewPath);
+        return File.ReadAllBytes(tempPreviewPath);
             }
             finally
             {
@@ -574,6 +604,44 @@ public class Program
         }
 
         return "ffmpeg";
+    }
+
+    private static long CreatePendingMediaRecord(SqliteConnection connection)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO Media (Path, Title, Description, Source, Parent, Child)
+            VALUES ($path, NULL, NULL, NULL, NULL, NULL);
+
+            SELECT last_insert_rowid();
+            """;
+        command.Parameters.AddWithValue("$path", "__pending__");
+
+        return Convert.ToInt64(command.ExecuteScalar());
+    }
+
+    private static void UpdateMediaPath(SqliteConnection connection, long mediaId, string relativePath)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE Media
+            SET Path = $path
+            WHERE Id = $id;
+            """;
+        command.Parameters.AddWithValue("$path", relativePath);
+        command.Parameters.AddWithValue("$id", mediaId);
+        command.ExecuteNonQuery();
+    }
+
+    private static void DeleteMediaRecord(SqliteConnection connection, long mediaId)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            DELETE FROM Media
+            WHERE Id = $id;
+            """;
+        command.Parameters.AddWithValue("$id", mediaId);
+        command.ExecuteNonQuery();
     }
 
     private sealed class MediaConversionException(string message) : Exception(message);
