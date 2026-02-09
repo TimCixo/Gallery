@@ -1051,6 +1051,127 @@
   font-family: inherit;
 }
 
+.media-edit-hint {
+  display: block;
+  margin-top: 0.3rem;
+  color: #64748b;
+  font-size: 0.76rem;
+}
+
+.media-tag-input-wrap {
+  position: relative;
+}
+
+.media-tag-editor-wrap {
+  position: relative;
+}
+
+.media-tag-input-highlight {
+  position: absolute;
+  inset: 0;
+  min-height: 74px;
+  overflow: hidden;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #c6ccd2;
+  border-radius: 0.45rem;
+  background-color: #ffffff;
+  color: #0f172a;
+  white-space: pre-wrap;
+  word-break: break-word;
+  pointer-events: none;
+  font: inherit;
+  line-height: 1.2;
+}
+
+.media-tag-input {
+  width: 100%;
+  min-height: 74px;
+  resize: none;
+  overflow: hidden;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
+  background-color: transparent;
+  color: transparent;
+  caret-color: #0f172a;
+  position: relative;
+  z-index: 1;
+  font: inherit;
+  line-height: 1.2;
+}
+
+.media-tag-input::placeholder {
+  color: transparent;
+}
+
+.media-tag-input:focus {
+  outline: none;
+}
+
+.media-tag-input-wrap:focus-within .media-tag-input-highlight {
+  border-color: #0f172a;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+
+.media-tag-dropdown {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem;
+  border: 1px solid #d5dbe1;
+  border-radius: 0.45rem;
+  background-color: #ffffff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.media-tag-dropdown-item {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: #0f172a;
+  font-size: 0.85rem;
+  padding: 0.42rem 0.5rem;
+  border-radius: 0.33rem;
+  cursor: pointer;
+}
+
+.media-tag-dropdown-item:hover {
+  background-color: #f1f5f9;
+}
+
+.media-tag-dropdown-item.is-active {
+  background-color: #e2e8f0;
+}
+
+.media-tag-dropdown-empty {
+  color: #64748b;
+  font-size: 0.82rem;
+  padding: 0.4rem 0.5rem;
+}
+
+.media-tag-view-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.media-tag-view-pill {
+  display: inline-block;
+  outline: 1px solid #94a3b8;
+  outline-offset: -1px;
+  border-radius: 0.35rem;
+  background-color: #f8fafc;
+  padding: 0.12rem 0.4rem;
+  line-height: 1.2;
+}
+
 .media-action-row {
   display: flex;
   gap: 0.5rem;

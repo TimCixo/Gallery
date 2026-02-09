@@ -78,10 +78,17 @@ function App() {
   const [mediaModalError, setMediaModalError] = useState("");
   const [isMediaPinned, setIsMediaPinned] = useState(true);
   const [isFavoriteUpdating, setIsFavoriteUpdating] = useState(false);
+  const [mediaTagCatalog, setMediaTagCatalog] = useState([]);
+  const [isMediaTagCatalogLoading, setIsMediaTagCatalogLoading] = useState(false);
+  const [mediaTagCatalogError, setMediaTagCatalogError] = useState("");
+  const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false);
+  const [activeTagDropdownIndex, setActiveTagDropdownIndex] = useState(-1);
+  const [tagInputCaretPosition, setTagInputCaretPosition] = useState(0);
   const [mediaDraft, setMediaDraft] = useState({
     title: "",
     description: "",
     source: "",
+    tags: "",
     parent: "",
     child: ""
   });
@@ -93,6 +100,8 @@ function App() {
   const activeUploadTaskIdRef = useRef(null);
   const activeUploadXhrRef = useRef(null);
   const pageDragCounterRef = useRef(0);
+  const mediaTagInputRef = useRef(null);
+  const mediaTagHighlightRef = useRef(null);
   const searchInputRef = useRef(null);
   const searchHighlightRef = useRef(null);
   const [searchCaretPosition, setSearchCaretPosition] = useState(0);
@@ -320,8 +329,162 @@ function App() {
 
     return "img";
   };
-  const renderMediaMetaTable = ({ file, draft, editable, onDraftChange, extraRows = null }) => (
-    <table className="media-meta-table">
+  const getMediaTagName = (tag) => {
+    if (!tag || typeof tag !== "object") {
+      return "";
+    }
+
+    return String(tag.name || "").trim();
+  };
+  const getMediaTagColor = (tag) => {
+    const value = String(tag?.tagTypeColor || "").trim();
+    return /^#[0-9A-Fa-f]{6}$/.test(value) ? value : "#94a3b8";
+  };
+  const getTagId = (tag) => {
+    const value = Number(tag?.id);
+    return Number.isInteger(value) && value > 0 ? value : null;
+  };
+  const getFileMediaTags = (file) => (
+    Array.isArray(file?.tags)
+      ? file.tags.filter((tag) => getTagId(tag) !== null)
+      : []
+  );
+  const formatMediaTagText = (file) => {
+    const names = getFileMediaTags(file)
+      .map((tag) => getMediaTagName(tag))
+      .filter(Boolean);
+    return names.join(", ");
+  };
+  const mediaTagByNameMap = (() => {
+    const map = new Map();
+    mediaTagCatalog.forEach((tag) => {
+      const name = getMediaTagName(tag);
+      if (!name) {
+        return;
+      }
+
+      const key = name.toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, []);
+      }
+      map.get(key).push(tag);
+    });
+    return map;
+  })();
+  const parseMediaTagSegments = (value) => {
+    const text = String(value || "");
+    if (!text) {
+      return [];
+    }
+
+    const segments = [];
+    let index = 0;
+    while (index < text.length) {
+      if (/\s/.test(text[index])) {
+        const start = index;
+        while (index < text.length && /\s/.test(text[index])) {
+          index += 1;
+        }
+
+        segments.push({ text: text.slice(start, index), isTag: false, color: "" });
+        continue;
+      }
+
+      const tokenStart = index;
+      let tokenEnd = tokenStart;
+      while (tokenEnd < text.length && !/\s/.test(text[tokenEnd])) {
+        tokenEnd += 1;
+      }
+
+      const tokenText = text.slice(tokenStart, tokenEnd);
+      const normalizedName = tokenText.toLowerCase();
+      const exactMatches = mediaTagByNameMap.get(normalizedName) || [];
+      const partialMatches = mediaTagCatalog.filter((tag) => (
+        getMediaTagName(tag).toLowerCase().startsWith(normalizedName)
+      ));
+      const matchedTag = exactMatches[0] || partialMatches[0] || null;
+
+      segments.push({
+        text: tokenText,
+        isTag: Boolean(matchedTag),
+        color: matchedTag ? getMediaTagColor(matchedTag) : ""
+      });
+      index = tokenEnd;
+    }
+
+    return segments;
+  };
+  const getTagTokenRange = (text, caret) => {
+    const normalizedText = String(text || "");
+    const normalizedCaret = Math.max(0, Math.min(caret ?? normalizedText.length, normalizedText.length));
+    let start = normalizedCaret;
+    while (start > 0 && !/\s/.test(normalizedText[start - 1])) {
+      start -= 1;
+    }
+
+    let end = normalizedCaret;
+    while (end < normalizedText.length && !/\s/.test(normalizedText[end])) {
+      end += 1;
+    }
+
+    return {
+      start,
+      end,
+      token: normalizedText.slice(start, end),
+      tokenBeforeCaret: normalizedText.slice(start, normalizedCaret)
+    };
+  };
+  const mediaTagTokenRange = getTagTokenRange(mediaDraft.tags, tagInputCaretPosition);
+  const getTagDropdownOptions = () => {
+    const query = mediaTagTokenRange.tokenBeforeCaret.trim().toLowerCase();
+    if (!query) {
+      return mediaTagCatalog.slice(0, 40);
+    }
+
+    return mediaTagCatalog
+      .filter((tag) => {
+        const name = getMediaTagName(tag).toLowerCase();
+        const typeName = String(tag.tagTypeName || "").trim().toLowerCase();
+        return name.includes(query) || typeName.includes(query);
+      })
+      .slice(0, 40);
+  };
+  const syncMediaTagHighlightScroll = () => {
+    if (!mediaTagInputRef.current || !mediaTagHighlightRef.current) {
+      return;
+    }
+
+    mediaTagHighlightRef.current.scrollTop = mediaTagInputRef.current.scrollTop;
+    mediaTagHighlightRef.current.scrollLeft = mediaTagInputRef.current.scrollLeft;
+  };
+  const resizeMediaTagInput = () => {
+    if (!mediaTagInputRef.current) {
+      return;
+    }
+
+    mediaTagInputRef.current.style.height = "auto";
+    mediaTagInputRef.current.style.height = `${Math.max(74, mediaTagInputRef.current.scrollHeight)}px`;
+    syncMediaTagHighlightScroll();
+  };
+  const renderMediaMetaTable = ({
+    file,
+    draft,
+    editable,
+    onDraftChange,
+    extraRows = null,
+    showTagsRow = false,
+    enableTagAutocomplete = false
+  }) => {
+    const tagDropdownOptions = getTagDropdownOptions();
+    const normalizedActiveTagIndex = (
+      activeTagDropdownIndex >= 0
+      && activeTagDropdownIndex < tagDropdownOptions.length
+    )
+      ? activeTagDropdownIndex
+      : -1;
+
+    return (
+      <table className="media-meta-table">
       <tbody>
         {extraRows}
         <tr>
@@ -374,6 +537,194 @@ function App() {
           <th scope="row">Type</th>
           <td>{getMediaShortType(file)}</td>
         </tr>
+        {showTagsRow ? (
+          <tr>
+            <th scope="row">Tags</th>
+            <td>
+              {editable && enableTagAutocomplete ? (
+                <div className="media-tag-input-wrap">
+                  <div className="media-tag-editor-wrap">
+                    <div
+                      className="media-tag-input-highlight"
+                      ref={mediaTagHighlightRef}
+                      aria-hidden="true"
+                    >
+                      {parseMediaTagSegments(draft.tags).length > 0 ? (
+                        parseMediaTagSegments(draft.tags).map((segment, index) => (
+                          <span
+                            key={`${segment.text}-${index}`}
+                            className={segment.isTag ? "top-input-segment is-tag" : "top-input-segment"}
+                            style={segment.isTag ? { outlineColor: segment.color } : undefined}
+                          >
+                            {segment.text}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="top-input-placeholder">Type tags separated by space</span>
+                      )}
+                    </div>
+                    <textarea
+                      className="media-tag-input"
+                      ref={mediaTagInputRef}
+                      value={draft.tags}
+                      onFocus={() => {
+                        resizeMediaTagInput();
+                        setIsTagDropdownOpen(true);
+                        setActiveTagDropdownIndex(tagDropdownOptions.length > 0 ? 0 : -1);
+                      }}
+                      onBlur={() => window.setTimeout(() => {
+                        setIsTagDropdownOpen(false);
+                        setActiveTagDropdownIndex(-1);
+                      }, 120)}
+                      onChange={(event) => {
+                        onDraftChange({ tags: event.target.value });
+                        const caretPosition = event.target.selectionStart ?? event.target.value.length;
+                        setTagInputCaretPosition(caretPosition);
+                        setIsTagDropdownOpen(true);
+                        setActiveTagDropdownIndex(0);
+                        resizeMediaTagInput();
+                      }}
+                      onScroll={syncMediaTagHighlightScroll}
+                      onClick={(event) => setTagInputCaretPosition(event.currentTarget.selectionStart ?? 0)}
+                      onKeyUp={(event) => setTagInputCaretPosition(event.currentTarget.selectionStart ?? 0)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          setIsTagDropdownOpen(false);
+                          setActiveTagDropdownIndex(-1);
+                          return;
+                        }
+
+                        if (tagDropdownOptions.length === 0) {
+                          return;
+                        }
+
+                        if (event.key === "ArrowDown") {
+                          event.preventDefault();
+                          setIsTagDropdownOpen(true);
+                          setActiveTagDropdownIndex((current) => {
+                            if (current < 0) {
+                              return 0;
+                            }
+
+                            return (current + 1) % tagDropdownOptions.length;
+                          });
+                          return;
+                        }
+
+                        if (event.key === "ArrowUp") {
+                          event.preventDefault();
+                          setIsTagDropdownOpen(true);
+                          setActiveTagDropdownIndex((current) => {
+                            if (current < 0) {
+                              return tagDropdownOptions.length - 1;
+                            }
+
+                            return (current - 1 + tagDropdownOptions.length) % tagDropdownOptions.length;
+                          });
+                          return;
+                        }
+
+                        if (event.key === "Enter" && isTagDropdownOpen && normalizedActiveTagIndex >= 0) {
+                          event.preventDefault();
+                          const selected = tagDropdownOptions[normalizedActiveTagIndex];
+                          if (!selected) {
+                            return;
+                          }
+
+                          const prefix = draft.tags.slice(0, mediaTagTokenRange.start);
+                          const suffix = draft.tags.slice(mediaTagTokenRange.end);
+                          const spacer = suffix.startsWith(" ") || suffix.length === 0 ? " " : "";
+                          const nextValue = `${prefix}${getMediaTagName(selected)}${spacer}${suffix}`;
+                          const nextCaret = prefix.length + getMediaTagName(selected).length + spacer.length;
+                          onDraftChange({ tags: nextValue });
+                          setIsTagDropdownOpen(true);
+                          setActiveTagDropdownIndex(0);
+                          setTagInputCaretPosition(nextCaret);
+                          requestAnimationFrame(() => {
+                            if (!mediaTagInputRef.current) {
+                              return;
+                            }
+
+                            mediaTagInputRef.current.focus();
+                            mediaTagInputRef.current.setSelectionRange(nextCaret, nextCaret);
+                            resizeMediaTagInput();
+                          });
+                        }
+                      }}
+                      placeholder="Type tags separated by space"
+                    />
+                  </div>
+
+                  {isTagDropdownOpen ? (
+                    <ul className="media-tag-dropdown">
+                      {tagDropdownOptions.length > 0 ? (
+                        tagDropdownOptions.map((item, index) => (
+                          <li key={item.id}>
+                            <button
+                              type="button"
+                              className={`media-tag-dropdown-item${normalizedActiveTagIndex === index ? " is-active" : ""}`}
+                              onMouseDown={(event) => event.preventDefault()}
+                              onMouseEnter={() => setActiveTagDropdownIndex(index)}
+                              onClick={() => {
+                                const prefix = draft.tags.slice(0, mediaTagTokenRange.start);
+                                const suffix = draft.tags.slice(mediaTagTokenRange.end);
+                                const spacer = suffix.startsWith(" ") || suffix.length === 0 ? " " : "";
+                                const nextValue = `${prefix}${getMediaTagName(item)}${spacer}${suffix}`;
+                                const nextCaret = prefix.length + getMediaTagName(item).length + spacer.length;
+                                onDraftChange({ tags: nextValue });
+                                setIsTagDropdownOpen(true);
+                                setActiveTagDropdownIndex(0);
+                                setTagInputCaretPosition(nextCaret);
+                                requestAnimationFrame(() => {
+                                  if (!mediaTagInputRef.current) {
+                                    return;
+                                  }
+
+                                  mediaTagInputRef.current.focus();
+                                  mediaTagInputRef.current.setSelectionRange(nextCaret, nextCaret);
+                                  resizeMediaTagInput();
+                                });
+                              }}
+                            >
+                              <span>{getMediaTagName(item)}</span>
+                            </button>
+                          </li>
+                        ))
+                      ) : (
+                        <li className="media-tag-dropdown-empty">No matches</li>
+                      )}
+                    </ul>
+                  ) : null}
+
+                  {isMediaTagCatalogLoading ? <small className="media-edit-hint">Loading tags...</small> : null}
+                  {mediaTagCatalogError ? <small className="media-action-error">{mediaTagCatalogError}</small> : null}
+                </div>
+              ) : getFileMediaTags(file).length > 0 ? (
+                <div className="media-tag-view-list">
+                  {getFileMediaTags(file).map((tag) => {
+                    const id = getTagId(tag);
+                    if (id === null) {
+                      return null;
+                    }
+
+                    return (
+                      <span
+                        key={id}
+                        className="media-tag-view-pill"
+                        style={{ outlineColor: getMediaTagColor(tag) }}
+                        title={String(tag.tagTypeName || "")}
+                      >
+                        {getMediaTagName(tag)}
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : (
+                <span>-</span>
+              )}
+            </td>
+          </tr>
+        ) : null}
         <tr>
           <th scope="row">Parent Link</th>
           <td>
@@ -405,8 +756,9 @@ function App() {
           </td>
         </tr>
       </tbody>
-    </table>
-  );
+      </table>
+    );
+  };
   const uploadPickerRef = useRef(null);
   const getFileKey = (file) => `${file.name}-${file.size}-${file.lastModified}`;
   const getExtension = (fileName) => {
@@ -424,6 +776,7 @@ function App() {
     title: file?.title || "",
     description: file?.description || "",
     source: file?.source || "",
+    tags: formatMediaTagText(file),
     parent: file?.parent == null ? "" : String(file.parent),
     child: file?.child == null ? "" : String(file.child)
   });
@@ -496,7 +849,11 @@ function App() {
     setMediaModalError("");
     setIsMediaPinned(true);
     setIsFavoriteUpdating(false);
+    setIsTagDropdownOpen(false);
+    setActiveTagDropdownIndex(-1);
+    setTagInputCaretPosition(0);
     setMediaDraft(createMediaDraft(selectedMedia));
+    void loadMediaTagCatalog();
 
     const handleEsc = (event) => {
       if (event.key === "Escape") {
@@ -507,6 +864,10 @@ function App() {
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   }, [selectedMedia]);
+
+  useEffect(() => {
+    resizeMediaTagInput();
+  }, [mediaDraft.tags, isEditingMedia]);
 
   useEffect(() => {
     if (!isUploadOpen) {
@@ -952,6 +1313,28 @@ function App() {
       setIsTagTypesLoading(false);
     }
   };
+  const loadMediaTagCatalog = async () => {
+    setIsMediaTagCatalogLoading(true);
+    setMediaTagCatalogError("");
+
+    try {
+      const response = await fetch("/api/tags");
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("Tags API not found (404). Restart backend to apply latest changes.");
+        }
+        throw new Error("Failed to fetch tags for autocomplete.");
+      }
+
+      const result = await response.json();
+      setMediaTagCatalog(Array.isArray(result.items) ? result.items : []);
+    } catch (error) {
+      setMediaTagCatalog([]);
+      setMediaTagCatalogError(error instanceof Error ? error.message : "Failed to fetch tags for autocomplete.");
+    } finally {
+      setIsMediaTagCatalogLoading(false);
+    }
+  };
   const loadTagsForTagType = async (tagTypeId) => {
     setTagTableStateByTagTypeId((current) => ({
       ...current,
@@ -1211,7 +1594,34 @@ function App() {
 
     return parsed;
   };
+  const parseMediaTagIds = (value) => {
+    const names = String(value || "")
+      .split(/[\s,]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (names.length === 0) {
+      return [];
+    }
 
+    const result = [];
+    const seen = new Set();
+    for (const name of names) {
+      const matches = mediaTagByNameMap.get(name.toLowerCase()) || [];
+      if (matches.length === 0) {
+        throw new Error(`Tag "${name}" not found.`);
+      }
+
+      const tagId = getTagId(matches[0]);
+      if (tagId === null || seen.has(tagId)) {
+        continue;
+      }
+
+      seen.add(tagId);
+      result.push(tagId);
+    }
+
+    return result;
+  };
   const readResponsePayload = async (response) => {
     const text = await response.text();
     if (!text) {
@@ -1233,12 +1643,18 @@ function App() {
 
     setMediaModalError("");
     setShowDeleteConfirm(false);
+    setIsTagDropdownOpen(false);
+    setActiveTagDropdownIndex(-1);
+    setTagInputCaretPosition(0);
     setMediaDraft(createMediaDraft(selectedMedia));
     setIsEditingMedia(true);
   };
 
   const handleCancelEditMedia = () => {
     setIsEditingMedia(false);
+    setIsTagDropdownOpen(false);
+    setActiveTagDropdownIndex(-1);
+    setTagInputCaretPosition(0);
     setMediaModalError("");
     setMediaDraft(createMediaDraft(selectedMedia));
   };
@@ -1253,9 +1669,11 @@ function App() {
 
     let parent = null;
     let child = null;
+    let tagIds = [];
     try {
       parent = parseNullableId(mediaDraft.parent, "Parent");
       child = parseNullableId(mediaDraft.child, "Child");
+      tagIds = parseMediaTagIds(mediaDraft.tags);
     } catch (error) {
       setMediaModalError(error instanceof Error ? error.message : "Validation failed.");
       return;
@@ -1291,6 +1709,7 @@ function App() {
           title: title || null,
           description: description || null,
           source: source || null,
+          tagIds,
           parent,
           child
         })
@@ -1305,6 +1724,7 @@ function App() {
         title: result.title ?? null,
         description: result.description ?? null,
         source: result.source ?? null,
+        tags: Array.isArray(result.tags) ? result.tags : [],
         parent: result.parent ?? null,
         child: result.child ?? null
       };
@@ -2620,7 +3040,9 @@ function App() {
                 file: selectedMedia,
                 draft: mediaDraft,
                 editable: isEditingMedia,
-                onDraftChange: (patch) => setMediaDraft((current) => ({ ...current, ...patch }))
+                onDraftChange: (patch) => setMediaDraft((current) => ({ ...current, ...patch })),
+                showTagsRow: true,
+                enableTagAutocomplete: true
               })}
 
               <details className="media-system-callout">
