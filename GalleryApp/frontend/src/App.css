@@ -4,6 +4,8 @@
   margin: 0;
   background-color: #f4f6f8;
   overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .top-header {
@@ -58,6 +60,7 @@
 
 .media-section {
   padding: 0 1rem 1.25rem;
+  flex: 1;
 }
 
 .media-header {
@@ -225,6 +228,18 @@
   margin-top: 0.35rem;
   font-size: 0.88rem;
   color: #475569;
+}
+
+.app-footer {
+  border-top: 1px solid #d9dee3;
+  background-color: #ffffff;
+  padding: 0.8rem 1rem 1rem;
+}
+
+.app-footer p {
+  margin: 0.2rem 0;
+  color: #475569;
+  font-size: 0.9rem;
 }
 
 @media (max-width: 760px) {

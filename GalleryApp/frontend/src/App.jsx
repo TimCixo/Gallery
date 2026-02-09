@@ -300,25 +300,7 @@ function App() {
         </button>
       </header>
 
-      <section style={{ padding: "1.25rem 1rem" }}>
-        <p>React frontend is running.</p>
-        <p>Backend health: {health}</p>
-        {submittedText ? <p>Last submitted: {submittedText}</p> : null}
-      </section>
-
       <section className="media-section">
-        <div className="media-header">
-          <h2>Media files</h2>
-          <button
-            type="button"
-            className="media-refresh"
-            onClick={loadMedia}
-            disabled={isMediaLoading}
-          >
-            {isMediaLoading ? "Loading..." : "Refresh"}
-          </button>
-        </div>
-
         {mediaError ? <p className="media-state error">{mediaError}</p> : null}
         {!mediaError && isMediaLoading ? <p className="media-state">Loading media...</p> : null}
         {!mediaError && !isMediaLoading && mediaFiles.length === 0 ? (
@@ -369,6 +351,13 @@ function App() {
           </div>
         ) : null}
       </section>
+
+      <footer className="app-footer">
+        <p>React frontend is running.</p>
+        <p>Backend health: {health}</p>
+        <p>Total saved files: {mediaFiles.length}</p>
+        {submittedText ? <p>Last submitted: {submittedText}</p> : null}
+      </footer>
 
       {isUploadOpen ? (
         <div
