@@ -25,6 +25,22 @@ function App() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isSlideMenuOpen, setIsSlideMenuOpen] = useState(false);
   const [activePage, setActivePage] = useState("gallery");
+  const [tagTypeNameInput, setTagTypeNameInput] = useState("");
+  const [tagTypeColorInput, setTagTypeColorInput] = useState("#2563EB");
+  const [tagTypes, setTagTypes] = useState([]);
+  const [isTagTypesLoading, setIsTagTypesLoading] = useState(false);
+  const [isTagTypeSaving, setIsTagTypeSaving] = useState(false);
+  const [editingTagTypeId, setEditingTagTypeId] = useState(null);
+  const [editingTagTypeName, setEditingTagTypeName] = useState("");
+  const [editingTagTypeColor, setEditingTagTypeColor] = useState("#2563EB");
+  const [isTagTypeUpdating, setIsTagTypeUpdating] = useState(false);
+  const [tagsByTagTypeId, setTagsByTagTypeId] = useState({});
+  const [tagTableStateByTagTypeId, setTagTableStateByTagTypeId] = useState({});
+  const [newTagDraftByTagTypeId, setNewTagDraftByTagTypeId] = useState({});
+  const [editingTagByTagTypeId, setEditingTagByTagTypeId] = useState({});
+  const [editingTagDraftById, setEditingTagDraftById] = useState({});
+  const [savingTagByTagTypeId, setSavingTagByTagTypeId] = useState({});
+  const [tagTypesError, setTagTypesError] = useState("");
   const [uploadItems, setUploadItems] = useState([]);
   const [uploadState, setUploadState] = useState({ type: "", message: "" });
   const [isGroupUploadEnabled, setIsGroupUploadEnabled] = useState(false);
@@ -57,6 +73,8 @@ function App() {
   const [isSavingMedia, setIsSavingMedia] = useState(false);
   const [isDeletingMedia, setIsDeletingMedia] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [pendingTagDelete, setPendingTagDelete] = useState(null);
+  const [isDeletingTagEntity, setIsDeletingTagEntity] = useState(false);
   const [mediaModalError, setMediaModalError] = useState("");
   const [isMediaPinned, setIsMediaPinned] = useState(true);
   const [isFavoriteUpdating, setIsFavoriteUpdating] = useState(false);
@@ -460,6 +478,9 @@ function App() {
   useEffect(() => {
     if (activePage === "favorites") {
       loadFavorites(1);
+    }
+    if (activePage === "tags") {
+      loadTagTypes();
     }
   }, [activePage]);
 
@@ -909,6 +930,67 @@ function App() {
     }
   };
 
+  const loadTagTypes = async () => {
+    setIsTagTypesLoading(true);
+    setTagTypesError("");
+
+    try {
+      const response = await fetch("/api/tag-types");
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("TagTypes API not found (404). Restart backend to apply latest changes.");
+        }
+        throw new Error("Failed to fetch tag types.");
+      }
+
+      const result = await response.json();
+      setTagTypes(Array.isArray(result.items) ? result.items : []);
+    } catch (error) {
+      setTagTypes([]);
+      setTagTypesError(error instanceof Error ? error.message : "Failed to fetch tag types.");
+    } finally {
+      setIsTagTypesLoading(false);
+    }
+  };
+  const loadTagsForTagType = async (tagTypeId) => {
+    setTagTableStateByTagTypeId((current) => ({
+      ...current,
+      [tagTypeId]: { loading: true, error: "" }
+    }));
+
+    try {
+      const response = await fetch(`/api/tag-types/${tagTypeId}/tags`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("Tags API not found (404). Restart backend to apply latest changes.");
+        }
+        throw new Error("Failed to fetch tags.");
+      }
+
+      const result = await response.json();
+      setTagsByTagTypeId((current) => ({
+        ...current,
+        [tagTypeId]: Array.isArray(result.items) ? result.items : []
+      }));
+      setTagTableStateByTagTypeId((current) => ({
+        ...current,
+        [tagTypeId]: { loading: false, error: "" }
+      }));
+    } catch (error) {
+      setTagsByTagTypeId((current) => ({
+        ...current,
+        [tagTypeId]: []
+      }));
+      setTagTableStateByTagTypeId((current) => ({
+        ...current,
+        [tagTypeId]: {
+          loading: false,
+          error: error instanceof Error ? error.message : "Failed to fetch tags."
+        }
+      }));
+    }
+  };
+
   const enqueueBackgroundUpload = (task) => {
     const taskId = uploadTaskSequenceRef.current;
     uploadTaskSequenceRef.current += 1;
@@ -1297,6 +1379,7 @@ function App() {
     return "Uploading";
   };
   const isGalleryPage = activePage === "gallery";
+  const isFavoritesPage = activePage === "favorites";
   const isFileDragEvent = (event) => Array.from(event.dataTransfer?.types || []).includes("Files");
   const handleRootDragEnter = (event) => {
     if (!isGalleryPage || !isFileDragEvent(event)) {
@@ -1392,7 +1475,347 @@ function App() {
     setIsSlideMenuOpen(false);
     setSelectedMedia(null);
   };
+  const openTagsPage = () => {
+    setActivePage("tags");
+    setIsSlideMenuOpen(false);
+    setSelectedMedia(null);
+  };
+  const handleCreateTagType = async (event) => {
+    event.preventDefault();
+    const normalizedName = tagTypeNameInput.trim();
+    const normalizedColor = String(tagTypeColorInput || "").trim().toUpperCase();
 
+    if (!normalizedName) {
+      setTagTypesError("Name is required.");
+      return;
+    }
+
+    if (!/^#[0-9A-F]{6}$/.test(normalizedColor)) {
+      setTagTypesError("Color must be a valid hex code (#RRGGBB).");
+      return;
+    }
+
+    setIsTagTypeSaving(true);
+    setTagTypesError("");
+    try {
+      const response = await fetch("/api/tag-types", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: normalizedName,
+          color: normalizedColor
+        })
+      });
+      const result = await readResponsePayload(response);
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("TagTypes API not found (404). Restart backend to apply latest changes.");
+        }
+        throw new Error(result?.error || "Failed to create tag type.");
+      }
+
+      setTagTypes((current) => [{
+        id: result.id,
+        name: result.name,
+        color: result.color
+      }, ...current]);
+      setTagTypeNameInput("");
+    } catch (error) {
+      setTagTypesError(error instanceof Error ? error.message : "Failed to create tag type.");
+    } finally {
+      setIsTagTypeSaving(false);
+    }
+  };
+  const handleClearTagTypeForm = () => {
+    setTagTypeNameInput("");
+    setTagTypeColorInput("#2563EB");
+    setTagTypesError("");
+  };
+  const handleStartEditTagType = (item) => {
+    setEditingTagTypeId(item.id);
+    setEditingTagTypeName(String(item.name || ""));
+    setEditingTagTypeColor(String(item.color || "#2563EB").toUpperCase());
+    setTagTypesError("");
+  };
+  const handleCancelEditTagType = () => {
+    setEditingTagTypeId(null);
+    setEditingTagTypeName("");
+    setEditingTagTypeColor("#2563EB");
+    setIsTagTypeUpdating(false);
+  };
+  const ensureNewTagDraft = (tagTypeId) => {
+    setNewTagDraftByTagTypeId((current) => (
+      current[tagTypeId]
+        ? current
+        : { ...current, [tagTypeId]: { name: "", description: "" } }
+    ));
+  };
+  const handleTagTypeCalloutToggle = (tagTypeId, isOpen) => {
+    if (!isOpen) {
+      return;
+    }
+
+    ensureNewTagDraft(tagTypeId);
+    void loadTagsForTagType(tagTypeId);
+  };
+  const handleNewTagDraftChange = (tagTypeId, patch) => {
+    setNewTagDraftByTagTypeId((current) => ({
+      ...current,
+      [tagTypeId]: {
+        name: current[tagTypeId]?.name ?? "",
+        description: current[tagTypeId]?.description ?? "",
+        ...patch
+      }
+    }));
+  };
+  const handleClearNewTagDraft = (tagTypeId) => {
+    setNewTagDraftByTagTypeId((current) => ({
+      ...current,
+      [tagTypeId]: { name: "", description: "" }
+    }));
+  };
+  const handleCreateTag = async (tagTypeId) => {
+    const draft = newTagDraftByTagTypeId[tagTypeId] ?? { name: "", description: "" };
+    const normalizedName = String(draft.name || "").trim();
+    const normalizedDescription = String(draft.description || "").trim();
+    if (!normalizedName) {
+      setTagTypesError("Tag name is required.");
+      return;
+    }
+
+    setSavingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: true }));
+    setTagTypesError("");
+    try {
+      const response = await fetch(`/api/tag-types/${tagTypeId}/tags`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: normalizedName,
+          description: normalizedDescription || null
+        })
+      });
+      const result = await readResponsePayload(response);
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("Tags API not found (404). Restart backend to apply latest changes.");
+        }
+        throw new Error(result?.error || "Failed to create tag.");
+      }
+
+      handleClearNewTagDraft(tagTypeId);
+      await loadTagsForTagType(tagTypeId);
+    } catch (error) {
+      setTagTypesError(error instanceof Error ? error.message : "Failed to create tag.");
+    } finally {
+      setSavingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: false }));
+    }
+  };
+  const handleStartEditTag = (tagTypeId, tagItem) => {
+    setEditingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: tagItem.id }));
+    setEditingTagDraftById((current) => ({
+      ...current,
+      [tagItem.id]: {
+        name: String(tagItem.name || ""),
+        description: String(tagItem.description || "")
+      }
+    }));
+    setTagTypesError("");
+  };
+  const handleEditTagDraftChange = (tagId, patch) => {
+    setEditingTagDraftById((current) => ({
+      ...current,
+      [tagId]: {
+        name: current[tagId]?.name ?? "",
+        description: current[tagId]?.description ?? "",
+        ...patch
+      }
+    }));
+  };
+  const handleCancelEditTag = (tagTypeId) => {
+    setEditingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: null }));
+  };
+  const handleSaveTag = async (tagTypeId, tagId) => {
+    const draft = editingTagDraftById[tagId] ?? { name: "", description: "" };
+    const normalizedName = String(draft.name || "").trim();
+    const normalizedDescription = String(draft.description || "").trim();
+    if (!normalizedName) {
+      setTagTypesError("Tag name is required.");
+      return;
+    }
+
+    setSavingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: true }));
+    setTagTypesError("");
+    try {
+      const response = await fetch(`/api/tags/${tagId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: normalizedName,
+          description: normalizedDescription || null
+        })
+      });
+      const result = await readResponsePayload(response);
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("Tags API not found (404). Restart backend to apply latest changes.");
+        }
+        throw new Error(result?.error || "Failed to update tag.");
+      }
+
+      setEditingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: null }));
+      await loadTagsForTagType(tagTypeId);
+    } catch (error) {
+      setTagTypesError(error instanceof Error ? error.message : "Failed to update tag.");
+    } finally {
+      setSavingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: false }));
+    }
+  };
+  const handleDeleteTag = async (tagTypeId, tagId) => {
+    setSavingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: true }));
+    setTagTypesError("");
+    try {
+      const response = await fetch(`/api/tags/${tagId}`, {
+        method: "DELETE"
+      });
+      const result = await readResponsePayload(response);
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("Tags API not found (404). Restart backend to apply latest changes.");
+        }
+        throw new Error(result?.error || "Failed to delete tag.");
+      }
+
+      setTagsByTagTypeId((current) => ({
+        ...current,
+        [tagTypeId]: (current[tagTypeId] ?? []).filter((item) => item.id !== tagId)
+      }));
+      if (editingTagByTagTypeId[tagTypeId] === tagId) {
+        setEditingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: null }));
+      }
+      return true;
+    } catch (error) {
+      setTagTypesError(error instanceof Error ? error.message : "Failed to delete tag.");
+      return false;
+    } finally {
+      setSavingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: false }));
+    }
+  };
+  const handleSaveTagType = async (itemId) => {
+    const normalizedName = editingTagTypeName.trim();
+    const normalizedColor = String(editingTagTypeColor || "").trim().toUpperCase();
+    if (!normalizedName) {
+      setTagTypesError("Name is required.");
+      return;
+    }
+
+    if (!/^#[0-9A-F]{6}$/.test(normalizedColor)) {
+      setTagTypesError("Color must be a valid hex code (#RRGGBB).");
+      return;
+    }
+
+    setIsTagTypeUpdating(true);
+    setTagTypesError("");
+    try {
+      const response = await fetch(`/api/tag-types/${itemId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: normalizedName,
+          color: normalizedColor
+        })
+      });
+      const result = await readResponsePayload(response);
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("TagTypes API not found (404). Restart backend to apply latest changes.");
+        }
+        throw new Error(result?.error || "Failed to update tag type.");
+      }
+
+      setTagTypes((current) => current.map((item) => (
+        item.id === itemId
+          ? { ...item, name: result.name, color: result.color }
+          : item
+      )));
+      handleCancelEditTagType();
+    } catch (error) {
+      setTagTypesError(error instanceof Error ? error.message : "Failed to update tag type.");
+      setIsTagTypeUpdating(false);
+    }
+  };
+  const handleDeleteTagType = async (itemId) => {
+    setIsTagTypeUpdating(true);
+    setTagTypesError("");
+    try {
+      const response = await fetch(`/api/tag-types/${itemId}`, {
+        method: "DELETE"
+      });
+      const result = await readResponsePayload(response);
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("TagTypes API not found (404). Restart backend to apply latest changes.");
+        }
+        throw new Error(result?.error || "Failed to delete tag type.");
+      }
+
+      setTagTypes((current) => current.filter((item) => item.id !== itemId));
+      setTagsByTagTypeId((current) => {
+        const next = { ...current };
+        delete next[itemId];
+        return next;
+      });
+
+      if (editingTagTypeId === itemId) {
+        handleCancelEditTagType();
+      }
+      return true;
+    } catch (error) {
+      setTagTypesError(error instanceof Error ? error.message : "Failed to delete tag type.");
+      return false;
+    } finally {
+      setIsTagTypeUpdating(false);
+    }
+  };
+  const openTagDeleteConfirm = (payload) => {
+    setPendingTagDelete(payload);
+    setTagTypesError("");
+  };
+  const closeTagDeleteConfirm = () => {
+    if (isDeletingTagEntity) {
+      return;
+    }
+
+    setPendingTagDelete(null);
+  };
+  const handleConfirmTagDelete = async () => {
+    if (!pendingTagDelete) {
+      return;
+    }
+
+    setIsDeletingTagEntity(true);
+    let deleted = false;
+    if (pendingTagDelete.kind === "tagType") {
+      deleted = await handleDeleteTagType(pendingTagDelete.id);
+    } else {
+      deleted = await handleDeleteTag(pendingTagDelete.tagTypeId, pendingTagDelete.id);
+    }
+
+    setIsDeletingTagEntity(false);
+    if (deleted) {
+      setPendingTagDelete(null);
+    }
+  };
+  const hexToRgba = (hexColor, alpha) => {
+    const value = String(hexColor || "").trim();
+    if (!/^#[0-9A-Fa-f]{6}$/.test(value)) {
+      return `rgba(100, 116, 139, ${alpha})`;
+    }
+
+    const red = Number.parseInt(value.slice(1, 3), 16);
+    const green = Number.parseInt(value.slice(3, 5), 16);
+    const blue = Number.parseInt(value.slice(5, 7), 16);
+    return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+  };
   return (
     <main
       className={`app-root${isDragOverPage ? " app-root-dragover" : ""}`}
@@ -1607,6 +2030,13 @@ function App() {
               >
                 Favorite
               </button>
+              <button
+                type="button"
+                className="slide-menu-item"
+                onClick={openTagsPage}
+              >
+                Tags
+              </button>
               <button type="button" className="slide-menu-item">Collections</button>
             </nav>
           </aside>
@@ -1663,7 +2093,7 @@ function App() {
           </>
         ) : null}
       </section>
-      ) : (
+      ) : isFavoritesPage ? (
         <section className="favorites-page">
           {favoritesError ? <p className="media-state error">{favoritesError}</p> : null}
           {!favoritesError && isFavoritesLoading ? <p className="media-state">Loading favorites...</p> : null}
@@ -1707,6 +2137,316 @@ function App() {
               </div>
               {renderFavoritesPagination()}
             </>
+          ) : null}
+        </section>
+      ) : (
+        <section className="tags-page">
+          <div className="tags-callout">
+            <form
+              className="tags-callout-form"
+              onSubmit={handleCreateTagType}
+            >
+              <input
+                type="color"
+                className="tags-color-input"
+                value={tagTypeColorInput}
+                onChange={(event) => setTagTypeColorInput(event.target.value.toUpperCase())}
+                aria-label="TagType color"
+              />
+              <input
+                type="text"
+                className="tags-name-input"
+                value={tagTypeNameInput}
+                onChange={(event) => setTagTypeNameInput(event.target.value)}
+                placeholder="TagType name"
+                aria-label="TagType name"
+              />
+              <div className="tags-callout-actions">
+                <button
+                  type="submit"
+                  className="tags-action-btn tags-action-create"
+                  disabled={!tagTypeNameInput.trim() || isTagTypeSaving}
+                  aria-label="Create TagType"
+                  title="Create TagType"
+                >
+                  {"\u2714"}
+                </button>
+                <button
+                  type="button"
+                  className="tags-action-btn tags-action-clear"
+                  onClick={handleClearTagTypeForm}
+                  aria-label="Clear TagType form"
+                  title="Clear TagType form"
+                >
+                  {"\u274C"}
+                </button>
+              </div>
+            </form>
+            {tagTypesError ? <p className="tags-error">{tagTypesError}</p> : null}
+          </div>
+          {isTagTypesLoading ? <p className="tags-state">Loading TagTypes...</p> : null}
+          {!isTagTypesLoading && tagTypes.length === 0 ? (
+            <p className="tags-state">No TagTypes yet.</p>
+          ) : null}
+          {!isTagTypesLoading && tagTypes.length > 0 ? (
+            <ul className="tag-type-list">
+              {tagTypes.map((item) => {
+                const color = /^#[0-9A-Fa-f]{6}$/.test(String(item.color || ""))
+                  ? String(item.color).toUpperCase()
+                  : "#64748B";
+                const isEditing = editingTagTypeId === item.id;
+                const summaryStyle = {
+                  borderColor: hexToRgba(color, 0.45),
+                  backgroundColor: hexToRgba(color, 0.2),
+                  color
+                };
+                const bodyStyle = {
+                  borderTopColor: hexToRgba(color, 0.24),
+                  backgroundColor: hexToRgba(color, 0.08)
+                };
+
+                return (
+                  <li key={item.id} className="tag-type-item">
+                    <details className="tag-type-callout">
+                      <summary
+                        className="tag-type-summary"
+                        style={summaryStyle}
+                        onClick={() => handleTagTypeCalloutToggle(item.id, true)}
+                      >
+                        {isEditing ? (
+                          <div
+                            className="tag-type-edit-row"
+                            onClick={(event) => event.preventDefault()}
+                          >
+                            <input
+                              type="color"
+                              className="tags-color-input tag-type-edit-color"
+                              value={editingTagTypeColor}
+                              onChange={(event) => setEditingTagTypeColor(event.target.value.toUpperCase())}
+                              aria-label="Edit TagType color"
+                            />
+                            <input
+                              type="text"
+                              className="tags-name-input tag-type-edit-name"
+                              value={editingTagTypeName}
+                              onChange={(event) => setEditingTagTypeName(event.target.value)}
+                              aria-label="Edit TagType name"
+                            />
+                          </div>
+                        ) : (
+                          <span className="tag-type-summary-name">{item.name}</span>
+                        )}
+                        <div className="tag-type-summary-actions">
+                          {isEditing ? (
+                            <>
+                              <button
+                                type="button"
+                                className="tags-action-btn tags-action-create"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  void handleSaveTagType(item.id);
+                                }}
+                                disabled={!editingTagTypeName.trim() || isTagTypeUpdating}
+                                aria-label="Update TagType"
+                                title="Update TagType"
+                              >
+                                {"\u2714"}
+                              </button>
+                              <button
+                                type="button"
+                                className="tags-action-btn tags-action-clear"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  handleCancelEditTagType();
+                                }}
+                                disabled={isTagTypeUpdating}
+                                aria-label="Cancel edit TagType"
+                                title="Cancel edit TagType"
+                              >
+                                {"\u274C"}
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="tags-action-btn tag-type-edit-btn"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  handleStartEditTagType(item);
+                                }}
+                                aria-label="Edit TagType"
+                                title="Edit TagType"
+                              >
+                                {"\uD83D\uDEE0"}
+                              </button>
+                              <button
+                                type="button"
+                                className="tags-action-btn tags-action-delete"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  openTagDeleteConfirm({
+                                    kind: "tagType",
+                                    id: item.id,
+                                    name: item.name
+                                  });
+                                }}
+                                disabled={isTagTypeUpdating}
+                                aria-label="Delete TagType"
+                                title="Delete TagType"
+                              >
+                                {"\uD83D\uDDD1"}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </summary>
+                      <div className="tag-type-body" style={bodyStyle}>
+                        <table className="tag-table">
+                          <tbody>
+                            <tr>
+                              <td>
+                                <input
+                                  type="text"
+                                  className="tag-table-input"
+                                  value={newTagDraftByTagTypeId[item.id]?.name ?? ""}
+                                  onChange={(event) => handleNewTagDraftChange(item.id, { name: event.target.value })}
+                                  placeholder="New tag name"
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="text"
+                                  className="tag-table-input"
+                                  value={newTagDraftByTagTypeId[item.id]?.description ?? ""}
+                                  onChange={(event) => handleNewTagDraftChange(item.id, { description: event.target.value })}
+                                  placeholder="Description"
+                                />
+                              </td>
+                              <td>
+                                <div className="tag-table-actions">
+                                  <button
+                                    type="button"
+                                    className="tags-action-btn tags-action-create"
+                                    onClick={() => void handleCreateTag(item.id)}
+                                    disabled={!String(newTagDraftByTagTypeId[item.id]?.name || "").trim() || !!savingTagByTagTypeId[item.id]}
+                                    title="Create tag"
+                                  >
+                                    {"\u2714"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="tags-action-btn tags-action-clear"
+                                    onClick={() => handleClearNewTagDraft(item.id)}
+                                    disabled={!!savingTagByTagTypeId[item.id]}
+                                    title="Clear new tag"
+                                  >
+                                    {"\u274C"}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                            {(tagsByTagTypeId[item.id] ?? []).map((tagItem) => {
+                              const isEditingTag = editingTagByTagTypeId[item.id] === tagItem.id;
+                              const editingDraft = editingTagDraftById[tagItem.id] ?? {
+                                name: String(tagItem.name || ""),
+                                description: String(tagItem.description || "")
+                              };
+
+                              return (
+                                <tr key={tagItem.id}>
+                                  <td>
+                                    {isEditingTag ? (
+                                      <input
+                                        type="text"
+                                        className="tag-table-input"
+                                        value={editingDraft.name}
+                                        onChange={(event) => handleEditTagDraftChange(tagItem.id, { name: event.target.value })}
+                                      />
+                                    ) : (tagItem.name)}
+                                  </td>
+                                  <td>
+                                    {isEditingTag ? (
+                                      <input
+                                        type="text"
+                                        className="tag-table-input"
+                                        value={editingDraft.description}
+                                        onChange={(event) => handleEditTagDraftChange(tagItem.id, { description: event.target.value })}
+                                      />
+                                    ) : (tagItem.description || "-")}
+                                  </td>
+                                  <td>
+                                    <div className="tag-table-actions">
+                                      {isEditingTag ? (
+                                        <>
+                                          <button
+                                            type="button"
+                                            className="tags-action-btn tags-action-create"
+                                            onClick={() => void handleSaveTag(item.id, tagItem.id)}
+                                            disabled={!String(editingDraft.name || "").trim() || !!savingTagByTagTypeId[item.id]}
+                                            title="Save tag"
+                                          >
+                                            {"\u2714"}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="tags-action-btn tags-action-clear"
+                                            onClick={() => handleCancelEditTag(item.id)}
+                                            disabled={!!savingTagByTagTypeId[item.id]}
+                                            title="Cancel edit"
+                                          >
+                                            {"\u274C"}
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <button
+                                            type="button"
+                                            className="tags-action-btn tag-table-edit-btn"
+                                            onClick={() => handleStartEditTag(item.id, tagItem)}
+                                            title="Edit tag"
+                                          >
+                                            {"\uD83D\uDEE0"}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="tags-action-btn tags-action-delete"
+                                            onClick={() => openTagDeleteConfirm({
+                                              kind: "tag",
+                                              id: tagItem.id,
+                                              tagTypeId: item.id,
+                                              name: tagItem.name
+                                            })}
+                                            disabled={!!savingTagByTagTypeId[item.id]}
+                                            title="Delete tag"
+                                          >
+                                            {"\uD83D\uDDD1"}
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                        {tagTableStateByTagTypeId[item.id]?.loading ? (
+                          <p className="tag-table-state">Loading tags...</p>
+                        ) : null}
+                        {tagTableStateByTagTypeId[item.id]?.error ? (
+                          <p className="tag-table-state tag-table-state-error">{tagTableStateByTagTypeId[item.id].error}</p>
+                        ) : null}
+                      </div>
+                    </details>
+                  </li>
+                );
+              })}
+            </ul>
           ) : null}
         </section>
       )}
@@ -1987,6 +2727,39 @@ function App() {
               </div>
             </div>
           ) : null}
+        </div>
+      ) : null}
+      {pendingTagDelete ? (
+        <div
+          className="media-confirm-overlay"
+          onClick={closeTagDeleteConfirm}
+        >
+          <div
+            className="media-confirm-dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p>
+              Are you sure you want to delete {pendingTagDelete.kind === "tagType" ? "TagType" : "Tag"} "{pendingTagDelete.name}"?
+            </p>
+            <div className="media-delete-buttons">
+              <button
+                type="button"
+                className="media-action-btn media-action-danger"
+                onClick={handleConfirmTagDelete}
+                disabled={isDeletingTagEntity}
+              >
+                {isDeletingTagEntity ? "Deleting..." : "Yes"}
+              </button>
+              <button
+                type="button"
+                className="media-action-btn"
+                onClick={closeTagDeleteConfirm}
+                disabled={isDeletingTagEntity}
+              >
+                No
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </main>

@@ -345,6 +345,279 @@
   color: #475569;
 }
 
+.tags-page {
+  flex: 1;
+  padding: 1.76rem 1rem 1.25rem;
+}
+
+.tags-callout {
+  border: 1px solid #d5dbe1;
+  border-radius: 0.6rem;
+  background-color: #f8fafc;
+  padding: 0.75rem;
+}
+
+.tags-callout-form {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.tags-color-input {
+  width: 2.2rem;
+  min-width: 2.2rem;
+  height: 2.2rem;
+  border: 1px solid #c6ccd2;
+  border-radius: 0.45rem;
+  padding: 0.2rem;
+  background-color: #ffffff;
+  cursor: pointer;
+}
+
+.tags-name-input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid #c6ccd2;
+  border-radius: 0.45rem;
+  background-color: #ffffff;
+  color: #0f172a;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.88rem;
+}
+
+.tags-name-input:focus {
+  outline: none;
+  border-color: #0f172a;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+
+.tags-callout-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tags-action-btn {
+  border: 1px solid #c6ccd2;
+  background-color: #ffffff;
+  color: #0f172a;
+  border-radius: 0.42rem;
+  min-width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.tags-action-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.tags-action-create {
+  border-color: #166534;
+  color: #166534;
+}
+
+.tags-action-clear {
+  border-color: #b91c1c;
+  color: #b91c1c;
+}
+
+.tags-action-delete {
+  border-color: #b91c1c;
+  color: #b91c1c;
+}
+
+.tags-error {
+  margin: 0.55rem 0 0;
+  color: #b91c1c;
+  font-size: 0.84rem;
+}
+
+.tags-state {
+  margin: 0.6rem 0 0;
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.tag-type-list {
+  list-style: none;
+  margin: 0.7rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tag-type-item {
+  margin: 0;
+}
+
+.tag-type-callout {
+  border: 1px solid #d5dbe1;
+  border-radius: 0.55rem;
+  background-color: #ffffff;
+  overflow: hidden;
+}
+
+.tag-type-summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  padding: 0.5rem 0.65rem;
+  min-height: 2.2rem;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
+  font-weight: 600;
+  user-select: none;
+}
+
+.tag-type-summary-name {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-type-summary-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.tag-type-edit-btn {
+  margin-left: auto;
+}
+
+.tag-type-edit-row {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.tag-type-edit-color {
+  width: 2rem;
+  min-width: 2rem;
+  height: 2rem;
+}
+
+.tag-type-edit-name {
+  min-width: 0;
+  flex: 1;
+  padding: 0.24rem 0.45rem;
+  height: 1.85rem;
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+
+.tag-type-body {
+  border-top: 1px solid #e2e8f0;
+  padding: 0.8rem 0.95rem;
+  overflow-x: auto;
+}
+
+.tag-type-body p {
+  margin: 0;
+  color: #334155;
+  font-size: 0.84rem;
+}
+
+.tag-type-body p + p {
+  margin-top: 0.35rem;
+}
+
+.tag-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+  min-width: 560px;
+  border: 1px solid #d5dbe1;
+  border-radius: 0.55rem;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.tag-table th,
+.tag-table td {
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.88rem;
+  color: #0f172a;
+}
+
+.tag-table tbody tr:not(:last-child) td {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.tag-table th:nth-child(3),
+.tag-table td:nth-child(3) {
+  width: 7.4rem;
+  min-width: 7.4rem;
+  max-width: 7.4rem;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.tag-table td:nth-child(1) {
+  width: 10.5rem;
+  min-width: 10.5rem;
+  max-width: 10.5rem;
+  background-color: #f8fafc;
+  color: #334155;
+  font-weight: 600;
+}
+
+.tag-table td:nth-child(2) {
+  width: auto;
+}
+
+.tag-table-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid #c6ccd2;
+  border-radius: 0.4rem;
+  background-color: #ffffff;
+  color: #0f172a;
+  padding: 0.32rem 0.45rem;
+  font-size: 0.82rem;
+}
+
+.tag-table-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.tag-table-edit-btn {
+  margin-left: auto;
+}
+
+.tag-table-state {
+  margin: 0.5rem 0 0;
+  font-size: 0.82rem;
+  color: #475569;
+}
+
+.tag-table-state-error {
+  color: #b91c1c;
+}
+
 .slide-menu-overlay {
   position: fixed;
   inset: 0;
@@ -925,6 +1198,89 @@
   .media-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.6rem;
+  }
+
+  .tags-callout-form {
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+  }
+
+  .tags-page {
+    padding-top: 1.76rem;
+  }
+
+  .tags-color-input {
+    width: 2rem;
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0.12rem;
+  }
+
+  .tags-callout-actions {
+    width: auto;
+    justify-content: flex-end;
+    margin-left: 0;
+    gap: 0.3rem;
+  }
+
+  .tag-type-summary {
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+  }
+
+  .tag-type-edit-row {
+    width: auto;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .tag-type-summary-actions {
+    width: auto;
+    justify-content: flex-end;
+    margin-left: 0;
+  }
+
+  .tag-table {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .tag-table th,
+  .tag-table td {
+    font-size: 0.8rem;
+    padding: 0.4rem 0.38rem;
+  }
+
+  .tag-table td:nth-child(1) {
+    width: 6.6rem;
+    min-width: 6.6rem;
+    max-width: 6.6rem;
+  }
+
+  .tag-table td:nth-child(2) {
+    width: auto;
+  }
+
+  .tag-table th:nth-child(3),
+  .tag-table td:nth-child(3) {
+    width: 5.4rem;
+    min-width: 5.4rem;
+    max-width: 5.4rem;
+  }
+
+  .tag-type-edit-color,
+  .tags-action-btn {
+    width: 1.8rem;
+    min-width: 1.8rem;
+    height: 1.8rem;
+  }
+
+  .tag-type-edit-name,
+  .tag-table-input,
+  .tags-name-input {
+    font-size: 0.8rem;
   }
 
   .media-modal {
