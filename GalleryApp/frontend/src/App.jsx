@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
 function App() {
+  const PAGE_SIZE = 36;
   const allowedExtensions = new Set([
     ".jpg",
     ".jpeg",
@@ -28,6 +29,9 @@ function App() {
   const [mediaFiles, setMediaFiles] = useState([]);
   const [isMediaLoading, setIsMediaLoading] = useState(true);
   const [mediaError, setMediaError] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalFiles, setTotalFiles] = useState(0);
   const [failedPreviewPaths, setFailedPreviewPaths] = useState(new Set());
   const [selectedMedia, setSelectedMedia] = useState(null);
   const imageExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".bmp"]);
@@ -105,20 +109,27 @@ function App() {
       .catch(() => setHealth("backend unavailable"));
   }, []);
 
-  const loadMedia = async () => {
+  const loadMedia = async (page = 1) => {
     setIsMediaLoading(true);
     setMediaError("");
 
     try {
-      const response = await fetch("/api/media");
+      const response = await fetch(`/api/media?page=${page}&pageSize=${PAGE_SIZE}`);
       if (!response.ok) {
         throw new Error("Failed to fetch media files.");
       }
 
       const result = await response.json();
       setMediaFiles(Array.isArray(result.files) ? result.files : []);
+      setCurrentPage(Number.isInteger(result.page) ? result.page : page);
+      setTotalPages(Number.isInteger(result.totalPages) ? result.totalPages : 0);
+      setTotalFiles(Number.isInteger(result.totalCount) ? result.totalCount : 0);
       setFailedPreviewPaths(new Set());
+      setSelectedMedia(null);
     } catch (error) {
+      setMediaFiles([]);
+      setTotalPages(0);
+      setTotalFiles(0);
       setMediaError(error instanceof Error ? error.message : "Failed to fetch media files.");
     } finally {
       setIsMediaLoading(false);
@@ -126,7 +137,7 @@ function App() {
   };
 
   useEffect(() => {
-    loadMedia();
+    loadMedia(1);
   }, []);
 
   useEffect(() => {
@@ -143,6 +154,40 @@ function App() {
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   }, [selectedMedia]);
+
+  const handlePageChange = (nextPage) => {
+    if (isMediaLoading) {
+      return;
+    }
+
+    if (nextPage < 1 || (totalPages > 0 && nextPage > totalPages) || nextPage === currentPage) {
+      return;
+    }
+
+    loadMedia(nextPage);
+  };
+
+  const renderPagination = () => (
+    <div className="media-pagination">
+      <button
+        type="button"
+        onClick={() => handlePageChange(currentPage - 1)}
+        disabled={isMediaLoading || currentPage <= 1 || totalPages === 0}
+      >
+        Prev
+      </button>
+      <p>
+        Page {totalPages === 0 ? 0 : currentPage} of {totalPages}
+      </p>
+      <button
+        type="button"
+        onClick={() => handlePageChange(currentPage + 1)}
+        disabled={isMediaLoading || totalPages === 0 || currentPage >= totalPages}
+      >
+        Next
+      </button>
+    </div>
+  );
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -236,7 +281,7 @@ function App() {
       });
       setSelectedFiles([]);
       setInvalidFileNames([]);
-      await loadMedia();
+      await loadMedia(1);
     } catch (error) {
       setUploadState({
         type: "error",
@@ -303,59 +348,63 @@ function App() {
       <section className="media-section">
         {mediaError ? <p className="media-state error">{mediaError}</p> : null}
         {!mediaError && isMediaLoading ? <p className="media-state">Loading media...</p> : null}
-        {!mediaError && !isMediaLoading && mediaFiles.length === 0 ? (
+        {!mediaError && !isMediaLoading && totalFiles === 0 ? (
           <p className="media-state">No files in backend/App_Data/Media.</p>
         ) : null}
-        {!mediaError && !isMediaLoading && mediaFiles.length > 0 && visibleMediaFiles.length === 0 ? (
+        {!mediaError && !isMediaLoading && totalFiles > 0 && visibleMediaFiles.length === 0 ? (
           <p className="media-state">No preview images available for current files.</p>
         ) : null}
 
         {!mediaError && visibleMediaFiles.length > 0 ? (
-          <div className="media-grid">
-            {visibleMediaFiles.map((file) => (
-              <article
-                key={file.relativePath}
-                className="media-tile"
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelectedMedia(file)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    setSelectedMedia(file);
-                  }
-                }}
-              >
-                <div className="media-preview">
-                  {file._tileUrl && !failedPreviewPaths.has(file.relativePath) ? (
-                    <img
-                      src={file._tileUrl}
-                      alt={file.name}
-                      loading="lazy"
-                      onError={() => {
-                        setFailedPreviewPaths((prev) => new Set(prev).add(file.relativePath));
-                      }}
-                    />
-                  ) : (
-                    <div className="media-fallback">Preview unavailable</div>
-                  )}
-                </div>
-                <p
-                  className="media-name"
-                  title={file.name}
+          <>
+            {renderPagination()}
+            <div className="media-grid">
+              {visibleMediaFiles.map((file) => (
+                <article
+                  key={file.relativePath}
+                  className="media-tile"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedMedia(file)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedMedia(file);
+                    }
+                  }}
                 >
-                  {file.name}
-                </p>
-              </article>
-            ))}
-          </div>
+                  <div className="media-preview">
+                    {file._tileUrl && !failedPreviewPaths.has(file.relativePath) ? (
+                      <img
+                        src={file._tileUrl}
+                        alt={file.name}
+                        loading="lazy"
+                        onError={() => {
+                          setFailedPreviewPaths((prev) => new Set(prev).add(file.relativePath));
+                        }}
+                      />
+                    ) : (
+                      <div className="media-fallback">Preview unavailable</div>
+                    )}
+                  </div>
+                  <p
+                    className="media-name"
+                    title={file.name}
+                  >
+                    {file.name}
+                  </p>
+                </article>
+              ))}
+            </div>
+            {renderPagination()}
+          </>
         ) : null}
       </section>
 
       <footer className="app-footer">
         <p>React frontend is running.</p>
         <p>Backend health: {health}</p>
-        <p>Total saved files: {mediaFiles.length}</p>
+        <p>Total saved files: {totalFiles}</p>
         {submittedText ? <p>Last submitted: {submittedText}</p> : null}
       </footer>
 

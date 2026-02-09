@@ -55,15 +55,25 @@ public class Program
                 timestampUtc = DateTime.UtcNow
             }));
 
-        app.MapGet("/api/media", () =>
+        app.MapGet("/api/media", (int? page, int? pageSize) =>
         {
+            var normalizedPageSize = Math.Clamp(pageSize ?? 36, 1, 100);
+            var normalizedPage = Math.Max(page ?? 1, 1);
+
             if (!Directory.Exists(mediaRootPath))
             {
                 Directory.CreateDirectory(mediaRootPath);
-                return Results.Ok(new { files = Array.Empty<object>() });
+                return Results.Ok(new
+                {
+                    page = 1,
+                    pageSize = normalizedPageSize,
+                    totalCount = 0,
+                    totalPages = 0,
+                    files = Array.Empty<object>()
+                });
             }
 
-            var files = Directory
+            var allFiles = Directory
                 .EnumerateFiles(mediaRootPath, "*", SearchOption.AllDirectories)
                 .Where(path =>
                 {
@@ -92,7 +102,27 @@ public class Program
                 .OrderByDescending(file => file.modifiedAtUtc)
                 .ToArray();
 
-            return Results.Ok(new { files });
+            var totalCount = allFiles.Length;
+            var totalPages = totalCount == 0
+                ? 0
+                : (int)Math.Ceiling(totalCount / (double)normalizedPageSize);
+            var effectivePage = totalPages == 0
+                ? 1
+                : Math.Min(normalizedPage, totalPages);
+            var skip = totalPages == 0 ? 0 : (effectivePage - 1) * normalizedPageSize;
+            var files = allFiles
+                .Skip(skip)
+                .Take(normalizedPageSize)
+                .ToArray();
+
+            return Results.Ok(new
+            {
+                page = effectivePage,
+                pageSize = normalizedPageSize,
+                totalCount,
+                totalPages,
+                files
+            });
         });
 
         app.MapGet("/api/media/preview", (string path) =>
