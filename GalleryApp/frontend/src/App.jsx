@@ -1520,7 +1520,7 @@ function App() {
               </h2>
               <button
                 type="button"
-                className="media-modal-close"
+                className="media-action-btn"
                 onClick={closeUploadModal}
               >
                 Close
@@ -1611,22 +1611,7 @@ function App() {
             className={`media-modal${isMediaPinned ? "" : " media-modal-unpinned"}`}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="media-modal-header">
-              <button
-                type="button"
-                className="media-pin-toggle"
-                onClick={() => setIsMediaPinned((current) => !current)}
-              >
-                {isMediaPinned ? "Unpin" : "Pin"}
-              </button>
-              <button
-                type="button"
-                className="media-modal-close"
-                onClick={() => setSelectedMedia(null)}
-              >
-                Close
-              </button>
-            </div>
+            <div className="media-modal-header media-modal-header-empty" />
 
             <div className="media-modal-content">
               {isVideoFile(selectedMedia) ? (
@@ -1647,6 +1632,16 @@ function App() {
               <div className="media-favorite-row">
                 <button
                   type="button"
+                  className={`media-icon-btn${isMediaPinned ? " is-active" : ""}`}
+                  onClick={() => setIsMediaPinned((current) => !current)}
+                  aria-label={isMediaPinned ? "Unpin media modal" : "Pin media modal"}
+                  title={isMediaPinned ? "Unpin media modal" : "Pin media modal"}
+                  aria-pressed={isMediaPinned}
+                >
+                  {"\uD83D\uDCCC"}
+                </button>
+                <button
+                  type="button"
                   className={`media-favorite-btn${isSelectedMediaFavorite ? " is-active" : ""}`}
                   aria-label={isSelectedMediaFavorite ? "Remove from favorites" : "Add to favorites"}
                   title={isSelectedMediaFavorite ? "Remove from favorites" : "Add to favorites"}
@@ -1654,7 +1649,16 @@ function App() {
                   onClick={toggleSelectedMediaFavorite}
                   disabled={isFavoriteUpdating || !selectedMedia?.id}
                 >
-                  ❤
+                  {"\u2764"}
+                </button>
+                <button
+                  type="button"
+                  className="media-icon-btn media-icon-btn-close"
+                  onClick={() => setSelectedMedia(null)}
+                  aria-label="Close media modal"
+                  title="Close media modal"
+                >
+                  {"\u274C"}
                 </button>
               </div>
               {renderMediaMetaTable({
@@ -1775,5 +1779,6 @@ function App() {
 }
 
 export default App;
+
 
 
