@@ -649,11 +649,36 @@ public class Program
                 FOREIGN KEY (MediaId) REFERENCES Media(Id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS TagTypes (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Name TEXT NOT NULL,
+                Color TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS Tags (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Name TEXT NOT NULL,
+                Description TEXT NULL,
+                TagTypeId INTEGER NOT NULL,
+                FOREIGN KEY (TagTypeId) REFERENCES TagTypes(Id) ON DELETE RESTRICT
+            );
+
+            CREATE TABLE IF NOT EXISTS MediaTags (
+                MediaId INTEGER NOT NULL,
+                TagId INTEGER NOT NULL,
+                PRIMARY KEY (MediaId, TagId),
+                FOREIGN KEY (MediaId) REFERENCES Media(Id) ON DELETE CASCADE,
+                FOREIGN KEY (TagId) REFERENCES Tags(Id) ON DELETE CASCADE
+            );
+
             CREATE INDEX IF NOT EXISTS IX_Media_Parent ON Media(Parent);
             CREATE INDEX IF NOT EXISTS IX_Media_Child ON Media(Child);
             CREATE INDEX IF NOT EXISTS IX_Collections_Cover ON Collections(Cover);
             CREATE INDEX IF NOT EXISTS IX_CollectionsMedia_CollectionId ON CollectionsMedia(CollectionId);
             CREATE INDEX IF NOT EXISTS IX_CollectionsMedia_MediaId ON CollectionsMedia(MediaId);
+            CREATE INDEX IF NOT EXISTS IX_Tags_TagTypeId ON Tags(TagTypeId);
+            CREATE INDEX IF NOT EXISTS IX_MediaTags_MediaId ON MediaTags(MediaId);
+            CREATE INDEX IF NOT EXISTS IX_MediaTags_TagId ON MediaTags(TagId);
 
             INSERT INTO Collections (Lable, Description, Cover)
             SELECT 'Favorites', NULL, NULL
