@@ -21,6 +21,7 @@ function App() {
   const [inputValue, setInputValue] = useState("");
   const [submittedText, setSubmittedText] = useState("");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isSlideMenuOpen, setIsSlideMenuOpen] = useState(false);
   const [uploadItems, setUploadItems] = useState([]);
   const [uploadState, setUploadState] = useState({ type: "", message: "" });
   const [backgroundUploadState, setBackgroundUploadState] = useState({
@@ -316,6 +317,21 @@ function App() {
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   }, [isUploadOpen]);
+
+  useEffect(() => {
+    if (!isSlideMenuOpen) {
+      return undefined;
+    }
+
+    const handleEsc = (event) => {
+      if (event.key === "Escape") {
+        setIsSlideMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [isSlideMenuOpen]);
 
   useEffect(() => {
     if (!selectedMedia) {
@@ -1013,12 +1029,26 @@ function App() {
   return (
     <main className="app-root">
       <header className="top-header">
-        <a
-          className="top-brand"
-          href="/"
-        >
-          Gallery
-        </a>
+        <div className="top-brand-group">
+          <button
+            type="button"
+            className="top-menu-toggle"
+            onClick={() => setIsSlideMenuOpen(true)}
+            aria-label="Open menu"
+            aria-expanded={isSlideMenuOpen}
+            aria-controls="app-slide-menu"
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+          <a
+            className="top-brand"
+            href="/"
+          >
+            Gallery
+          </a>
+        </div>
 
         <form
           className="top-form"
@@ -1128,6 +1158,30 @@ function App() {
           style={{ display: "none" }}
         />
       </header>
+
+      {isSlideMenuOpen ? (
+        <div
+          className="slide-menu-overlay"
+          onClick={() => setIsSlideMenuOpen(false)}
+        >
+          <aside
+            id="app-slide-menu"
+            className="slide-menu"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Main menu"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="slide-menu-header">
+              <p>Menu</p>
+            </div>
+            <nav className="slide-menu-nav">
+              <button type="button" className="slide-menu-item">Favorites</button>
+              <button type="button" className="slide-menu-item">Collections</button>
+            </nav>
+          </aside>
+        </div>
+      ) : null}
 
       <section className="media-section">
         {mediaError ? <p className="media-state error">{mediaError}</p> : null}

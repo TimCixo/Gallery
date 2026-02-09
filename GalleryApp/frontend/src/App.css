@@ -30,6 +30,34 @@
   white-space: nowrap;
 }
 
+.top-brand-group {
+  grid-area: brand;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.top-menu-toggle {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid #c6ccd2;
+  border-radius: 0.45rem;
+  background-color: #ffffff;
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 0.2rem;
+  cursor: pointer;
+}
+
+.top-menu-toggle span {
+  width: 0.9rem;
+  height: 2px;
+  border-radius: 999px;
+  background-color: #0f172a;
+}
+
 .top-form {
   grid-area: form;
   display: flex;
@@ -189,6 +217,61 @@
 .media-section {
   padding: 0 1rem 1.25rem;
   flex: 1;
+}
+
+.slide-menu-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.4);
+  z-index: 35;
+}
+
+.slide-menu {
+  width: min(320px, calc(100vw - 2.5rem));
+  height: 100%;
+  background: #ffffff;
+  border-right: 1px solid #d5dbe1;
+  box-shadow: 14px 0 38px rgba(15, 23, 42, 0.28);
+  padding: 0.85rem 0.75rem;
+  box-sizing: border-box;
+  animation: slideMenuIn 0.2s ease-out;
+}
+
+.slide-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  margin-bottom: 0.7rem;
+}
+
+.slide-menu-header p {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #0f172a;
+}
+
+.slide-menu-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.slide-menu-item {
+  text-align: left;
+  border: 1px solid #d5dbe1;
+  background-color: #ffffff;
+  border-radius: 0.5rem;
+  color: #0f172a;
+  font-size: 0.9rem;
+  padding: 0.5rem 0.6rem;
+  cursor: pointer;
+}
+
+.slide-menu-item:hover {
+  background-color: #f8fafc;
 }
 
 .media-header {
@@ -625,6 +708,10 @@
     max-width: none;
   }
 
+  .top-brand-group {
+    min-width: 0;
+  }
+
   .top-upload-group {
     justify-self: end;
   }
@@ -664,5 +751,16 @@
   .media-meta-table th,
   .media-meta-table td {
     font-size: 0.84rem;
+  }
+}
+
+@keyframes slideMenuIn {
+  from {
+    transform: translateX(-18px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
   }
 }
