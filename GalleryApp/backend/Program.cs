@@ -74,67 +74,9 @@ public class Program
             var normalizedPageSize = Math.Clamp(pageSize ?? 36, 1, 100);
             var normalizedPage = Math.Max(page ?? 1, 1);
             var searchCriteria = ParseMediaSearchCriteria(search);
-            var metadataByPath = LoadMediaMetadataByPath(connectionString, searchCriteria);
+            var allFiles = LoadMediaItems(connectionString, mediaRootPath, searchCriteria, favoritesOnly: false);
 
-            if (!Directory.Exists(mediaRootPath))
-            {
-                Directory.CreateDirectory(mediaRootPath);
-                return Results.Ok(new
-                {
-                    page = 1,
-                    pageSize = normalizedPageSize,
-                    totalCount = 0,
-                    totalPages = 0,
-                    files = Array.Empty<object>()
-                });
-            }
-
-            var allFiles = Directory
-                .EnumerateFiles(mediaRootPath, "*", SearchOption.AllDirectories)
-                .Where(path =>
-                {
-                    return IsAllowedMediaFile(path);
-                })
-                .Select(path =>
-                {
-                    var relativePath = Path.GetRelativePath(mediaRootPath, path).Replace("\\", "/");
-                    metadataByPath.TryGetValue(relativePath, out var metadata);
-                    if (searchCriteria.HasFilters && metadata is null)
-                    {
-                        return null;
-                    }
-
-                    var extension = Path.GetExtension(path);
-                    var mediaType = IsImageFile(extension) ? "image" : IsVideoFile(extension) ? "video" : "file";
-                    var fileInfo = new FileInfo(path);
-                    var originalUrl = BuildMediaUrl(relativePath);
-                    var tileUrl = BuildTileUrl(relativePath, extension, fileInfo.LastWriteTimeUtc.Ticks);
-
-                    return new
-                    {
-                        id = metadata?.Id,
-                        name = Path.GetFileName(path),
-                        relativePath,
-                        title = metadata?.Title,
-                        description = metadata?.Description,
-                        source = metadata?.Source,
-                        tags = metadata?.Tags ?? Array.Empty<MediaTag>(),
-                        parent = metadata?.Parent,
-                        child = metadata?.Child,
-                        isFavorite = metadata?.IsFavorite ?? false,
-                        originalUrl,
-                        tileUrl,
-                        mediaType,
-                        sizeBytes = fileInfo.Length,
-                        modifiedAtUtc = fileInfo.LastWriteTimeUtc
-                    };
-                })
-                .Where(file => file is not null)
-                .Select(file => file!)
-                .OrderByDescending(file => file.modifiedAtUtc)
-                .ToArray();
-
-            var totalCount = allFiles.Length;
+            var totalCount = allFiles.Count;
             var totalPages = totalCount == 0
                 ? 0
                 : (int)Math.Ceiling(totalCount / (double)normalizedPageSize);
@@ -161,67 +103,9 @@ public class Program
         {
             var normalizedPageSize = Math.Clamp(pageSize ?? 36, 1, 100);
             var normalizedPage = Math.Max(page ?? 1, 1);
-            var metadataByPath = LoadMediaMetadataByPath(connectionString);
+            var allFiles = LoadMediaItems(connectionString, mediaRootPath, criteria: null, favoritesOnly: true);
 
-            if (!Directory.Exists(mediaRootPath))
-            {
-                Directory.CreateDirectory(mediaRootPath);
-                return Results.Ok(new
-                {
-                    page = 1,
-                    pageSize = normalizedPageSize,
-                    totalCount = 0,
-                    totalPages = 0,
-                    files = Array.Empty<object>()
-                });
-            }
-
-            var allFiles = Directory
-                .EnumerateFiles(mediaRootPath, "*", SearchOption.AllDirectories)
-                .Where(path =>
-                {
-                    return IsAllowedMediaFile(path);
-                })
-                .Select(path =>
-                {
-                    var relativePath = Path.GetRelativePath(mediaRootPath, path).Replace("\\", "/");
-                    metadataByPath.TryGetValue(relativePath, out var metadata);
-                    if (metadata is null || !metadata.IsFavorite)
-                    {
-                        return null;
-                    }
-
-                    var extension = Path.GetExtension(path);
-                    var mediaType = IsImageFile(extension) ? "image" : IsVideoFile(extension) ? "video" : "file";
-                    var fileInfo = new FileInfo(path);
-                    var originalUrl = BuildMediaUrl(relativePath);
-                    var tileUrl = BuildTileUrl(relativePath, extension, fileInfo.LastWriteTimeUtc.Ticks);
-
-                    return new
-                    {
-                        id = metadata.Id,
-                        name = Path.GetFileName(path),
-                        relativePath,
-                        title = metadata.Title,
-                        description = metadata.Description,
-                        source = metadata.Source,
-                        tags = metadata.Tags,
-                        parent = metadata.Parent,
-                        child = metadata.Child,
-                        isFavorite = true,
-                        originalUrl,
-                        tileUrl,
-                        mediaType,
-                        sizeBytes = fileInfo.Length,
-                        modifiedAtUtc = fileInfo.LastWriteTimeUtc
-                    };
-                })
-                .Where(file => file is not null)
-                .Select(file => file!)
-                .OrderByDescending(file => file.modifiedAtUtc)
-                .ToArray();
-
-            var totalCount = allFiles.Length;
+            var totalCount = allFiles.Count;
             var totalPages = totalCount == 0
                 ? 0
                 : (int)Math.Ceiling(totalCount / (double)normalizedPageSize);
@@ -1548,17 +1432,19 @@ public class Program
         return tags;
     }
 
-    private static Dictionary<string, MediaMetadata> LoadMediaMetadataByPath(
+    private static List<object> LoadMediaItems(
         string connectionString,
-        MediaSearchCriteria? criteria = null)
+        string mediaRootPath,
+        MediaSearchCriteria? criteria = null,
+        bool favoritesOnly = false)
     {
-        var result = new Dictionary<string, MediaMetadata>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<object>();
 
         using var connection = new SqliteConnection(connectionString);
         connection.Open();
 
         using var command = connection.CreateCommand();
-        var whereClauses = BuildMediaSearchWhereClauses(command, criteria);
+        var whereClauses = BuildMediaSearchWhereClauses(command, criteria, favoritesOnly);
         var whereSql = whereClauses.Count == 0
             ? string.Empty
             : $"{Environment.NewLine}            WHERE {string.Join($"{Environment.NewLine}              AND ", whereClauses)}";
@@ -1592,7 +1478,8 @@ public class Program
                     INNER JOIN TagTypes tt ON tt.Id = t.TagTypeId
                     WHERE mt.MediaId = m.Id
                 ), '[]') AS TagsJson
-            FROM Media m{whereSql};
+            FROM Media m{whereSql}
+            ORDER BY m.Id DESC;
             """;
 
         using var reader = command.ExecuteReader();
@@ -1605,9 +1492,28 @@ public class Program
             }
 
             var normalizedPath = path.Replace("\\", "/");
+            var normalizedRelativePath = normalizedPath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+            var rootPath = Path.GetFullPath(mediaRootPath + Path.DirectorySeparatorChar);
+            var absolutePath = Path.GetFullPath(Path.Combine(mediaRootPath, normalizedRelativePath));
+            if (!absolutePath.StartsWith(rootPath, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var extension = Path.GetExtension(absolutePath);
+            if (!File.Exists(absolutePath) || !IsAllowedMediaFile(absolutePath))
+            {
+                continue;
+            }
+
+            var fileInfo = new FileInfo(absolutePath);
+            var mediaType = IsImageFile(extension) ? "image" : IsVideoFile(extension) ? "video" : "file";
+            var originalUrl = BuildMediaUrl(normalizedPath);
+            var tileUrl = BuildTileUrl(normalizedPath, extension, fileInfo.LastWriteTimeUtc.Ticks);
             var tags = ParseMediaTagsJson(reader.IsDBNull(8) ? "[]" : reader.GetString(8));
-            result[normalizedPath] = new MediaMetadata(
+            var item = new MediaMetadata(
                 Id: reader.GetInt64(0),
+                RelativePath: normalizedPath,
                 Title: reader.IsDBNull(2) ? null : reader.GetString(2),
                 Description: reader.IsDBNull(3) ? null : reader.GetString(3),
                 Source: reader.IsDBNull(4) ? null : reader.GetString(4),
@@ -1615,14 +1521,48 @@ public class Program
                 Child: reader.IsDBNull(6) ? null : reader.GetInt64(6),
                 IsFavorite: !reader.IsDBNull(7) && reader.GetInt64(7) == 1,
                 Tags: tags);
+
+            result.Add(new
+            {
+                id = item.Id,
+                name = Path.GetFileName(normalizedPath),
+                relativePath = item.RelativePath,
+                title = item.Title,
+                description = item.Description,
+                source = item.Source,
+                tags = item.Tags,
+                parent = item.Parent,
+                child = item.Child,
+                isFavorite = item.IsFavorite,
+                originalUrl,
+                tileUrl,
+                mediaType,
+                sizeBytes = fileInfo.Length,
+                modifiedAtUtc = fileInfo.LastWriteTimeUtc
+            });
         }
 
         return result;
     }
 
-    private static List<string> BuildMediaSearchWhereClauses(SqliteCommand command, MediaSearchCriteria? criteria)
+    private static List<string> BuildMediaSearchWhereClauses(
+        SqliteCommand command,
+        MediaSearchCriteria? criteria,
+        bool favoritesOnly = false)
     {
         var whereClauses = new List<string>();
+        if (favoritesOnly)
+        {
+            whereClauses.Add("""
+                EXISTS (
+                    SELECT 1
+                    FROM CollectionsMedia cm
+                    INNER JOIN Collections c ON c.Id = cm.CollectionId
+                    WHERE cm.MediaId = m.Id AND c.Lable = 'Favorites'
+                )
+                """);
+        }
+
         if (criteria is null || !criteria.HasFilters)
         {
             return whereClauses;
@@ -1922,6 +1862,7 @@ public class Program
 
     private sealed record MediaMetadata(
         long Id,
+        string RelativePath,
         string? Title,
         string? Description,
         string? Source,
