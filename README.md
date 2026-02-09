@@ -13,6 +13,8 @@ GalleryApp/
     GalleryApp.Api.csproj
     appsettings.json
     App_Data/
+      Media/
+        YYYY-MM-DD/
   frontend/
     src/
     package.json
@@ -20,20 +22,54 @@ GalleryApp/
 run-app.ps1
 ```
 
+## Функціонал на зараз
+
+- Головна сторінка з верхньою панеллю:
+  - `Gallery` (перехід на `/`)
+  - поле вводу + кнопка `Send`
+  - кнопка `Upload`
+- Модальне вікно upload:
+  - drag-and-drop або вибір файлів по кліку
+  - можливість виключати окремі файли зі списку
+  - підсвітка проблемних (непідтримуваних) файлів
+- Backend endpoint `POST /api/upload`:
+  - приймає `multipart/form-data` (поле `files`)
+  - зберігає медіа у `GalleryApp/backend/App_Data/Media/<yyyy-MM-dd>/`
+  - база даних для upload не використовується
+
+## Вимоги
+
+- `.NET SDK 9`
+- `Node.js + npm`
+
 ## Запуск
 
-1. Переконайся, що встановлені:
-   - `.NET SDK 9`
-   - `Node.js + npm`
-2. Запусти з кореня репозиторію:
+Запускати з кореня репозиторію.
+
+### 1) Локально на цій машині
 
 ```powershell
-.\run-app.ps1
+.\run-app.ps1 -Mode machine
 ```
 
-Скрипт автоматично:
-- запускає backend на `http://localhost:5000`
-- запускає frontend на `http://localhost:5173`
-- відкриває браузер з фронтендом
+### 2) Локально в мережі (LAN)
 
-Зупинка: `Ctrl+C` у тому ж терміналі.
+```powershell
+.\run-app.ps1 -Mode network
+```
+
+У цьому режимі застосунок слухає мережеві інтерфейси (`0.0.0.0`), а в терміналі показується LAN-адреса для підключення з інших пристроїв.
+
+Під час запуску скрипт виводить:
+- поточний режим (`Local Machine` або `Local Network`)
+- URL frontend та backend
+- для LAN-режиму: коротку інструкцію підключення
+
+## Зупинка
+
+`Ctrl+C` у тому ж терміналі.
+
+## Підтримувані типи медіа для upload
+
+Зображення: `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.bmp`, `.svg`  
+Відео: `.mp4`, `.webm`, `.mov`, `.avi`, `.mkv`, `.m4v`
