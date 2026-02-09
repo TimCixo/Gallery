@@ -59,6 +59,7 @@ public class Program
         {
             var normalizedPageSize = Math.Clamp(pageSize ?? 36, 1, 100);
             var normalizedPage = Math.Max(page ?? 1, 1);
+            var metadataByPath = LoadMediaMetadataByPath(connectionString);
 
             if (!Directory.Exists(mediaRootPath))
             {
@@ -82,6 +83,7 @@ public class Program
                 .Select(path =>
                 {
                     var relativePath = Path.GetRelativePath(mediaRootPath, path).Replace("\\", "/");
+                    metadataByPath.TryGetValue(relativePath, out var metadata);
                     var extension = Path.GetExtension(path);
                     var mediaType = IsImageFile(extension) ? "image" : IsVideoFile(extension) ? "video" : "file";
                     var fileInfo = new FileInfo(path);
@@ -90,8 +92,14 @@ public class Program
 
                     return new
                     {
+                        id = metadata?.Id,
                         name = Path.GetFileName(path),
                         relativePath,
+                        title = metadata?.Title,
+                        description = metadata?.Description,
+                        source = metadata?.Source,
+                        parent = metadata?.Parent,
+                        child = metadata?.Child,
                         originalUrl,
                         tileUrl,
                         mediaType,
@@ -644,5 +652,48 @@ public class Program
         command.ExecuteNonQuery();
     }
 
+    private static Dictionary<string, MediaMetadata> LoadMediaMetadataByPath(string connectionString)
+    {
+        var result = new Dictionary<string, MediaMetadata>(StringComparer.OrdinalIgnoreCase);
+
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Id, Path, Title, Description, Source, Parent, Child
+            FROM Media;
+            """;
+
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var path = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                continue;
+            }
+
+            var normalizedPath = path.Replace("\\", "/");
+            result[normalizedPath] = new MediaMetadata(
+                Id: reader.GetInt64(0),
+                Title: reader.IsDBNull(2) ? null : reader.GetString(2),
+                Description: reader.IsDBNull(3) ? null : reader.GetString(3),
+                Source: reader.IsDBNull(4) ? null : reader.GetString(4),
+                Parent: reader.IsDBNull(5) ? null : reader.GetInt64(5),
+                Child: reader.IsDBNull(6) ? null : reader.GetInt64(6));
+        }
+
+        return result;
+    }
+
     private sealed class MediaConversionException(string message) : Exception(message);
+
+    private sealed record MediaMetadata(
+        long Id,
+        string? Title,
+        string? Description,
+        string? Source,
+        long? Parent,
+        long? Child);
 }

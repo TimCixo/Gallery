@@ -643,35 +643,65 @@ function App() {
               <table className="media-meta-table">
                 <tbody>
                   <tr>
-                    <th scope="row">Id</th>
-                    <td></td>
+                    <th scope="row">Title</th>
+                    <td>{selectedMedia.title || "-"}</td>
                   </tr>
                   <tr>
-                    <th scope="row">Title</th>
-                    <td>{getDisplayName(selectedMedia.name)}</td>
+                    <th scope="row">Description</th>
+                    <td>{selectedMedia.description || "-"}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Source</th>
+                    <td>
+                      {selectedMedia.source ? (
+                        <a
+                          href={selectedMedia.source}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {selectedMedia.source}
+                        </a>
+                      ) : "-"}
+                    </td>
                   </tr>
                   <tr>
                     <th scope="row">Type</th>
                     <td>{getMediaShortType(selectedMedia)}</td>
                   </tr>
                   <tr>
-                    <th scope="row">Created At</th>
-                    <td>{formatMediaDate(selectedMedia.createdAtUtc || selectedMedia.modifiedAtUtc)}</td>
-                  </tr>
-                  <tr>
-                    <th scope="row">Tags</th>
-                    <td></td>
-                  </tr>
-                  <tr>
                     <th scope="row">Parent Link</th>
-                    <td></td>
+                    <td>{selectedMedia.parent ?? "-"}</td>
                   </tr>
                   <tr>
                     <th scope="row">Child Link</th>
-                    <td></td>
+                    <td>{selectedMedia.child ?? "-"}</td>
                   </tr>
                 </tbody>
               </table>
+
+              <details className="media-system-callout">
+                <summary className="media-system-summary">System details</summary>
+                <table className="media-system-table">
+                  <tbody>
+                    <tr>
+                      <th scope="row">Id</th>
+                      <td>{selectedMedia.id ?? "-"}</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Path</th>
+                      <td>{selectedMedia.relativePath || "-"}</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Created At</th>
+                      <td>{formatMediaDate(selectedMedia.createdAtUtc || selectedMedia.modifiedAtUtc)}</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Name</th>
+                      <td>{selectedMedia.name || "-"}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </details>
             </div>
           </div>
         </div>
