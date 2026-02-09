@@ -2,6 +2,8 @@ using System.ComponentModel;
 using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.FileProviders;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
@@ -14,6 +16,14 @@ public class Program
     public static void Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
+        builder.WebHost.ConfigureKestrel(options =>
+        {
+            options.Limits.MaxRequestBodySize = null;
+        });
+        builder.Services.Configure<FormOptions>(options =>
+        {
+            options.MultipartBodyLengthLimit = long.MaxValue;
+        });
 
         var dbPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "gallery.db");
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
@@ -305,8 +315,14 @@ public class Program
             return Results.Ok(new { id });
         });
 
-        app.MapPost("/api/upload", async (HttpRequest request) =>
+        var uploadEndpoint = app.MapPost("/api/upload", async (HttpRequest request) =>
         {
+            var maxRequestBodySizeFeature = request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
+            if (maxRequestBodySizeFeature is not null && !maxRequestBodySizeFeature.IsReadOnly)
+            {
+                maxRequestBodySizeFeature.MaxRequestBodySize = null;
+            }
+
             if (!request.HasFormContentType)
             {
                 return Results.BadRequest(new { error = "Content type must be multipart/form-data." });
@@ -405,6 +421,10 @@ public class Program
                 dateFolder = dateFolderName,
                 files = savedFiles
             });
+        });
+        uploadEndpoint.WithMetadata(new RequestFormLimitsAttribute
+        {
+            MultipartBodyLengthLimit = long.MaxValue
         });
 
         app.Run();
