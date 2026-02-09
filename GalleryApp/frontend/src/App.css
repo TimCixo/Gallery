@@ -1044,6 +1044,62 @@
   font-family: inherit;
 }
 
+.media-tagtype-edit-wrap {
+  position: relative;
+}
+
+.media-tagtype-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.32rem;
+  min-height: 2.2rem;
+  border: 1px solid #c6ccd2;
+  border-radius: 0.4rem;
+  padding: 0.28rem 0.38rem;
+  background-color: #ffffff;
+}
+
+.media-tagtype-field:focus-within {
+  border-color: #0f172a;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+
+.media-tagtype-input {
+  flex: 1 1 7rem;
+  min-width: 6rem;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #0f172a;
+  font-size: 0.86rem;
+  padding: 0.2rem 0.1rem;
+}
+
+.media-tagtype-input::placeholder {
+  color: #94a3b8;
+}
+
+.media-tag-edit-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.media-tag-pill-remove {
+  border: none;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 0.76rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.media-tag-pill-remove:hover {
+  color: #0f172a;
+}
+
 .media-edit-hint {
   display: block;
   margin-top: 0.3rem;
@@ -1157,8 +1213,6 @@
 
 .media-tag-view-pill {
   display: inline-block;
-  outline: 1px solid #94a3b8;
-  outline-offset: -1px;
   border-radius: 0.35rem;
   background-color: #f8fafc;
   padding: 0.12rem 0.4rem;

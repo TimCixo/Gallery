@@ -80,17 +80,16 @@ function App() {
   const [mediaTagCatalog, setMediaTagCatalog] = useState([]);
   const [isMediaTagCatalogLoading, setIsMediaTagCatalogLoading] = useState(false);
   const [mediaTagCatalogError, setMediaTagCatalogError] = useState("");
-  const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false);
-  const [activeTagDropdownIndex, setActiveTagDropdownIndex] = useState(-1);
-  const [tagInputCaretPosition, setTagInputCaretPosition] = useState(0);
   const [mediaDraft, setMediaDraft] = useState({
     title: "",
     description: "",
     source: "",
-    tags: "",
+    tagsByType: {},
     parent: "",
     child: ""
   });
+  const [activeTagTypeDropdownId, setActiveTagTypeDropdownId] = useState(null);
+  const [tagTypeQueryById, setTagTypeQueryById] = useState({});
   const imageExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".bmp"]);
   const videoExtensions = new Set([".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v"]);
   const backgroundUploadQueueRef = useRef([]);
@@ -99,8 +98,6 @@ function App() {
   const activeUploadTaskIdRef = useRef(null);
   const activeUploadXhrRef = useRef(null);
   const pageDragCounterRef = useRef(0);
-  const mediaTagInputRef = useRef(null);
-  const mediaTagHighlightRef = useRef(null);
   const searchInputRef = useRef(null);
   const searchHighlightRef = useRef(null);
   const mediaLoadAbortRef = useRef(null);
@@ -521,122 +518,166 @@ function App() {
       ? file.tags.filter((tag) => getTagId(tag) !== null)
       : []
   );
-  const formatMediaTagText = (file) => {
-    const names = getFileMediaTags(file)
-      .map((tag) => getMediaTagName(tag))
-      .filter(Boolean);
-    return names.join(", ");
+  const getTagTypeId = (value) => {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   };
-  const mediaTagByNameMap = (() => {
+  const parseTagNamesList = (value) => {
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => String(item || "").trim())
+        .filter(Boolean);
+    }
+
+    return String(value || "")
+      .split(/[\s,]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  };
+  const mediaTagCatalogByTypeId = (() => {
     const map = new Map();
     mediaTagCatalog.forEach((tag) => {
-      const name = getMediaTagName(tag);
-      if (!name) {
+      const tagTypeId = getTagTypeId(tag?.tagTypeId);
+      if (tagTypeId === null) {
         return;
       }
 
-      const key = name.toLowerCase();
-      if (!map.has(key)) {
-        map.set(key, []);
+      if (!map.has(tagTypeId)) {
+        map.set(tagTypeId, []);
       }
-      map.get(key).push(tag);
+
+      map.get(tagTypeId).push(tag);
     });
     return map;
   })();
-  const parseMediaTagSegments = (value) => {
-    const text = String(value || "");
-    if (!text) {
+  const buildMediaDraftTagsByType = (file) => {
+    const grouped = new Map();
+    getFileMediaTags(file).forEach((tag) => {
+      const tagTypeId = getTagTypeId(tag?.tagTypeId);
+      const tagName = getMediaTagName(tag);
+      if (tagTypeId === null || !tagName) {
+        return;
+      }
+
+      if (!grouped.has(tagTypeId)) {
+        grouped.set(tagTypeId, []);
+      }
+
+      const names = grouped.get(tagTypeId);
+      if (!names.includes(tagName)) {
+        names.push(tagName);
+      }
+    });
+
+    const draftByType = {};
+    grouped.forEach((names, tagTypeId) => {
+      draftByType[tagTypeId] = names;
+    });
+    return draftByType;
+  };
+  const getTagTypeRows = (file) => {
+    const rows = [];
+    const seen = new Set();
+
+    tagTypes.forEach((tagType) => {
+      const tagTypeId = getTagTypeId(tagType?.id);
+      if (tagTypeId === null) {
+        return;
+      }
+
+      seen.add(tagTypeId);
+      rows.push({
+        id: tagTypeId,
+        name: String(tagType?.name || "").trim() || `TagType ${tagTypeId}`,
+        color: /^#[0-9A-Fa-f]{6}$/.test(String(tagType?.color || "").trim())
+          ? String(tagType.color).trim()
+          : "#94a3b8"
+      });
+    });
+
+    getFileMediaTags(file).forEach((tag) => {
+      const tagTypeId = getTagTypeId(tag?.tagTypeId);
+      if (tagTypeId === null || seen.has(tagTypeId)) {
+        return;
+      }
+
+      seen.add(tagTypeId);
+      rows.push({
+        id: tagTypeId,
+        name: String(tag?.tagTypeName || "").trim() || `TagType ${tagTypeId}`,
+        color: getMediaTagColor(tag)
+      });
+    });
+
+    return rows;
+  };
+  const hexToRgbaSoft = (hexColor, alpha) => {
+    const value = String(hexColor || "").trim();
+    if (!/^#[0-9A-Fa-f]{6}$/.test(value)) {
+      return `rgba(148, 163, 184, ${alpha})`;
+    }
+
+    const r = Number.parseInt(value.slice(1, 3), 16);
+    const g = Number.parseInt(value.slice(3, 5), 16);
+    const b = Number.parseInt(value.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+  const getTagTypeCellStyles = (color) => ({
+    header: {
+      backgroundColor: hexToRgbaSoft(color, 0.22),
+      borderColor: hexToRgbaSoft(color, 0.5)
+    },
+    value: {
+      backgroundColor: hexToRgbaSoft(color, 0.08),
+      borderColor: hexToRgbaSoft(color, 0.35)
+    }
+  });
+  const getDraftTagNamesByType = (draftByType, tagTypeId) => {
+    if (!draftByType || typeof draftByType !== "object") {
       return [];
     }
 
-    const segments = [];
-    let index = 0;
-    while (index < text.length) {
-      if (/\s/.test(text[index])) {
-        const start = index;
-        while (index < text.length && /\s/.test(text[index])) {
-          index += 1;
-        }
-
-        segments.push({ text: text.slice(start, index), isTag: false, color: "" });
-        continue;
-      }
-
-      const tokenStart = index;
-      let tokenEnd = tokenStart;
-      while (tokenEnd < text.length && !/\s/.test(text[tokenEnd])) {
-        tokenEnd += 1;
-      }
-
-      const tokenText = text.slice(tokenStart, tokenEnd);
-      const normalizedName = tokenText.toLowerCase();
-      const exactMatches = mediaTagByNameMap.get(normalizedName) || [];
-      const partialMatches = mediaTagCatalog.filter((tag) => (
-        getMediaTagName(tag).toLowerCase().startsWith(normalizedName)
-      ));
-      const matchedTag = exactMatches[0] || partialMatches[0] || null;
-
-      segments.push({
-        text: tokenText,
-        isTag: Boolean(matchedTag),
-        color: matchedTag ? getMediaTagColor(matchedTag) : ""
-      });
-      index = tokenEnd;
-    }
-
-    return segments;
+    return Array.from(new Set(parseTagNamesList(draftByType[tagTypeId])));
   };
-  const getTagTokenRange = (text, caret) => {
-    const normalizedText = String(text || "");
-    const normalizedCaret = Math.max(0, Math.min(caret ?? normalizedText.length, normalizedText.length));
-    let start = normalizedCaret;
-    while (start > 0 && !/\s/.test(normalizedText[start - 1])) {
-      start -= 1;
-    }
+  const getTagTypeSuggestionNames = (tagTypeId, selectedNames, query) => {
+    const selected = new Set(selectedNames.map((name) => name.toLowerCase()));
+    const normalizedQuery = String(query || "").trim().toLowerCase();
+    const allNames = Array.from(new Set((mediaTagCatalogByTypeId.get(tagTypeId) || [])
+      .map((tag) => getMediaTagName(tag))
+      .filter(Boolean)));
 
-    let end = normalizedCaret;
-    while (end < normalizedText.length && !/\s/.test(normalizedText[end])) {
-      end += 1;
-    }
-
-    return {
-      start,
-      end,
-      token: normalizedText.slice(start, end),
-      tokenBeforeCaret: normalizedText.slice(start, normalizedCaret)
-    };
-  };
-  const mediaTagTokenRange = getTagTokenRange(mediaDraft.tags, tagInputCaretPosition);
-  const getTagDropdownOptions = () => {
-    const query = mediaTagTokenRange.tokenBeforeCaret.trim().toLowerCase();
-    if (!query) {
-      return mediaTagCatalog.slice(0, 40);
-    }
-
-    return mediaTagCatalog
-      .filter((tag) => {
-        const name = getMediaTagName(tag).toLowerCase();
-        const typeName = String(tag.tagTypeName || "").trim().toLowerCase();
-        return name.includes(query) || typeName.includes(query);
-      })
+    return allNames
+      .filter((name) => !selected.has(name.toLowerCase()))
+      .filter((name) => (normalizedQuery ? name.toLowerCase().includes(normalizedQuery) : true))
       .slice(0, 40);
   };
-  const syncMediaTagHighlightScroll = () => {
-    if (!mediaTagInputRef.current || !mediaTagHighlightRef.current) {
+  const addTagToDraftByType = (tagTypeId, tagName, draftByType, onDraftChange) => {
+    const normalized = String(tagName || "").trim();
+    if (!normalized) {
       return;
     }
 
-    mediaTagHighlightRef.current.scrollTop = mediaTagInputRef.current.scrollTop;
-    mediaTagHighlightRef.current.scrollLeft = mediaTagInputRef.current.scrollLeft;
+    const current = getDraftTagNamesByType(draftByType, tagTypeId);
+    if (current.some((name) => name.toLowerCase() === normalized.toLowerCase())) {
+      return;
+    }
+
+    onDraftChange({
+      tagsByType: {
+        ...draftByType,
+        [tagTypeId]: [...current, normalized]
+      }
+    });
   };
-  const resizeMediaTagInput = () => {
-    if (!mediaTagInputRef.current) {
-      return;
-    }
-
-    mediaTagInputRef.current.style.height = "auto";
-    mediaTagInputRef.current.style.height = `${Math.max(74, mediaTagInputRef.current.scrollHeight)}px`;
-    syncMediaTagHighlightScroll();
+  const removeTagFromDraftByType = (tagTypeId, tagName, draftByType, onDraftChange) => {
+    const current = getDraftTagNamesByType(draftByType, tagTypeId);
+    const next = current.filter((name) => name.toLowerCase() !== String(tagName || "").toLowerCase());
+    onDraftChange({
+      tagsByType: {
+        ...draftByType,
+        [tagTypeId]: next
+      }
+    });
   };
   const renderMediaMetaTable = ({
     file,
@@ -644,289 +685,269 @@ function App() {
     editable,
     onDraftChange,
     extraRows = null,
-    showTagsRow = false,
-    enableTagAutocomplete = false
+    showTagsRow = false
   }) => {
-    const tagDropdownOptions = getTagDropdownOptions();
-    const normalizedActiveTagIndex = (
-      activeTagDropdownIndex >= 0
-      && activeTagDropdownIndex < tagDropdownOptions.length
-    )
-      ? activeTagDropdownIndex
-      : -1;
+    const tagTypeRows = showTagsRow ? getTagTypeRows(file) : [];
+    const hasTitle = Boolean(String(file?.title || "").trim());
+    const hasDescription = Boolean(String(file?.description || "").trim());
+    const hasSource = Boolean(String(file?.source || "").trim());
+    const hasParent = file?.parent != null;
+    const hasChild = file?.child != null;
 
     return (
       <table className="media-meta-table">
       <tbody>
         {extraRows}
-        <tr>
-          <th scope="row">Title</th>
-          <td>
-            {editable ? (
-              <input
-                type="text"
-                className="media-edit-input"
-                value={draft.title}
-                onChange={(event) => onDraftChange({ title: event.target.value })}
-              />
-            ) : (file?.title || "-")}
-          </td>
-        </tr>
-        <tr>
-          <th scope="row">Description</th>
-          <td>
-            {editable ? (
-              <textarea
-                className="media-edit-input media-edit-textarea"
-                value={draft.description}
-                onChange={(event) => onDraftChange({ description: event.target.value })}
-              />
-            ) : (file?.description || "-")}
-          </td>
-        </tr>
-        <tr>
-          <th scope="row">Source</th>
-          <td>
-            {editable ? (
-              <input
-                type="text"
-                className="media-edit-input"
-                value={draft.source}
-                onChange={(event) => onDraftChange({ source: event.target.value })}
-              />
-            ) : file?.source ? (
-              <a
-                href={file.source}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {file.source}
-              </a>
-            ) : "-"}
-          </td>
-        </tr>
-        <tr>
-          <th scope="row">Type</th>
-          <td>{getMediaShortType(file)}</td>
-        </tr>
-        {showTagsRow ? (
+        {editable || hasTitle ? (
           <tr>
-            <th scope="row">Tags</th>
+            <th scope="row">Title</th>
             <td>
-              {editable && enableTagAutocomplete ? (
-                <div className="media-tag-input-wrap">
-                  <div className="media-tag-editor-wrap">
-                    <div
-                      className="media-tag-input-highlight"
-                      ref={mediaTagHighlightRef}
-                      aria-hidden="true"
-                    >
-                      {parseMediaTagSegments(draft.tags).length > 0 ? (
-                        parseMediaTagSegments(draft.tags).map((segment, index) => (
-                          <span
-                            key={`${segment.text}-${index}`}
-                            className={segment.isTag ? "top-input-segment is-tag" : "top-input-segment"}
-                            style={segment.isTag ? { outlineColor: segment.color } : undefined}
-                          >
-                            {segment.text}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="top-input-placeholder">Type tags separated by space</span>
-                      )}
-                    </div>
-                    <textarea
-                      className="media-tag-input"
-                      ref={mediaTagInputRef}
-                      value={draft.tags}
-                      onFocus={() => {
-                        resizeMediaTagInput();
-                        setIsTagDropdownOpen(true);
-                        setActiveTagDropdownIndex(tagDropdownOptions.length > 0 ? 0 : -1);
-                      }}
-                      onBlur={() => window.setTimeout(() => {
-                        setIsTagDropdownOpen(false);
-                        setActiveTagDropdownIndex(-1);
-                      }, 120)}
-                      onChange={(event) => {
-                        onDraftChange({ tags: event.target.value });
-                        const caretPosition = event.target.selectionStart ?? event.target.value.length;
-                        setTagInputCaretPosition(caretPosition);
-                        setIsTagDropdownOpen(true);
-                        setActiveTagDropdownIndex(0);
-                        resizeMediaTagInput();
-                      }}
-                      onScroll={syncMediaTagHighlightScroll}
-                      onClick={(event) => setTagInputCaretPosition(event.currentTarget.selectionStart ?? 0)}
-                      onKeyUp={(event) => setTagInputCaretPosition(event.currentTarget.selectionStart ?? 0)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Escape") {
-                          setIsTagDropdownOpen(false);
-                          setActiveTagDropdownIndex(-1);
-                          return;
-                        }
-
-                        if (tagDropdownOptions.length === 0) {
-                          return;
-                        }
-
-                        if (event.key === "ArrowDown") {
-                          event.preventDefault();
-                          setIsTagDropdownOpen(true);
-                          setActiveTagDropdownIndex((current) => {
-                            if (current < 0) {
-                              return 0;
-                            }
-
-                            return (current + 1) % tagDropdownOptions.length;
-                          });
-                          return;
-                        }
-
-                        if (event.key === "ArrowUp") {
-                          event.preventDefault();
-                          setIsTagDropdownOpen(true);
-                          setActiveTagDropdownIndex((current) => {
-                            if (current < 0) {
-                              return tagDropdownOptions.length - 1;
-                            }
-
-                            return (current - 1 + tagDropdownOptions.length) % tagDropdownOptions.length;
-                          });
-                          return;
-                        }
-
-                        if (event.key === "Enter" && isTagDropdownOpen && normalizedActiveTagIndex >= 0) {
-                          event.preventDefault();
-                          const selected = tagDropdownOptions[normalizedActiveTagIndex];
-                          if (!selected) {
-                            return;
-                          }
-
-                          const prefix = draft.tags.slice(0, mediaTagTokenRange.start);
-                          const suffix = draft.tags.slice(mediaTagTokenRange.end);
-                          const spacer = suffix.startsWith(" ") || suffix.length === 0 ? " " : "";
-                          const nextValue = `${prefix}${getMediaTagName(selected)}${spacer}${suffix}`;
-                          const nextCaret = prefix.length + getMediaTagName(selected).length + spacer.length;
-                          onDraftChange({ tags: nextValue });
-                          setIsTagDropdownOpen(true);
-                          setActiveTagDropdownIndex(0);
-                          setTagInputCaretPosition(nextCaret);
-                          requestAnimationFrame(() => {
-                            if (!mediaTagInputRef.current) {
-                              return;
-                            }
-
-                            mediaTagInputRef.current.focus();
-                            mediaTagInputRef.current.setSelectionRange(nextCaret, nextCaret);
-                            resizeMediaTagInput();
-                          });
-                        }
-                      }}
-                      placeholder="Type tags separated by space"
-                    />
-                  </div>
-
-                  {isTagDropdownOpen ? (
-                    <ul className="media-tag-dropdown">
-                      {tagDropdownOptions.length > 0 ? (
-                        tagDropdownOptions.map((item, index) => (
-                          <li key={item.id}>
-                            <button
-                              type="button"
-                              className={`media-tag-dropdown-item${normalizedActiveTagIndex === index ? " is-active" : ""}`}
-                              onMouseDown={(event) => event.preventDefault()}
-                              onMouseEnter={() => setActiveTagDropdownIndex(index)}
-                              onClick={() => {
-                                const prefix = draft.tags.slice(0, mediaTagTokenRange.start);
-                                const suffix = draft.tags.slice(mediaTagTokenRange.end);
-                                const spacer = suffix.startsWith(" ") || suffix.length === 0 ? " " : "";
-                                const nextValue = `${prefix}${getMediaTagName(item)}${spacer}${suffix}`;
-                                const nextCaret = prefix.length + getMediaTagName(item).length + spacer.length;
-                                onDraftChange({ tags: nextValue });
-                                setIsTagDropdownOpen(true);
-                                setActiveTagDropdownIndex(0);
-                                setTagInputCaretPosition(nextCaret);
-                                requestAnimationFrame(() => {
-                                  if (!mediaTagInputRef.current) {
-                                    return;
-                                  }
-
-                                  mediaTagInputRef.current.focus();
-                                  mediaTagInputRef.current.setSelectionRange(nextCaret, nextCaret);
-                                  resizeMediaTagInput();
-                                });
-                              }}
-                            >
-                              <span>{getMediaTagName(item)}</span>
-                            </button>
-                          </li>
-                        ))
-                      ) : (
-                        <li className="media-tag-dropdown-empty">No matches</li>
-                      )}
-                    </ul>
-                  ) : null}
-
-                  {isMediaTagCatalogLoading ? <small className="media-edit-hint">Loading tags...</small> : null}
-                  {mediaTagCatalogError ? <small className="media-action-error">{mediaTagCatalogError}</small> : null}
-                </div>
-              ) : getFileMediaTags(file).length > 0 ? (
-                <div className="media-tag-view-list">
-                  {getFileMediaTags(file).map((tag) => {
-                    const id = getTagId(tag);
-                    if (id === null) {
-                      return null;
-                    }
-
-                    return (
-                      <span
-                        key={id}
-                        className="media-tag-view-pill"
-                        style={{ outlineColor: getMediaTagColor(tag) }}
-                        title={String(tag.tagTypeName || "")}
-                      >
-                        {getMediaTagName(tag)}
-                      </span>
-                    );
-                  })}
-                </div>
-              ) : (
-                <span>-</span>
-              )}
+              {editable ? (
+                <input
+                  type="text"
+                  className="media-edit-input"
+                  value={draft.title}
+                  onChange={(event) => onDraftChange({ title: event.target.value })}
+                />
+              ) : (file?.title || "-")}
             </td>
           </tr>
         ) : null}
-        <tr>
-          <th scope="row">Parent Link</th>
-          <td>
-            {editable ? (
-              <input
-                type="number"
-                min="1"
-                step="1"
-                className="media-edit-input"
-                value={draft.parent}
-                onChange={(event) => onDraftChange({ parent: event.target.value })}
-              />
-            ) : (file?.parent ?? "-")}
-          </td>
-        </tr>
-        <tr>
-          <th scope="row">Child Link</th>
-          <td>
-            {editable ? (
-              <input
-                type="number"
-                min="1"
-                step="1"
-                className="media-edit-input"
-                value={draft.child}
-                onChange={(event) => onDraftChange({ child: event.target.value })}
-              />
-            ) : (file?.child ?? "-")}
-          </td>
-        </tr>
+        {editable || hasDescription ? (
+          <tr>
+            <th scope="row">Description</th>
+            <td>
+              {editable ? (
+                <textarea
+                  className="media-edit-input media-edit-textarea"
+                  value={draft.description}
+                  onChange={(event) => onDraftChange({ description: event.target.value })}
+                />
+              ) : (file?.description || "-")}
+            </td>
+          </tr>
+        ) : null}
+        {editable || hasSource ? (
+          <tr>
+            <th scope="row">Source</th>
+            <td>
+              {editable ? (
+                <input
+                  type="text"
+                  className="media-edit-input"
+                  value={draft.source}
+                  onChange={(event) => onDraftChange({ source: event.target.value })}
+                />
+              ) : file?.source ? (
+                <a
+                  href={file.source}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {file.source}
+                </a>
+              ) : "-"}
+            </td>
+          </tr>
+        ) : null}
+        {showTagsRow ? (
+          <>
+            {tagTypeRows.map((tagType) => {
+              const cellStyles = getTagTypeCellStyles(tagType.color);
+              const typeTags = getFileMediaTags(file).filter((tag) => getTagTypeId(tag?.tagTypeId) === tagType.id);
+              const draftByType = draft?.tagsByType && typeof draft.tagsByType === "object"
+                ? draft.tagsByType
+                : {};
+              const draftValue = getDraftTagNamesByType(draftByType, tagType.id);
+              const inputValue = String(tagTypeQueryById[tagType.id] || "");
+              const suggestions = getTagTypeSuggestionNames(tagType.id, draftValue, inputValue);
+
+              if (!editable && typeTags.length === 0) {
+                return null;
+              }
+
+              return (
+                <tr key={tagType.id} className="media-tagtype-row">
+                  <th scope="row" style={cellStyles.header}>{tagType.name}</th>
+                  <td style={cellStyles.value}>
+                    {editable ? (
+                      <div className="media-tagtype-edit-wrap">
+                        <div
+                          className="media-tagtype-field"
+                          onMouseDown={(event) => {
+                            if (event.target instanceof HTMLElement && event.target.tagName === "BUTTON") {
+                              return;
+                            }
+
+                            const input = event.currentTarget.querySelector("input");
+                            if (input instanceof HTMLInputElement) {
+                              input.focus();
+                            }
+                          }}
+                        >
+                          {draftValue.map((name) => (
+                            <span key={`${tagType.id}-${name}`} className="media-tag-view-pill media-tag-edit-pill">
+                              <span>{name}</span>
+                              <button
+                                type="button"
+                                className="media-tag-pill-remove"
+                                aria-label={`Remove ${name}`}
+                                onClick={() => removeTagFromDraftByType(tagType.id, name, draftByType, onDraftChange)}
+                              >
+                                x
+                              </button>
+                            </span>
+                          ))}
+                          <input
+                            type="text"
+                            className="media-tagtype-input"
+                            value={inputValue}
+                            onFocus={() => setActiveTagTypeDropdownId(tagType.id)}
+                            onBlur={() => {
+                              window.setTimeout(() => {
+                                setActiveTagTypeDropdownId((current) => (current === tagType.id ? null : current));
+                              }, 120);
+                            }}
+                            onChange={(event) => {
+                              setTagTypeQueryById((current) => ({
+                                ...current,
+                                [tagType.id]: event.target.value
+                              }));
+                              setActiveTagTypeDropdownId(tagType.id);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Escape") {
+                                setActiveTagTypeDropdownId(null);
+                                return;
+                              }
+
+                              if (event.key === "Backspace" && !inputValue && draftValue.length > 0) {
+                                event.preventDefault();
+                                removeTagFromDraftByType(
+                                  tagType.id,
+                                  draftValue[draftValue.length - 1],
+                                  draftByType,
+                                  onDraftChange
+                                );
+                                return;
+                              }
+
+                              if ((event.key === "Enter" || event.key === "Tab") && suggestions.length > 0) {
+                                event.preventDefault();
+                                addTagToDraftByType(tagType.id, suggestions[0], draftByType, onDraftChange);
+                                setTagTypeQueryById((current) => ({
+                                  ...current,
+                                  [tagType.id]: ""
+                                }));
+                                setActiveTagTypeDropdownId(tagType.id);
+                              }
+                            }}
+                            placeholder="Add tag..."
+                          />
+                        </div>
+
+                        {activeTagTypeDropdownId === tagType.id ? (
+                          <ul className="media-tag-dropdown">
+                            {suggestions.length > 0 ? (
+                              suggestions.map((name) => (
+                                <li key={`${tagType.id}-suggestion-${name}`}>
+                                  <button
+                                    type="button"
+                                    className="media-tag-dropdown-item"
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => {
+                                      addTagToDraftByType(tagType.id, name, draftByType, onDraftChange);
+                                      setTagTypeQueryById((current) => ({
+                                        ...current,
+                                        [tagType.id]: ""
+                                      }));
+                                      setActiveTagTypeDropdownId(tagType.id);
+                                    }}
+                                  >
+                                    <span>{name}</span>
+                                  </button>
+                                </li>
+                              ))
+                            ) : (
+                              <li className="media-tag-dropdown-empty">No matches</li>
+                            )}
+                          </ul>
+                        ) : null}
+                      </div>
+                    ) : typeTags.length > 0 ? (
+                      <div className="media-tag-view-list">
+                        {typeTags.map((tag) => {
+                          const id = getTagId(tag);
+                          if (id === null) {
+                            return null;
+                          }
+
+                          return (
+                            <span
+                              key={id}
+                              className="media-tag-view-pill"
+                              title={String(tag.tagTypeName || "")}
+                            >
+                              {getMediaTagName(tag)}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <span>-</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {editable && isMediaTagCatalogLoading ? (
+              <tr>
+                <th scope="row">Tags</th>
+                <td><small className="media-edit-hint">Loading tags...</small></td>
+              </tr>
+            ) : null}
+            {editable && mediaTagCatalogError ? (
+              <tr>
+                <th scope="row">Tags</th>
+                <td><small className="media-action-error">{mediaTagCatalogError}</small></td>
+              </tr>
+            ) : null}
+          </>
+        ) : null}
+        {editable || hasParent ? (
+          <tr>
+            <th scope="row">Parent Link</th>
+            <td>
+              {editable ? (
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  className="media-edit-input"
+                  value={draft.parent}
+                  onChange={(event) => onDraftChange({ parent: event.target.value })}
+                />
+              ) : (file?.parent ?? "-")}
+            </td>
+          </tr>
+        ) : null}
+        {editable || hasChild ? (
+          <tr>
+            <th scope="row">Child Link</th>
+            <td>
+              {editable ? (
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  className="media-edit-input"
+                  value={draft.child}
+                  onChange={(event) => onDraftChange({ child: event.target.value })}
+                />
+              ) : (file?.child ?? "-")}
+            </td>
+          </tr>
+        ) : null}
       </tbody>
       </table>
     );
@@ -948,7 +969,7 @@ function App() {
     title: file?.title || "",
     description: file?.description || "",
     source: file?.source || "",
-    tags: formatMediaTagText(file),
+    tagsByType: buildMediaDraftTagsByType(file),
     parent: file?.parent == null ? "" : String(file.parent),
     child: file?.child == null ? "" : String(file.child)
   });
@@ -1049,9 +1070,8 @@ function App() {
     setShowDeleteConfirm(false);
     setMediaModalError("");
     setIsFavoriteUpdating(false);
-    setIsTagDropdownOpen(false);
-    setActiveTagDropdownIndex(-1);
-    setTagInputCaretPosition(0);
+    setActiveTagTypeDropdownId(null);
+    setTagTypeQueryById({});
     setMediaDraft(createMediaDraft(selectedMedia));
     void loadMediaTagCatalog();
 
@@ -1064,10 +1084,6 @@ function App() {
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   }, [selectedMedia]);
-
-  useEffect(() => {
-    resizeMediaTagInput();
-  }, [mediaDraft.tags, isEditingMedia]);
 
   useEffect(() => {
     if (!isUploadOpen) {
@@ -1787,30 +1803,50 @@ function App() {
 
     return parsed;
   };
-  const parseMediaTagIds = (value) => {
-    const names = String(value || "")
-      .split(/[\s,]+/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-    if (names.length === 0) {
+  const parseMediaTagIdsByType = (tagsByType) => {
+    if (!tagsByType || typeof tagsByType !== "object") {
       return [];
     }
 
     const result = [];
     const seen = new Set();
-    for (const name of names) {
-      const matches = mediaTagByNameMap.get(name.toLowerCase()) || [];
-      if (matches.length === 0) {
-        throw new Error(`Tag "${name}" not found.`);
-      }
-
-      const tagId = getTagId(matches[0]);
-      if (tagId === null || seen.has(tagId)) {
+    for (const [tagTypeIdRaw, value] of Object.entries(tagsByType)) {
+      const tagTypeId = getTagTypeId(tagTypeIdRaw);
+      if (tagTypeId === null) {
         continue;
       }
 
-      seen.add(tagId);
-      result.push(tagId);
+      const names = parseTagNamesList(value);
+      if (names.length === 0) {
+        continue;
+      }
+
+      const catalog = mediaTagCatalogByTypeId.get(tagTypeId) || [];
+      const byName = new Map();
+      catalog.forEach((tag) => {
+        const tagName = getMediaTagName(tag).toLowerCase();
+        if (!tagName || byName.has(tagName)) {
+          return;
+        }
+        byName.set(tagName, tag);
+      });
+
+      const tagTypeRow = tagTypes.find((item) => getTagTypeId(item?.id) === tagTypeId);
+      const tagTypeLabel = String(tagTypeRow?.name || `TagType ${tagTypeId}`);
+      for (const name of names) {
+        const match = byName.get(name.toLowerCase());
+        if (!match) {
+          throw new Error(`Tag "${name}" not found in ${tagTypeLabel}.`);
+        }
+
+        const tagId = getTagId(match);
+        if (tagId === null || seen.has(tagId)) {
+          continue;
+        }
+
+        seen.add(tagId);
+        result.push(tagId);
+      }
     }
 
     return result;
@@ -1836,19 +1872,17 @@ function App() {
 
     setMediaModalError("");
     setShowDeleteConfirm(false);
-    setIsTagDropdownOpen(false);
-    setActiveTagDropdownIndex(-1);
-    setTagInputCaretPosition(0);
     setMediaDraft(createMediaDraft(selectedMedia));
+    setActiveTagTypeDropdownId(null);
+    setTagTypeQueryById({});
     setIsEditingMedia(true);
   };
 
   const handleCancelEditMedia = () => {
     setIsEditingMedia(false);
-    setIsTagDropdownOpen(false);
-    setActiveTagDropdownIndex(-1);
-    setTagInputCaretPosition(0);
     setMediaModalError("");
+    setActiveTagTypeDropdownId(null);
+    setTagTypeQueryById({});
     setMediaDraft(createMediaDraft(selectedMedia));
   };
 
@@ -1866,7 +1900,7 @@ function App() {
     try {
       parent = parseNullableId(mediaDraft.parent, "Parent");
       child = parseNullableId(mediaDraft.child, "Child");
-      tagIds = parseMediaTagIds(mediaDraft.tags);
+      tagIds = parseMediaTagIdsByType(mediaDraft.tagsByType);
     } catch (error) {
       setMediaModalError(error instanceof Error ? error.message : "Validation failed.");
       return;
@@ -1925,6 +1959,8 @@ function App() {
       setMediaFiles((current) => current.map((file) => (file.id === selectedMedia.id ? { ...file, ...patch } : file)));
       setSelectedMedia((current) => (current && current.id === selectedMedia.id ? { ...current, ...patch } : current));
       setIsEditingMedia(false);
+      setActiveTagTypeDropdownId(null);
+      setTagTypeQueryById({});
     } catch (error) {
       setMediaModalError(error instanceof Error ? error.message : "Failed to update media.");
     } finally {
@@ -3228,8 +3264,7 @@ function App() {
                 draft: mediaDraft,
                 editable: isEditingMedia,
                 onDraftChange: (patch) => setMediaDraft((current) => ({ ...current, ...patch })),
-                showTagsRow: true,
-                enableTagAutocomplete: true
+                showTagsRow: true
               })}
 
               <details className="media-system-callout">
