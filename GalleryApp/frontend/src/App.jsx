@@ -39,6 +39,7 @@ function App() {
   const [isDeletingMedia, setIsDeletingMedia] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [mediaModalError, setMediaModalError] = useState("");
+  const [isMediaPinned, setIsMediaPinned] = useState(true);
   const [mediaDraft, setMediaDraft] = useState({
     title: "",
     description: "",
@@ -189,6 +190,7 @@ function App() {
     setIsDeletingMedia(false);
     setShowDeleteConfirm(false);
     setMediaModalError("");
+    setIsMediaPinned(true);
     setMediaDraft(createMediaDraft(selectedMedia));
 
     const handleEsc = (event) => {
@@ -200,6 +202,74 @@ function App() {
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   }, [selectedMedia]);
+
+  useEffect(() => {
+    if (!selectedMedia) {
+      return undefined;
+    }
+
+    const canScrollInElement = (target) => {
+      if (!(target instanceof Element)) {
+        return false;
+      }
+
+      if (!isMediaPinned) {
+        const modal = target.closest(".media-modal");
+        if (modal && modal.scrollHeight > modal.clientHeight) {
+          return true;
+        }
+      }
+
+      const modalMeta = target.closest(".media-modal-meta");
+      if (modalMeta && modalMeta.scrollHeight > modalMeta.clientHeight) {
+        return true;
+      }
+
+      const confirmDialog = target.closest(".media-confirm-dialog");
+      return Boolean(confirmDialog && confirmDialog.scrollHeight > confirmDialog.clientHeight);
+    };
+
+    const handleWheel = (event) => {
+      if (!canScrollInElement(event.target)) {
+        event.preventDefault();
+      }
+    };
+
+    const handleTouchMove = (event) => {
+      if (!canScrollInElement(event.target)) {
+        event.preventDefault();
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      const blockedKeys = new Set([" ", "ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"]);
+      if (!blockedKeys.has(event.key)) {
+        return;
+      }
+
+      const activeElement = document.activeElement;
+      if (
+        activeElement instanceof HTMLElement &&
+        (activeElement.tagName === "INPUT" || activeElement.tagName === "TEXTAREA" || activeElement.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (!canScrollInElement(event.target)) {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener("wheel", handleWheel, { passive: false });
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    window.addEventListener("keydown", handleKeyDown, { passive: false });
+
+    return () => {
+      window.removeEventListener("wheel", handleWheel);
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [selectedMedia, isMediaPinned]);
 
   const handlePageChange = (nextPage) => {
     if (isMediaLoading) {
@@ -791,16 +861,25 @@ function App() {
           onClick={() => setSelectedMedia(null)}
         >
           <div
-            className="media-modal"
+            className={`media-modal${isMediaPinned ? "" : " media-modal-unpinned"}`}
             onClick={(event) => event.stopPropagation()}
           >
-            <button
-              type="button"
-              className="media-modal-close"
-              onClick={() => setSelectedMedia(null)}
-            >
-              Close
-            </button>
+            <div className="media-modal-header">
+              <button
+                type="button"
+                className="media-pin-toggle"
+                onClick={() => setIsMediaPinned((current) => !current)}
+              >
+                {isMediaPinned ? "Unpin" : "Pin"}
+              </button>
+              <button
+                type="button"
+                className="media-modal-close"
+                onClick={() => setSelectedMedia(null)}
+              >
+                Close
+              </button>
+            </div>
 
             <div className="media-modal-content">
               {isVideoFile(selectedMedia) ? (
