@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import "./App.css";
 
 function App() {
   const allowedExtensions = new Set([
@@ -142,60 +143,25 @@ function App() {
   };
 
   return (
-    <main
-      style={{
-        fontFamily: "Segoe UI, sans-serif",
-        minHeight: "100vh",
-        margin: 0,
-        backgroundColor: "#f4f6f8",
-      }}
-    >
-      <header
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr auto 1fr",
-          alignItems: "center",
-          gap: "1rem",
-          padding: "0.75rem 1rem",
-          borderBottom: "1px solid #d9dee3",
-          backgroundColor: "#ffffff",
-          position: "sticky",
-          top: 0,
-        }}
-      >
+    <main className="app-root">
+      <header className="top-header">
         <a
+          className="top-brand"
           href="/"
-          style={{
-            fontSize: "1.2rem",
-            fontWeight: 700,
-            color: "#111827",
-            textDecoration: "none",
-            justifySelf: "start",
-          }}
         >
           Gallery
         </a>
 
         <form
+          className="top-form"
           onSubmit={handleSubmit}
-          style={{
-            display: "flex",
-            gap: "0.5rem",
-            width: "min(760px, 100%)",
-            justifySelf: "center",
-          }}
         >
           <input
+            className="top-input"
             type="text"
             value={inputValue}
             onChange={(event) => setInputValue(event.target.value)}
             placeholder="Type text..."
-            style={{
-              width: "min(620px, 65vw)",
-              padding: "0.55rem 0.7rem",
-              border: "1px solid #c6ccd2",
-              borderRadius: "0.45rem",
-            }}
           />
           <button
             type="submit"
@@ -213,10 +179,10 @@ function App() {
         </form>
 
         <button
+          className="top-upload"
           type="button"
           onClick={openUploadModal}
           style={{
-            justifySelf: "end",
             fontSize: "0.8rem",
             padding: "0.4rem 0.65rem",
             border: "1px solid #c6ccd2",
@@ -373,7 +339,7 @@ function App() {
                         >
                           -
                         </button>
-                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <span className="file-name">
                           {file.name}
                         </span>
                       </div>
