@@ -1035,6 +1035,17 @@ function App() {
     parent: file?.parent == null ? "" : String(file.parent),
     child: file?.child == null ? "" : String(file.child)
   });
+  const getPagedFiles = (payload) => {
+    if (Array.isArray(payload?.files)) {
+      return payload.files;
+    }
+
+    if (Array.isArray(payload?.items)) {
+      return payload.items;
+    }
+
+    return [];
+  };
 
   useEffect(() => {
     fetch("/api/health")
@@ -1073,7 +1084,7 @@ function App() {
       if (requestId !== mediaLoadRequestIdRef.current) {
         return;
       }
-      setMediaFiles(Array.isArray(result.files) ? result.files : []);
+      setMediaFiles(getPagedFiles(result));
       setCurrentPage(Number.isInteger(result.page) ? result.page : page);
       setTotalPages(Number.isInteger(result.totalPages) ? result.totalPages : 0);
       setTotalFiles(Number.isInteger(result.totalCount) ? result.totalCount : 0);
@@ -1774,7 +1785,7 @@ function App() {
       }
 
       const result = await response.json();
-      setFavoritesFiles(Array.isArray(result.files) ? result.files : []);
+      setFavoritesFiles(getPagedFiles(result));
       setFavoritesPage(Number.isInteger(result.page) ? result.page : page);
       setFavoritesTotalPages(Number.isInteger(result.totalPages) ? result.totalPages : 0);
       setFavoritesTotalFiles(Number.isInteger(result.totalCount) ? result.totalCount : 0);
@@ -1841,7 +1852,7 @@ function App() {
       }
 
       const result = await response.json();
-      setCollectionFiles(Array.isArray(result.files) ? result.files : []);
+      setCollectionFiles(getPagedFiles(result));
       setCollectionFilesPage(Number.isInteger(result.page) ? result.page : page);
       setCollectionFilesTotalPages(Number.isInteger(result.totalPages) ? result.totalPages : 0);
       setCollectionFilesTotalCount(Number.isInteger(result.totalCount) ? result.totalCount : 0);
@@ -2438,7 +2449,7 @@ function App() {
     }
 
     const payload = await response.json();
-    const files = Array.isArray(payload?.files) ? payload.files : [];
+    const files = getPagedFiles(payload);
     return files.find((item) => item?.id === normalizedId) || null;
   };
 
@@ -2564,7 +2575,7 @@ function App() {
       }
 
       const payload = await response.json();
-      const files = Array.isArray(payload?.files) ? payload.files : [];
+      const files = getPagedFiles(payload);
       const matched = files.find((item) => item?.id === normalizedId);
       if (!matched) {
         throw new Error(`${relationLabel} media with id ${normalizedId} was not found.`);
@@ -2671,6 +2682,24 @@ function App() {
 
       setMediaFiles((current) => current.map((file) => (file.id === selectedMedia.id ? { ...file, ...patch } : file)));
       setSelectedMedia((current) => (current && current.id === selectedMedia.id ? { ...current, ...patch } : current));
+
+      const refreshedCurrentMedia = await fetchMediaById(selectedMedia.id);
+      if (refreshedCurrentMedia) {
+        setMediaFiles((current) => current.map((file) => (
+          file.id === selectedMedia.id ? { ...file, ...refreshedCurrentMedia } : file
+        )));
+        setFavoritesFiles((current) => current.map((file) => (
+          file.id === selectedMedia.id ? { ...file, ...refreshedCurrentMedia } : file
+        )));
+        setCollectionFiles((current) => current.map((file) => (
+          file.id === selectedMedia.id ? { ...file, ...refreshedCurrentMedia } : file
+        )));
+        setSelectedMedia((current) => (
+          current && current.id === selectedMedia.id
+            ? { ...current, ...refreshedCurrentMedia }
+            : current
+        ));
+      }
 
       const relatedIds = Array.from(new Set(
         [previousParentId, previousChildId, patch.parent, patch.child]

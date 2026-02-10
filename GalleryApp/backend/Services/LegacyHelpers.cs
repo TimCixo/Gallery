@@ -639,6 +639,7 @@ public static List<object> LoadMediaItems(
             Parent: reader.IsDBNull(5) ? null : reader.GetInt64(5),
             Child: reader.IsDBNull(6) ? null : reader.GetInt64(6),
             IsFavorite: !reader.IsDBNull(7) && reader.GetInt64(7) == 1);
+        var tags = LoadMediaTags(connection, item.Id);
 
         result.Add(new
         {
@@ -654,6 +655,7 @@ public static List<object> LoadMediaItems(
             originalUrl,
             tileUrl,
             mediaType,
+            tags,
             sizeBytes = fileInfo.Length,
             modifiedAtUtc = fileInfo.LastWriteTimeUtc
         });
@@ -732,6 +734,7 @@ public static List<object> LoadCollectionMediaItems(
             Parent: reader.IsDBNull(5) ? null : reader.GetInt64(5),
             Child: reader.IsDBNull(6) ? null : reader.GetInt64(6),
             IsFavorite: !reader.IsDBNull(7) && reader.GetInt64(7) == 1);
+        var tags = LoadMediaTags(connection, item.Id);
 
         result.Add(new
         {
@@ -747,12 +750,50 @@ public static List<object> LoadCollectionMediaItems(
             originalUrl,
             tileUrl,
             mediaType,
+            tags,
             sizeBytes = fileInfo.Length,
             modifiedAtUtc = fileInfo.LastWriteTimeUtc
         });
     }
 
     return result;
+}
+
+private static List<object> LoadMediaTags(SqliteConnection connection, long mediaId)
+{
+    using var command = connection.CreateCommand();
+    command.CommandText = """
+        SELECT
+            t.Id,
+            t.Name,
+            t.Description,
+            tt.Id AS TagTypeId,
+            tt.Name AS TagTypeName,
+            tt.Color AS TagTypeColor
+        FROM MediaTags mt
+        INNER JOIN Tags t ON t.Id = mt.TagId
+        INNER JOIN TagTypes tt ON tt.Id = t.TagTypeId
+        WHERE mt.MediaId = $mediaId
+        ORDER BY tt.Name COLLATE NOCASE ASC, t.Name COLLATE NOCASE ASC, t.Id ASC;
+        """;
+    command.Parameters.AddWithValue("$mediaId", mediaId);
+
+    using var reader = command.ExecuteReader();
+    var tags = new List<object>();
+    while (reader.Read())
+    {
+        tags.Add(new
+        {
+            id = reader.GetInt64(0),
+            name = reader.GetString(1),
+            description = reader.IsDBNull(2) ? null : reader.GetString(2),
+            tagTypeId = reader.GetInt64(3),
+            tagTypeName = reader.GetString(4),
+            tagTypeColor = reader.GetString(5)
+        });
+    }
+
+    return tags;
 }
 
 public static List<string> BuildMediaSearchWhereClauses(
