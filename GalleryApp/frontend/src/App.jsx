@@ -44,6 +44,11 @@ function App() {
   const [uploadItems, setUploadItems] = useState([]);
   const [uploadState, setUploadState] = useState({ type: "", message: "" });
   const [isGroupUploadEnabled, setIsGroupUploadEnabled] = useState(false);
+  const [uploadCollectionIds, setUploadCollectionIds] = useState([]);
+  const [uploadCollections, setUploadCollections] = useState([]);
+  const [isUploadCollectionsLoading, setIsUploadCollectionsLoading] = useState(false);
+  const [uploadCollectionsError, setUploadCollectionsError] = useState("");
+  const [isUploadCollectionPickerOpen, setIsUploadCollectionPickerOpen] = useState(false);
   const [isDragOverPage, setIsDragOverPage] = useState(false);
   const [backgroundUploadState, setBackgroundUploadState] = useState({
     total: 0,
@@ -1506,6 +1511,31 @@ function App() {
     setIsUploadOpen(false);
     setUploadState({ type: "", message: "" });
     setIsGroupUploadEnabled(false);
+    setUploadCollectionIds([]);
+    setUploadCollectionsError("");
+    setIsUploadCollectionPickerOpen(false);
+  };
+
+  const loadUploadCollections = async () => {
+    setIsUploadCollectionsLoading(true);
+    setUploadCollectionsError("");
+    try {
+      const response = await fetch("/api/collections");
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("Collections API not found (404). Restart backend to apply latest changes.");
+        }
+        throw new Error("Failed to fetch collections.");
+      }
+
+      const result = await response.json();
+      setUploadCollections(Array.isArray(result.items) ? result.items : []);
+    } catch (error) {
+      setUploadCollections([]);
+      setUploadCollectionsError(error instanceof Error ? error.message : "Failed to fetch collections.");
+    } finally {
+      setIsUploadCollectionsLoading(false);
+    }
   };
 
   const prepareUploadItems = (files) => {
@@ -1533,7 +1563,10 @@ function App() {
     });
     setUploadState({ type: "", message: "" });
     setIsGroupUploadEnabled(false);
+    setUploadCollectionIds([]);
+    setUploadCollectionsError("");
     setIsUploadOpen(true);
+    void loadUploadCollections();
   };
 
   const handleUploadPickerChange = (event) => {
@@ -1663,6 +1696,19 @@ function App() {
             if (!response.ok) {
               const payload = await readResponsePayload(response);
               throw new Error(payload?.error || `Failed to save metadata for ${task.file.name}.`);
+            }
+
+            const collectionIds = Array.isArray(task.collectionIds) ? task.collectionIds : [];
+            for (const collectionId of collectionIds) {
+              const addToCollectionResponse = await fetch(`/api/collections/${collectionId}/media`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ mediaId: uploaded.id })
+              });
+              if (!addToCollectionResponse.ok) {
+                const payload = await readResponsePayload(addToCollectionResponse);
+                throw new Error(payload?.error || `Failed to add ${task.file.name} to collection.`);
+              }
             }
           }
 
@@ -2186,12 +2232,19 @@ function App() {
     }
 
     let normalizedDraft;
+    let normalizedCollectionIds = [];
     try {
       const title = activeItem.draft.title.trim();
       const description = activeItem.draft.description.trim();
       const source = activeItem.draft.source.trim();
+      const tagIds = parseMediaTagIdsByType(activeItem.draft.tagsByType);
       const parent = parseNullableId(activeItem.draft.parent, "Parent");
       const child = parseNullableId(activeItem.draft.child, "Child");
+      normalizedCollectionIds = Array.from(new Set(
+        uploadCollectionIds
+          .map((value) => Number(value))
+          .filter((value) => Number.isSafeInteger(value) && value > 0)
+      ));
 
       if (source) {
         try {
@@ -2208,6 +2261,7 @@ function App() {
         title: title || null,
         description: description || null,
         source: source || null,
+        tagIds,
         parent,
         child
       };
@@ -2229,7 +2283,8 @@ function App() {
       uploadItems.forEach((item) => {
         enqueueBackgroundUpload({
           file: item.file,
-          draft: normalizedDraft
+          draft: normalizedDraft,
+          collectionIds: normalizedCollectionIds
         });
       });
 
@@ -2239,7 +2294,8 @@ function App() {
 
     enqueueBackgroundUpload({
       file: activeItem.file,
-      draft: normalizedDraft
+      draft: normalizedDraft,
+      collectionIds: normalizedCollectionIds
     });
 
     const remaining = Math.max(uploadItems.length - 1, 0);
@@ -2279,6 +2335,31 @@ function App() {
     }
 
     return parsed;
+  };
+  const openUploadCollectionPicker = async () => {
+    if (isUploadCollectionsLoading) {
+      return;
+    }
+
+    setIsUploadCollectionPickerOpen(true);
+    if (uploadCollections.length === 0 && !uploadCollectionsError) {
+      await loadUploadCollections();
+    }
+  };
+  const closeUploadCollectionPicker = () => {
+    setIsUploadCollectionPickerOpen(false);
+  };
+  const toggleUploadCollectionSelection = (collectionId) => {
+    const normalizedId = Number(collectionId);
+    if (!Number.isSafeInteger(normalizedId) || normalizedId <= 0) {
+      return;
+    }
+
+    setUploadCollectionIds((current) => (
+      current.includes(normalizedId)
+        ? current.filter((item) => item !== normalizedId)
+        : [...current, normalizedId]
+    ));
   };
   const parseMediaTagIdsByType = (tagsByType) => {
     if (!tagsByType || typeof tagsByType !== "object") {
@@ -2667,6 +2748,8 @@ function App() {
     }
     : null;
   const collectionPreviewTileUrl = collectionPreviewMedia ? resolveTileUrl(collectionPreviewMedia) : "";
+  const selectedUploadCollections = uploadCollections
+    .filter((item) => uploadCollectionIds.includes(Number(item.id)));
   const hasUploadHistory = uploadTaskStatuses.length > 0 || backgroundUploadState.total > 0;
   const backgroundRemaining = backgroundUploadState.queued + (backgroundUploadState.isProcessing ? 1 : 0);
   const uploadDropdownSummary = backgroundUploadState.total === 0
@@ -3961,15 +4044,37 @@ function App() {
                 draft: activeUploadItem?.draft || createMediaDraft(null),
                 editable: true,
                 onDraftChange: updateActiveUploadDraft,
+                showTagsRow: true,
                 extraRows: (
                   <>
                     <tr>
                       <th scope="row">File</th>
                       <td>{activeUploadItem?.file.name || "-"}</td>
                     </tr>
+                    <tr>
+                      <th scope="row">Collection</th>
+                      <td>
+                        <div className="media-action-row media-action-row-upload-collection">
+                          <button
+                            type="button"
+                            className="media-action-btn"
+                            onClick={() => {
+                              void openUploadCollectionPicker();
+                            }}
+                            disabled={isUploadCollectionsLoading}
+                          >
+                            {isUploadCollectionsLoading ? "Loading..." : "Select"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
                   </>
                 )
               })}
+
+              {uploadCollectionsError ? (
+                <p className="media-action-error">{uploadCollectionsError}</p>
+              ) : null}
 
               {uploadState.message ? (
                 <p className={uploadState.type === "error" ? "media-action-error" : "media-action-success"}>
@@ -4004,6 +4109,55 @@ function App() {
                   Okay
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isUploadOpen && isUploadCollectionPickerOpen ? (
+        <div
+          className="media-confirm-overlay"
+          onClick={closeUploadCollectionPicker}
+        >
+          <div
+            className="collection-picker-dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="collection-picker-title">Select collection</p>
+            {uploadCollectionsError ? <p className="media-action-error">{uploadCollectionsError}</p> : null}
+            {isUploadCollectionsLoading ? (
+              <p className="collections-state">Loading collections...</p>
+            ) : uploadCollections.length === 0 ? (
+              <p className="collections-state">No collections available.</p>
+            ) : (
+              <ul className="collection-picker-list">
+                {uploadCollections.map((item) => {
+                  const collectionId = Number(item.id);
+                  const isIncluded = Number.isSafeInteger(collectionId) && uploadCollectionIds.includes(collectionId);
+                  return (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        className={`collection-picker-item${isIncluded ? " is-included" : ""}`}
+                        onClick={() => toggleUploadCollectionSelection(item.id)}
+                      >
+                        <span>{item.label}</span>
+                        <em>{isIncluded ? "Included" : "Not included"}</em>
+                        <small>{item.description || "No description"}</small>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <div className="media-delete-buttons">
+              <button
+                type="button"
+                className="media-action-btn"
+                onClick={closeUploadCollectionPicker}
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

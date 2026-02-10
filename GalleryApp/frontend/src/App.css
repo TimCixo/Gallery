@@ -1586,6 +1586,14 @@
   margin-bottom: 0;
 }
 
+.media-action-row-upload-collection {
+  justify-content: stretch;
+}
+
+.media-action-row-upload-collection .media-action-btn {
+  width: 100%;
+}
+
 .media-upload-group-toggle {
   margin-right: auto;
   display: inline-flex;
