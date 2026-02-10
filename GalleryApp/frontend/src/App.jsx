@@ -695,6 +695,28 @@ function App() {
     const hasSource = Boolean(String(file?.source || "").trim());
     const hasParent = file?.parent != null;
     const hasChild = file?.child != null;
+    const renderLinkedMediaId = (value, label) => {
+      if (value == null) {
+        return "-";
+      }
+
+      const normalizedId = Number(value);
+      if (!Number.isSafeInteger(normalizedId) || normalizedId <= 0) {
+        return String(value);
+      }
+
+      return (
+        <button
+          type="button"
+          className="media-id-link"
+          onClick={() => {
+            void handleOpenRelatedMediaById(normalizedId, label);
+          }}
+        >
+          {normalizedId}
+        </button>
+      );
+    };
 
     return (
       <table className="media-meta-table">
@@ -918,7 +940,7 @@ function App() {
         ) : null}
         {editable || hasParent ? (
           <tr>
-            <th scope="row">Parent Link</th>
+            <th scope="row">Parent Id</th>
             <td>
               {editable ? (
                 <input
@@ -929,13 +951,13 @@ function App() {
                   value={draft.parent}
                   onChange={(event) => onDraftChange({ parent: event.target.value })}
                 />
-              ) : (file?.parent ?? "-")}
+              ) : renderLinkedMediaId(file?.parent, "Parent")}
             </td>
           </tr>
         ) : null}
         {editable || hasChild ? (
           <tr>
-            <th scope="row">Child Link</th>
+            <th scope="row">Child Id</th>
             <td>
               {editable ? (
                 <input
@@ -946,7 +968,7 @@ function App() {
                   value={draft.child}
                   onChange={(event) => onDraftChange({ child: event.target.value })}
                 />
-              ) : (file?.child ?? "-")}
+              ) : renderLinkedMediaId(file?.child, "Child")}
             </td>
           </tr>
         ) : null}
@@ -1953,6 +1975,68 @@ function App() {
       return { error: text };
     }
   };
+  const fetchMediaById = async (mediaId) => {
+    const normalizedId = Number(mediaId);
+    if (!Number.isSafeInteger(normalizedId) || normalizedId <= 0) {
+      return null;
+    }
+
+    const query = new URLSearchParams({
+      page: "1",
+      pageSize: "1",
+      search: `id:${normalizedId}`
+    });
+    const response = await fetch(`/api/media?${query.toString()}`);
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = await response.json();
+    const files = Array.isArray(payload?.files) ? payload.files : [];
+    return files.find((item) => item?.id === normalizedId) || null;
+  };
+  const handleOpenRelatedMediaById = async (targetId, relationLabel) => {
+    const normalizedId = Number(targetId);
+    if (!Number.isSafeInteger(normalizedId) || normalizedId <= 0) {
+      setMediaModalError(`${relationLabel} id is invalid.`);
+      return;
+    }
+
+    if (selectedMedia?.id === normalizedId) {
+      return;
+    }
+
+    setMediaModalError("");
+
+    const localCandidate = [selectedMedia, ...mediaFiles, ...favoritesFiles].find((item) => item?.id === normalizedId);
+    if (localCandidate) {
+      setSelectedMedia(localCandidate);
+      return;
+    }
+
+    try {
+      const query = new URLSearchParams({
+        page: "1",
+        pageSize: "1",
+        search: `id:${normalizedId}`
+      });
+      const response = await fetch(`/api/media?${query.toString()}`);
+      if (!response.ok) {
+        throw new Error("Failed to load related media.");
+      }
+
+      const payload = await response.json();
+      const files = Array.isArray(payload?.files) ? payload.files : [];
+      const matched = files.find((item) => item?.id === normalizedId);
+      if (!matched) {
+        throw new Error(`${relationLabel} media with id ${normalizedId} was not found.`);
+      }
+
+      setSelectedMedia(matched);
+    } catch (error) {
+      setMediaModalError(error instanceof Error ? error.message : "Failed to open related media.");
+    }
+  };
 
   const handleStartEditMedia = () => {
     if (!selectedMedia?.id) {
@@ -2018,6 +2102,8 @@ function App() {
     }
 
     setIsSavingMedia(true);
+    const previousParentId = selectedMedia?.parent ?? null;
+    const previousChildId = selectedMedia?.child ?? null;
     try {
       const response = await fetch(`/api/media/${selectedMedia.id}`, {
         method: "PUT",
@@ -2041,13 +2127,37 @@ function App() {
         title: result.title ?? null,
         description: result.description ?? null,
         source: result.source ?? null,
-        tags: Array.isArray(result.tags) ? result.tags : [],
         parent: result.parent ?? null,
         child: result.child ?? null
       };
 
       setMediaFiles((current) => current.map((file) => (file.id === selectedMedia.id ? { ...file, ...patch } : file)));
       setSelectedMedia((current) => (current && current.id === selectedMedia.id ? { ...current, ...patch } : current));
+
+      const relatedIds = Array.from(new Set(
+        [previousParentId, previousChildId, patch.parent, patch.child]
+          .map((value) => Number(value))
+          .filter((value) => Number.isSafeInteger(value) && value > 0 && value !== selectedMedia.id)
+      ));
+
+      if (relatedIds.length > 0) {
+        const relatedItems = await Promise.all(relatedIds.map((relatedId) => fetchMediaById(relatedId)));
+        const relatedById = new Map(
+          relatedItems
+            .filter((item) => item?.id != null)
+            .map((item) => [item.id, item])
+        );
+
+        if (relatedById.size > 0) {
+          setMediaFiles((current) => current.map((file) => (
+            relatedById.has(file.id) ? { ...file, ...relatedById.get(file.id) } : file
+          )));
+          setFavoritesFiles((current) => current.map((file) => (
+            relatedById.has(file.id) ? { ...file, ...relatedById.get(file.id) } : file
+          )));
+        }
+      }
+
       setIsEditingMedia(false);
       setActiveTagTypeDropdownId(null);
       setTagTypeQueryById({});

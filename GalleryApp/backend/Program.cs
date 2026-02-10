@@ -9,7 +9,6 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Formats.Webp;
 using System.Text.RegularExpressions;
-using System.Text.Json;
 
 namespace GalleryApp.Api;
 
@@ -586,6 +585,14 @@ public class Program
                 return Results.BadRequest(new { error = "Child media id was not found." });
             }
 
+            var currentLinks = GetMediaLinks(connection, id);
+            if (currentLinks is null)
+            {
+                return Results.NotFound(new { error = "Media record not found." });
+            }
+            var previousParent = currentLinks.Value.Parent;
+            var previousChild = currentLinks.Value.Child;
+
             if (normalizedTagIds is not null && normalizedTagIds.Length > 0)
             {
                 using var tagExistsCommand = connection.CreateCommand();
@@ -633,6 +640,96 @@ public class Program
                 command.ExecuteNonQuery();
             }
 
+            if (previousParent.HasValue && previousParent.Value != parent)
+            {
+                using var clearOldParentReverse = connection.CreateCommand();
+                clearOldParentReverse.Transaction = transaction;
+                clearOldParentReverse.CommandText = """
+                    UPDATE Media
+                    SET Child = NULL
+                    WHERE Id = $oldParentId AND Child = $mediaId;
+                    """;
+                clearOldParentReverse.Parameters.AddWithValue("$oldParentId", previousParent.Value);
+                clearOldParentReverse.Parameters.AddWithValue("$mediaId", id);
+                clearOldParentReverse.ExecuteNonQuery();
+            }
+
+            if (previousChild.HasValue && previousChild.Value != child)
+            {
+                using var clearOldChildReverse = connection.CreateCommand();
+                clearOldChildReverse.Transaction = transaction;
+                clearOldChildReverse.CommandText = """
+                    UPDATE Media
+                    SET Parent = NULL
+                    WHERE Id = $oldChildId AND Parent = $mediaId;
+                    """;
+                clearOldChildReverse.Parameters.AddWithValue("$oldChildId", previousChild.Value);
+                clearOldChildReverse.Parameters.AddWithValue("$mediaId", id);
+                clearOldChildReverse.ExecuteNonQuery();
+            }
+
+            if (parent.HasValue)
+            {
+                var parentLinks = GetMediaLinks(connection, parent.Value, transaction);
+                var parentPreviousChild = parentLinks?.Child;
+
+                using var setParentReverse = connection.CreateCommand();
+                setParentReverse.Transaction = transaction;
+                setParentReverse.CommandText = """
+                    UPDATE Media
+                    SET Child = $mediaId
+                    WHERE Id = $parentId;
+                    """;
+                setParentReverse.Parameters.AddWithValue("$mediaId", id);
+                setParentReverse.Parameters.AddWithValue("$parentId", parent.Value);
+                setParentReverse.ExecuteNonQuery();
+
+                if (parentPreviousChild.HasValue && parentPreviousChild.Value != id)
+                {
+                    using var clearConflictedChildParent = connection.CreateCommand();
+                    clearConflictedChildParent.Transaction = transaction;
+                    clearConflictedChildParent.CommandText = """
+                        UPDATE Media
+                        SET Parent = NULL
+                        WHERE Id = $oldChildId AND Parent = $parentId;
+                        """;
+                    clearConflictedChildParent.Parameters.AddWithValue("$oldChildId", parentPreviousChild.Value);
+                    clearConflictedChildParent.Parameters.AddWithValue("$parentId", parent.Value);
+                    clearConflictedChildParent.ExecuteNonQuery();
+                }
+            }
+
+            if (child.HasValue)
+            {
+                var childLinks = GetMediaLinks(connection, child.Value, transaction);
+                var childPreviousParent = childLinks?.Parent;
+
+                using var setChildReverse = connection.CreateCommand();
+                setChildReverse.Transaction = transaction;
+                setChildReverse.CommandText = """
+                    UPDATE Media
+                    SET Parent = $mediaId
+                    WHERE Id = $childId;
+                    """;
+                setChildReverse.Parameters.AddWithValue("$mediaId", id);
+                setChildReverse.Parameters.AddWithValue("$childId", child.Value);
+                setChildReverse.ExecuteNonQuery();
+
+                if (childPreviousParent.HasValue && childPreviousParent.Value != id)
+                {
+                    using var clearConflictedParentChild = connection.CreateCommand();
+                    clearConflictedParentChild.Transaction = transaction;
+                    clearConflictedParentChild.CommandText = """
+                        UPDATE Media
+                        SET Child = NULL
+                        WHERE Id = $oldParentId AND Child = $childId;
+                        """;
+                    clearConflictedParentChild.Parameters.AddWithValue("$oldParentId", childPreviousParent.Value);
+                    clearConflictedParentChild.Parameters.AddWithValue("$childId", child.Value);
+                    clearConflictedParentChild.ExecuteNonQuery();
+                }
+            }
+
             if (normalizedTagIds is not null)
             {
                 using (var deleteTagsCommand = connection.CreateCommand())
@@ -661,8 +758,6 @@ public class Program
             }
 
             transaction.Commit();
-            var tags = GetMediaTagsByMediaId(connection, id);
-
             return Results.Ok(new
             {
                 id,
@@ -670,8 +765,7 @@ public class Program
                 description,
                 source,
                 parent,
-                child,
-                tags
+                child
             });
         });
 
@@ -1348,6 +1442,31 @@ public class Program
         return Convert.ToInt64(result) == 1;
     }
 
+    private static (long? Parent, long? Child)? GetMediaLinks(
+        SqliteConnection connection,
+        long mediaId,
+        SqliteTransaction? transaction = null)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT Parent, Child
+            FROM Media
+            WHERE Id = $id;
+            """;
+        command.Parameters.AddWithValue("$id", mediaId);
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return null;
+        }
+
+        var parent = reader.IsDBNull(0) ? (long?)null : reader.GetInt64(0);
+        var child = reader.IsDBNull(1) ? (long?)null : reader.GetInt64(1);
+        return (parent, child);
+    }
+
     private static long EnsureFavoritesCollection(SqliteConnection connection)
     {
         using var findCommand = connection.CreateCommand();
@@ -1397,41 +1516,6 @@ public class Program
             || uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static List<MediaTag> GetMediaTagsByMediaId(SqliteConnection connection, long mediaId)
-    {
-        using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT
-                t.Id,
-                t.Name,
-                t.Description,
-                tt.Id,
-                tt.Name,
-                tt.Color
-            FROM MediaTags mt
-            INNER JOIN Tags t ON t.Id = mt.TagId
-            INNER JOIN TagTypes tt ON tt.Id = t.TagTypeId
-            WHERE mt.MediaId = $mediaId
-            ORDER BY tt.Name COLLATE NOCASE ASC, t.Name COLLATE NOCASE ASC, t.Id ASC;
-            """;
-        command.Parameters.AddWithValue("$mediaId", mediaId);
-
-        using var reader = command.ExecuteReader();
-        var tags = new List<MediaTag>();
-        while (reader.Read())
-        {
-            tags.Add(new MediaTag(
-                Id: reader.GetInt64(0),
-                Name: reader.GetString(1),
-                Description: reader.IsDBNull(2) ? null : reader.GetString(2),
-                TagTypeId: reader.GetInt64(3),
-                TagTypeName: reader.GetString(4),
-                TagTypeColor: reader.GetString(5)));
-        }
-
-        return tags;
-    }
-
     private static List<object> LoadMediaItems(
         string connectionString,
         string mediaRootPath,
@@ -1463,21 +1547,7 @@ public class Program
                     FROM CollectionsMedia cm
                     INNER JOIN Collections c ON c.Id = cm.CollectionId
                     WHERE cm.MediaId = m.Id AND c.Lable = 'Favorites'
-                ) AS IsFavorite,
-                COALESCE((
-                    SELECT json_group_array(json_object(
-                        'id', t.Id,
-                        'name', t.Name,
-                        'description', t.Description,
-                        'tagTypeId', tt.Id,
-                        'tagTypeName', tt.Name,
-                        'tagTypeColor', tt.Color
-                    ))
-                    FROM MediaTags mt
-                    INNER JOIN Tags t ON t.Id = mt.TagId
-                    INNER JOIN TagTypes tt ON tt.Id = t.TagTypeId
-                    WHERE mt.MediaId = m.Id
-                ), '[]') AS TagsJson
+                ) AS IsFavorite
             FROM Media m{whereSql}
             ORDER BY m.Id DESC;
             """;
@@ -1510,7 +1580,6 @@ public class Program
             var mediaType = IsImageFile(extension) ? "image" : IsVideoFile(extension) ? "video" : "file";
             var originalUrl = BuildMediaUrl(normalizedPath);
             var tileUrl = BuildTileUrl(normalizedPath, extension, fileInfo.LastWriteTimeUtc.Ticks);
-            var tags = ParseMediaTagsJson(reader.IsDBNull(8) ? "[]" : reader.GetString(8));
             var item = new MediaMetadata(
                 Id: reader.GetInt64(0),
                 RelativePath: normalizedPath,
@@ -1519,8 +1588,7 @@ public class Program
                 Source: reader.IsDBNull(4) ? null : reader.GetString(4),
                 Parent: reader.IsDBNull(5) ? null : reader.GetInt64(5),
                 Child: reader.IsDBNull(6) ? null : reader.GetInt64(6),
-                IsFavorite: !reader.IsDBNull(7) && reader.GetInt64(7) == 1,
-                Tags: tags);
+                IsFavorite: !reader.IsDBNull(7) && reader.GetInt64(7) == 1);
 
             result.Add(new
             {
@@ -1530,7 +1598,6 @@ public class Program
                 title = item.Title,
                 description = item.Description,
                 source = item.Source,
-                tags = item.Tags,
                 parent = item.Parent,
                 child = item.Child,
                 isFavorite = item.IsFavorite,
@@ -1780,70 +1847,6 @@ public class Program
         return criteria;
     }
 
-    private static List<MediaTag> ParseMediaTagsJson(string tagsJson)
-    {
-        if (string.IsNullOrWhiteSpace(tagsJson))
-        {
-            return [];
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(tagsJson);
-            if (document.RootElement.ValueKind != JsonValueKind.Array)
-            {
-                return [];
-            }
-
-            var result = new List<MediaTag>();
-            foreach (var item in document.RootElement.EnumerateArray())
-            {
-                if (!item.TryGetProperty("id", out var idElement) || !idElement.TryGetInt64(out var id))
-                {
-                    continue;
-                }
-
-                if (!item.TryGetProperty("name", out var nameElement))
-                {
-                    continue;
-                }
-
-                var name = nameElement.GetString();
-                if (string.IsNullOrWhiteSpace(name))
-                {
-                    continue;
-                }
-
-                var description = item.TryGetProperty("description", out var descriptionElement) && descriptionElement.ValueKind != JsonValueKind.Null
-                    ? descriptionElement.GetString()
-                    : null;
-                var tagTypeId = item.TryGetProperty("tagTypeId", out var tagTypeIdElement) && tagTypeIdElement.TryGetInt64(out var parsedTagTypeId)
-                    ? parsedTagTypeId
-                    : 0;
-                var tagTypeName = item.TryGetProperty("tagTypeName", out var tagTypeNameElement)
-                    ? (tagTypeNameElement.GetString() ?? string.Empty)
-                    : string.Empty;
-                var tagTypeColor = item.TryGetProperty("tagTypeColor", out var tagTypeColorElement)
-                    ? (tagTypeColorElement.GetString() ?? string.Empty)
-                    : string.Empty;
-
-                result.Add(new MediaTag(
-                    Id: id,
-                    Name: name,
-                    Description: description,
-                    TagTypeId: tagTypeId,
-                    TagTypeName: tagTypeName,
-                    TagTypeColor: tagTypeColor));
-            }
-
-            return result;
-        }
-        catch
-        {
-            return [];
-        }
-    }
-
     private sealed class MediaConversionException(string message) : Exception(message);
 
     private sealed record MediaUpdateRequest(
@@ -1868,16 +1871,7 @@ public class Program
         string? Source,
         long? Parent,
         long? Child,
-        bool IsFavorite,
-        IReadOnlyList<MediaTag> Tags);
-
-    private sealed record MediaTag(
-        long Id,
-        string Name,
-        string? Description,
-        long TagTypeId,
-        string TagTypeName,
-        string TagTypeColor);
+        bool IsFavorite);
 
     private sealed class MediaSearchCriteria
     {

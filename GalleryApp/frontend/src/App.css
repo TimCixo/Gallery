@@ -998,6 +998,20 @@
   word-break: break-word;
 }
 
+.media-id-link {
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: #2563eb;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+
+.media-id-link:hover {
+  color: #1d4ed8;
+}
+
 .media-system-callout {
   margin-top: 0.7rem;
   border: 1px solid #d5dbe1;
