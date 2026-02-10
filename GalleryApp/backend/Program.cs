@@ -1,13 +1,10 @@
-using System.ComponentModel;
-using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.FileProviders;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Jpeg;
-using SixLabors.ImageSharp.Formats.Webp;
+using GalleryApp.Api.Infrastructure.Storage;
+using GalleryApp.Api.Services.MediaProcessing;
 using System.Text.RegularExpressions;
 
 namespace GalleryApp.Api;
@@ -15,6 +12,7 @@ namespace GalleryApp.Api;
 public class Program
 {
     private static readonly Regex HexColorRegex = new("^#[0-9A-Fa-f]{6}$", RegexOptions.Compiled);
+    private static readonly IMediaStorage FallbackMediaStorage = new MediaStorage();
 
     public static void Main(string[] args)
     {
@@ -49,6 +47,8 @@ public class Program
                     .AllowAnyMethod();
             });
         });
+        builder.Services.AddSingleton<IMediaStorage, MediaStorage>();
+        builder.Services.AddScoped<IMediaProcessingService, MediaProcessingService>();
 
         var app = builder.Build();
 
@@ -824,24 +824,22 @@ public class Program
             return Results.Ok(new { id });
         });
 
-        app.MapGet("/api/media/preview", (string path) =>
+        app.MapGet("/api/media/preview", async (
+            string path,
+            IMediaStorage mediaStorage,
+            IMediaProcessingService mediaProcessingService,
+            CancellationToken cancellationToken) =>
         {
-            if (!TryResolveMediaFilePath(mediaRootPath, path, out var absolutePath, out var extension))
+            if (!mediaStorage.TryResolveMediaFilePath(mediaRootPath, path, out var absolutePath, out var extension))
             {
                 return Results.NotFound(new { error = "Media file not found." });
             }
 
             try
             {
-                if (IsVideoFile(extension))
+                var bytes = await mediaProcessingService.GeneratePreviewAsync(absolutePath, extension, cancellationToken);
+                if (bytes is not null)
                 {
-                    var bytes = GenerateVideoPreviewJpeg(absolutePath);
-                    return Results.File(bytes, "image/jpeg");
-                }
-
-                if (IsGifFile(extension))
-                {
-                    var bytes = GenerateGifPreviewJpeg(absolutePath);
                     return Results.File(bytes, "image/jpeg");
                 }
             }
@@ -1136,7 +1134,7 @@ public class Program
             });
         });
 
-        app.MapDelete("/api/media/{id:long}", (long id) =>
+        app.MapDelete("/api/media/{id:long}", (long id, IMediaStorage mediaStorage) =>
         {
             if (id <= 0)
             {
@@ -1159,28 +1157,21 @@ public class Program
                 return Results.NotFound(new { error = "Media record not found." });
             }
 
-            var normalizedRelativePath = rawPath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
-            var rootPath = Path.GetFullPath(mediaRootPath + Path.DirectorySeparatorChar);
-            var absolutePath = Path.GetFullPath(Path.Combine(mediaRootPath, normalizedRelativePath));
-            if (!absolutePath.StartsWith(rootPath, StringComparison.OrdinalIgnoreCase))
+            try
             {
-                return Results.BadRequest(new { error = "Stored media path is invalid." });
+                mediaStorage.DeleteFileIfExists(mediaRootPath, rawPath);
             }
-
-            if (File.Exists(absolutePath))
+            catch (InvalidOperationException ex)
             {
-                try
-                {
-                    File.Delete(absolutePath);
-                }
-                catch (IOException ex)
-                {
-                    return Results.Problem($"Failed to delete file: {ex.Message}");
-                }
-                catch (UnauthorizedAccessException ex)
-                {
-                    return Results.Problem($"Failed to delete file: {ex.Message}");
-                }
+                return Results.BadRequest(new { error = ex.Message });
+            }
+            catch (IOException ex)
+            {
+                return Results.Problem($"Failed to delete file: {ex.Message}");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Results.Problem($"Failed to delete file: {ex.Message}");
             }
 
             using var transaction = connection.BeginTransaction();
@@ -1199,7 +1190,10 @@ public class Program
             return Results.Ok(new { id });
         });
 
-        var uploadEndpoint = app.MapPost("/api/upload", async (HttpRequest request) =>
+        var uploadEndpoint = app.MapPost("/api/upload", async (
+            HttpRequest request,
+            IMediaProcessingService mediaProcessingService,
+            CancellationToken cancellationToken) =>
         {
             var maxRequestBodySizeFeature = request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
             if (maxRequestBodySizeFeature is not null && !maxRequestBodySizeFeature.IsReadOnly)
@@ -1240,9 +1234,7 @@ public class Program
                     return Results.BadRequest(new { error = $"Unsupported file type: {safeOriginalName}" });
                 }
 
-                var extension = Path.GetExtension(safeOriginalName).ToLowerInvariant();
                 string uniqueName;
-                string destinationPath;
                 long mediaId = 0;
                 string relativePath;
 
@@ -1250,32 +1242,13 @@ public class Program
                 {
                     mediaId = CreatePendingMediaRecord(dbConnection);
 
-                    if (IsGifFile(extension))
-                    {
-                        uniqueName = $"{mediaId}{extension}";
-                        destinationPath = Path.Combine(targetDirectory, uniqueName);
+                    var processingResult = await mediaProcessingService.ProcessUploadAsync(
+                        file,
+                        targetDirectory,
+                        mediaId,
+                        cancellationToken);
 
-                        await using var stream = File.Create(destinationPath);
-                        await file.CopyToAsync(stream);
-                    }
-                    else if (IsImageFile(extension))
-                    {
-                        uniqueName = $"{mediaId}.webp";
-                        destinationPath = Path.Combine(targetDirectory, uniqueName);
-
-                        await ConvertImageToWebpAsync(file, destinationPath);
-                    }
-                    else if (IsVideoFile(extension))
-                    {
-                        uniqueName = $"{mediaId}.mp4";
-                        destinationPath = Path.Combine(targetDirectory, uniqueName);
-
-                        await ConvertVideoToMp4Async(file, destinationPath, extension);
-                    }
-                    else
-                    {
-                        return Results.BadRequest(new { error = $"Unsupported file type: {safeOriginalName}" });
-                    }
+                    uniqueName = processingResult.StoredName;
 
                     relativePath = Path.Combine(dateFolderName, uniqueName).Replace("\\", "/");
                     UpdateMediaPath(dbConnection, mediaId, relativePath);
@@ -1467,252 +1440,6 @@ public class Program
         return BuildMediaUrl(relativePath);
     }
 
-    private static bool TryResolveMediaFilePath(
-        string mediaRootPath,
-        string relativePath,
-        out string absolutePath,
-        out string extension)
-    {
-        absolutePath = string.Empty;
-        extension = string.Empty;
-
-        if (string.IsNullOrWhiteSpace(relativePath))
-        {
-            return false;
-        }
-
-        var normalizedRelativePath = relativePath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
-        var rootPath = Path.GetFullPath(mediaRootPath + Path.DirectorySeparatorChar);
-        var candidatePath = Path.GetFullPath(Path.Combine(mediaRootPath, normalizedRelativePath));
-
-        if (!candidatePath.StartsWith(rootPath, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        if (!File.Exists(candidatePath) || !IsAllowedMediaFile(candidatePath))
-        {
-            return false;
-        }
-
-        absolutePath = candidatePath;
-        extension = Path.GetExtension(candidatePath).ToLowerInvariant();
-        return true;
-    }
-
-    private static string BuildUniqueFileName(string directoryPath, string originalName)
-    {
-        var baseName = Path.GetFileNameWithoutExtension(originalName);
-        var extension = Path.GetExtension(originalName);
-
-        if (string.IsNullOrWhiteSpace(baseName))
-        {
-            baseName = "file";
-        }
-
-        var safeBaseName = SanitizeFileName(baseName);
-        var candidate = $"{safeBaseName}{extension}";
-        var counter = 1;
-
-        while (File.Exists(Path.Combine(directoryPath, candidate)))
-        {
-            candidate = $"{safeBaseName}_{counter}{extension}";
-            counter++;
-        }
-
-        return candidate;
-    }
-
-    private static string SanitizeFileName(string value)
-    {
-        var invalidChars = Path.GetInvalidFileNameChars();
-        var cleaned = new string(value.Select(ch => invalidChars.Contains(ch) ? '_' : ch).ToArray()).Trim();
-
-        return string.IsNullOrWhiteSpace(cleaned) ? "file" : cleaned;
-    }
-
-    private static async Task ConvertImageToWebpAsync(IFormFile file, string destinationPath)
-    {
-        await using var inputStream = file.OpenReadStream();
-
-        try
-        {
-            using var image = await Image.LoadAsync(inputStream);
-            await image.SaveAsync(destinationPath, new WebpEncoder { Quality = 85 });
-        }
-        catch (UnknownImageFormatException)
-        {
-            throw new MediaConversionException($"Unsupported image content: {file.FileName}");
-        }
-    }
-
-    private static async Task ConvertVideoToMp4Async(IFormFile file, string destinationPath, string sourceExtension)
-    {
-        if (sourceExtension.Equals(".mp4", StringComparison.OrdinalIgnoreCase))
-        {
-            await using var stream = File.Create(destinationPath);
-            await file.CopyToAsync(stream);
-            return;
-        }
-
-        var tempInputPath = Path.Combine(Path.GetTempPath(), $"gallery-upload-{Guid.NewGuid()}{sourceExtension}");
-
-        try
-        {
-            await using (var tempInputStream = File.Create(tempInputPath))
-            {
-                await file.CopyToAsync(tempInputStream);
-            }
-
-            var processStartInfo = new ProcessStartInfo
-            {
-                FileName = ResolveFfmpegExecutable(),
-                Arguments = $"-y -i \"{tempInputPath}\" -c:v libx264 -preset fast -crf 23 -c:a aac -movflags +faststart \"{destinationPath}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = new Process { StartInfo = processStartInfo };
-            try
-            {
-                process.Start();
-            }
-            catch (Win32Exception)
-            {
-                throw new MediaConversionException("Video conversion requires ffmpeg available in PATH or FFMPEG_PATH.");
-            }
-
-            var stdOutTask = process.StandardOutput.ReadToEndAsync();
-            var stdErrTask = process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
-            _ = await stdOutTask;
-            var stdErr = await stdErrTask;
-
-            if (process.ExitCode != 0)
-            {
-                if (File.Exists(destinationPath))
-                {
-                    File.Delete(destinationPath);
-                }
-
-                var details = FirstNonEmptyLine(stdErr);
-                throw new MediaConversionException(string.IsNullOrWhiteSpace(details)
-                    ? $"Video conversion failed: {file.FileName}"
-                    : $"Video conversion failed: {file.FileName}. {details}");
-            }
-        }
-        finally
-        {
-            if (File.Exists(tempInputPath))
-            {
-                File.Delete(tempInputPath);
-            }
-        }
-    }
-
-    private static byte[] GenerateGifPreviewJpeg(string sourcePath)
-    {
-        try
-        {
-            using var image = Image.Load(sourcePath);
-            while (image.Frames.Count > 1)
-            {
-                image.Frames.RemoveFrame(image.Frames.Count - 1);
-            }
-
-            using var stream = new MemoryStream();
-            image.Save(stream, new JpegEncoder { Quality = 85 });
-            return stream.ToArray();
-        }
-        catch (UnknownImageFormatException)
-        {
-            throw new MediaConversionException($"Unsupported image content: {Path.GetFileName(sourcePath)}");
-        }
-    }
-
-    private static byte[] GenerateVideoPreviewJpeg(string sourcePath)
-    {
-        try
-        {
-            var tempPreviewPath = Path.Combine(Path.GetTempPath(), $"gallery-preview-{Guid.NewGuid()}.jpg");
-            try
-            {
-                var processStartInfo = new ProcessStartInfo
-                {
-                    FileName = ResolveFfmpegExecutable(),
-                    Arguments = $"-y -ss 00:00:00.500 -i \"{sourcePath}\" -frames:v 1 -q:v 3 -vf \"scale=640:-1\" \"{tempPreviewPath}\"",
-                    RedirectStandardOutput = false,
-                    RedirectStandardError = false,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-
-                using var process = new Process { StartInfo = processStartInfo };
-                try
-                {
-                    process.Start();
-                }
-                catch (Win32Exception)
-                {
-                    throw new MediaConversionException("Video preview requires ffmpeg available in PATH or FFMPEG_PATH.");
-                }
-
-                if (!process.WaitForExit(15000))
-                {
-                    try
-                    {
-                        process.Kill(entireProcessTree: true);
-                    }
-                    catch
-                    {
-                    }
-
-                    throw new MediaConversionException($"Preview generation timed out: {Path.GetFileName(sourcePath)}");
-                }
-
-                if (process.ExitCode != 0 || !File.Exists(tempPreviewPath))
-                {
-                    throw new MediaConversionException($"Preview generation failed: {Path.GetFileName(sourcePath)}");
-                }
-
-        return File.ReadAllBytes(tempPreviewPath);
-            }
-            finally
-            {
-                if (File.Exists(tempPreviewPath))
-                {
-                    File.Delete(tempPreviewPath);
-                }
-            }
-        }
-        catch (IOException ex)
-        {
-            throw new MediaConversionException($"Preview generation failed: {Path.GetFileName(sourcePath)}. {ex.Message}");
-        }
-    }
-
-    private static string FirstNonEmptyLine(string value)
-    {
-        return value
-            .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-            .Select(line => line.Trim())
-            .FirstOrDefault(line => !string.IsNullOrWhiteSpace(line))
-            ?? string.Empty;
-    }
-
-    private static string ResolveFfmpegExecutable()
-    {
-        var configuredPath = Environment.GetEnvironmentVariable("FFMPEG_PATH");
-        if (!string.IsNullOrWhiteSpace(configuredPath))
-        {
-            return configuredPath;
-        }
-
-        return "ffmpeg";
-    }
-
     private static long CreatePendingMediaRecord(SqliteConnection connection)
     {
         using var command = connection.CreateCommand();
@@ -1827,7 +1554,7 @@ public class Program
         }
 
         var normalizedPath = coverPath.Replace("\\", "/");
-        if (!TryResolveMediaFilePath(mediaRootPath, normalizedPath, out var absolutePath, out var extension))
+        if (!FallbackMediaStorage.TryResolveMediaFilePath(mediaRootPath, normalizedPath, out var absolutePath, out var extension))
         {
             return null;
         }
@@ -2292,7 +2019,6 @@ public class Program
         return criteria;
     }
 
-    private sealed class MediaConversionException(string message) : Exception(message);
 
     private sealed record MediaUpdateRequest(
         string? Title,
