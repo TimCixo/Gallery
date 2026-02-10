@@ -350,11 +350,18 @@
   padding: 1.76rem 1rem 1.25rem;
 }
 
+.collections-toolbar {
+  margin-bottom: 0.75rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
 .collections-callout {
   border: 1px solid #d5dbe1;
   border-radius: 0.6rem;
   background-color: #f8fafc;
   padding: 0.9rem;
+  margin-bottom: 0.8rem;
 }
 
 .collections-callout h2 {
@@ -366,6 +373,214 @@
 .collections-callout p {
   margin: 0;
   color: #475569;
+}
+
+.collections-form {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.collections-input {
+  min-width: 0;
+  border: 1px solid #c6ccd2;
+  border-radius: 0.45rem;
+  background-color: #ffffff;
+  color: #0f172a;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.9rem;
+}
+
+.collections-input:focus {
+  outline: none;
+  border-color: #0f172a;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+
+.collections-form-actions {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.collections-btn {
+  border: 1px solid #c6ccd2;
+  background-color: #ffffff;
+  color: #0f172a;
+  border-radius: 0.45rem;
+  padding: 0.45rem 0.8rem;
+  cursor: pointer;
+  font-size: 0.86rem;
+}
+
+.collections-btn:hover {
+  background-color: #f8fafc;
+}
+
+.collections-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.collections-btn-primary {
+  border-color: #14532d;
+  color: #14532d;
+}
+
+.collections-btn-danger {
+  border-color: #b91c1c;
+  color: #b91c1c;
+}
+
+.collections-error {
+  margin-top: 0.6rem;
+  color: #991b1b;
+  font-size: 0.88rem;
+}
+
+.collections-state {
+  margin: 0.3rem 0;
+  color: #475569;
+}
+
+.collections-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.collections-item {
+  border: 1px solid #d5dbe1;
+  border-radius: 0.6rem;
+  background-color: #ffffff;
+  padding: 0.65rem;
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.collections-item-clickable {
+  cursor: pointer;
+}
+
+.collections-item-clickable:hover {
+  border-color: #94a3b8;
+  background-color: #f8fafc;
+}
+
+.collections-item-cover {
+  width: 76px;
+  height: 76px;
+  border-radius: 0.45rem;
+  overflow: hidden;
+  border: 1px solid #d5dbe1;
+  background-color: #f8fafc;
+}
+
+.collections-item-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.collections-item-cover-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 0.72rem;
+}
+
+.collections-item-body {
+  min-width: 0;
+}
+
+.collections-item-body h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 0.96rem;
+}
+
+.collections-item-body p {
+  margin: 0.3rem 0 0;
+  color: #475569;
+  font-size: 0.86rem;
+}
+
+.collections-meta {
+  color: #64748b;
+}
+
+.collections-item-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.65rem;
+}
+
+.collection-modal {
+  width: min(820px, 100%);
+  max-height: min(92vh, 920px);
+  border: 1px solid #d5dbe1;
+  border-radius: 0.7rem;
+  background-color: #ffffff;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.38);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.collection-modal-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.85rem;
+  padding: 0.85rem;
+}
+
+.collections-preview {
+  border: 1px solid #d5dbe1;
+  border-radius: 0.6rem;
+  background-color: #f8fafc;
+  padding: 0.7rem;
+}
+
+.collections-preview-title {
+  margin: 0 0 0.55rem;
+  color: #0f172a;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.collection-view-modal {
+  width: min(1160px, 100%);
+  max-height: min(92vh, 980px);
+  border: 1px solid #d5dbe1;
+  border-radius: 0.7rem;
+  background-color: #ffffff;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.38);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.collection-view-meta {
+  padding: 0.7rem 0.85rem;
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.collection-view-meta p {
+  margin: 0;
+  color: #475569;
+}
+
+.collection-view-content {
+  padding: 0.8rem 0.85rem 0.95rem;
+  overflow-y: auto;
 }
 
 .tags-page {
@@ -1438,6 +1653,23 @@
 
   .tags-page {
     padding-top: 1.76rem;
+  }
+
+  .collection-modal-body {
+    grid-template-columns: 1fr;
+  }
+
+  .collections-item {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .collections-item-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+
+  .collection-view-content {
+    padding: 0.65rem;
   }
 
   .tags-color-input {

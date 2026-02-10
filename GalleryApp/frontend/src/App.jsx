@@ -61,6 +61,28 @@ function App() {
   const [favoritesFiles, setFavoritesFiles] = useState([]);
   const [isFavoritesLoading, setIsFavoritesLoading] = useState(false);
   const [favoritesError, setFavoritesError] = useState("");
+  const [collections, setCollections] = useState([]);
+  const [isCollectionsLoading, setIsCollectionsLoading] = useState(false);
+  const [collectionsError, setCollectionsError] = useState("");
+  const [collectionsSearchQuery, setCollectionsSearchQuery] = useState("");
+  const [collectionFormLabel, setCollectionFormLabel] = useState("");
+  const [collectionFormDescription, setCollectionFormDescription] = useState("");
+  const [collectionFormCover, setCollectionFormCover] = useState("");
+  const [editingCollectionId, setEditingCollectionId] = useState(null);
+  const [isCollectionSaving, setIsCollectionSaving] = useState(false);
+  const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
+  const [collectionPreviewMedia, setCollectionPreviewMedia] = useState(null);
+  const [isCollectionPreviewLoading, setIsCollectionPreviewLoading] = useState(false);
+  const [selectedCollection, setSelectedCollection] = useState(null);
+  const [collectionFiles, setCollectionFiles] = useState([]);
+  const [isCollectionFilesLoading, setIsCollectionFilesLoading] = useState(false);
+  const [collectionFilesError, setCollectionFilesError] = useState("");
+  const [collectionFilesPage, setCollectionFilesPage] = useState(1);
+  const [collectionFilesTotalPages, setCollectionFilesTotalPages] = useState(0);
+  const [collectionFilesTotalCount, setCollectionFilesTotalCount] = useState(0);
+  const [collectionFilesPageJumpInput, setCollectionFilesPageJumpInput] = useState("1");
+  const [pendingCollectionDelete, setPendingCollectionDelete] = useState(null);
+  const [isCollectionDeleting, setIsCollectionDeleting] = useState(false);
   const [favoritesPage, setFavoritesPage] = useState(1);
   const [favoritesTotalPages, setFavoritesTotalPages] = useState(0);
   const [favoritesTotalFiles, setFavoritesTotalFiles] = useState(0);
@@ -329,7 +351,7 @@ function App() {
       color: searchTagTypeMap.get(tagName)?.color || ""
     }));
   })();
-  const hasSearchSuggestions = isSearchInputFocused && searchSuggestions.length > 0;
+  const hasSearchSuggestions = activePage !== "collections" && isSearchInputFocused && searchSuggestions.length > 0;
   const formatSearchTagValue = (value) => (/\s/.test(value) ? `"${value.replace(/"/g, "")}"` : value);
   const applySearchSuggestion = (suggestion) => {
     const prefix = inputValue.slice(0, searchTokenRange.start);
@@ -364,6 +386,10 @@ function App() {
     });
   };
   const handleSearchInputKeyDown = (event) => {
+    if (activePage === "collections") {
+      return;
+    }
+
     if (!hasSearchSuggestions) {
       return;
     }
@@ -441,6 +467,8 @@ function App() {
   const visibleMediaFiles = mediaFiles
     .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) }));
   const visibleFavoriteFiles = favoritesFiles
+    .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) }));
+  const visibleCollectionFiles = collectionFiles
     .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) }));
   const resolveOriginalMediaUrl = (file) => file?.originalUrl || file?.url || file?._tileUrl || "";
   const isVideoFile = (file) => {
@@ -1078,6 +1106,9 @@ function App() {
     if (activePage === "favorites") {
       loadFavorites(1);
     }
+    if (activePage === "collections") {
+      loadCollections(collectionsSearchQuery);
+    }
     if (activePage === "tags") {
       loadTagTypes();
     }
@@ -1356,10 +1387,100 @@ function App() {
     </div>
   );
 
+  const handleCollectionFilesPageChange = (nextPage) => {
+    if (isCollectionFilesLoading || !selectedCollection?.id) {
+      return;
+    }
+
+    if (nextPage < 1 || (collectionFilesTotalPages > 0 && nextPage > collectionFilesTotalPages) || nextPage === collectionFilesPage) {
+      return;
+    }
+
+    loadCollectionMedia(selectedCollection.id, nextPage);
+  };
+
+  useEffect(() => {
+    setCollectionFilesPageJumpInput(String(collectionFilesPage));
+  }, [collectionFilesPage]);
+
+  const handleCollectionFilesPageJumpSubmit = (event) => {
+    event.preventDefault();
+    if (isCollectionFilesLoading || collectionFilesTotalPages <= 0 || !selectedCollection?.id) {
+      return;
+    }
+
+    const parsed = Number.parseInt(collectionFilesPageJumpInput, 10);
+    if (!Number.isFinite(parsed)) {
+      setCollectionFilesPageJumpInput(String(collectionFilesPage));
+      return;
+    }
+
+    const targetPage = Math.min(Math.max(parsed, 1), collectionFilesTotalPages);
+    setCollectionFilesPageJumpInput(String(targetPage));
+    handleCollectionFilesPageChange(targetPage);
+  };
+
+  const renderCollectionFilesPagination = (showLoadingState = false) => (
+    <div className="media-pagination-wrap">
+      <div className="media-pagination">
+        <button
+          type="button"
+          onClick={() => handleCollectionFilesPageChange(collectionFilesPage - 1)}
+          disabled={isCollectionFilesLoading || collectionFilesPage <= 1 || collectionFilesTotalPages === 0}
+        >
+          Prev
+        </button>
+        <p>
+          Page {collectionFilesTotalPages === 0 ? 0 : collectionFilesPage} of {collectionFilesTotalPages}
+        </p>
+        <button
+          type="button"
+          onClick={() => handleCollectionFilesPageChange(collectionFilesPage + 1)}
+          disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0 || collectionFilesPage >= collectionFilesTotalPages}
+        >
+          Next
+        </button>
+        <form className="media-pagination-jump" onSubmit={handleCollectionFilesPageJumpSubmit}>
+          <input
+            type="number"
+            min={1}
+            max={Math.max(collectionFilesTotalPages, 1)}
+            step={1}
+            inputMode="numeric"
+            value={collectionFilesPageJumpInput}
+            onChange={(event) => setCollectionFilesPageJumpInput(event.target.value)}
+            disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0}
+            aria-label="Go to collection media page"
+          />
+          <button type="submit" disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0}>
+            Go
+          </button>
+        </form>
+      </div>
+      {showLoadingState ? (
+        <p className="media-pagination-status" aria-live="polite">
+          {isCollectionFilesLoading ? "Loading collection files..." : "\u00A0"}
+        </p>
+      ) : null}
+    </div>
+  );
+
   const handleSubmit = (event) => {
     event.preventDefault();
     const nextSubmittedText = inputValue.trim();
     setSubmittedText(nextSubmittedText);
+    if (activePage === "collections") {
+      setCollectionsSearchQuery(nextSubmittedText);
+      setSelectedCollection(null);
+      setCollectionFiles([]);
+      setCollectionFilesError("");
+      setCollectionFilesPage(1);
+      setCollectionFilesTotalPages(0);
+      setCollectionFilesTotalCount(0);
+      loadCollections(nextSubmittedText);
+      return;
+    }
+
     loadMedia(1, nextSubmittedText);
   };
 
@@ -1609,6 +1730,240 @@ function App() {
       setFavoritesError(error instanceof Error ? error.message : "Failed to fetch favorites.");
     } finally {
       setIsFavoritesLoading(false);
+    }
+  };
+
+  const loadCollections = async (search = "") => {
+    setIsCollectionsLoading(true);
+    setCollectionsError("");
+
+    try {
+      const query = new URLSearchParams();
+      const normalizedSearch = String(search || "").trim();
+      if (normalizedSearch) {
+        query.set("search", normalizedSearch);
+      }
+
+      const response = await fetch(`/api/collections${query.toString() ? `?${query.toString()}` : ""}`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("Collections API not found (404). Restart backend to apply latest changes.");
+        }
+        throw new Error("Failed to fetch collections.");
+      }
+
+      const result = await response.json();
+      setCollections(Array.isArray(result.items) ? result.items : []);
+    } catch (error) {
+      setCollections([]);
+      setCollectionsError(error instanceof Error ? error.message : "Failed to fetch collections.");
+    } finally {
+      setIsCollectionsLoading(false);
+    }
+  };
+
+  const loadCollectionMedia = async (collectionId, page = 1) => {
+    const normalizedCollectionId = Number(collectionId);
+    if (!Number.isSafeInteger(normalizedCollectionId) || normalizedCollectionId <= 0) {
+      setCollectionFiles([]);
+      setCollectionFilesPage(1);
+      setCollectionFilesTotalPages(0);
+      setCollectionFilesTotalCount(0);
+      setCollectionFilesError("Collection id is invalid.");
+      return;
+    }
+
+    setIsCollectionFilesLoading(true);
+    setCollectionFilesError("");
+    try {
+      const response = await fetch(`/api/collections/${normalizedCollectionId}/media?page=${page}&pageSize=${PAGE_SIZE}`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("Collection media API not found (404). Restart backend to apply latest changes.");
+        }
+        throw new Error("Failed to fetch collection media.");
+      }
+
+      const result = await response.json();
+      setCollectionFiles(Array.isArray(result.files) ? result.files : []);
+      setCollectionFilesPage(Number.isInteger(result.page) ? result.page : page);
+      setCollectionFilesTotalPages(Number.isInteger(result.totalPages) ? result.totalPages : 0);
+      setCollectionFilesTotalCount(Number.isInteger(result.totalCount) ? result.totalCount : 0);
+    } catch (error) {
+      setCollectionFiles([]);
+      setCollectionFilesPage(1);
+      setCollectionFilesTotalPages(0);
+      setCollectionFilesTotalCount(0);
+      setCollectionFilesError(error instanceof Error ? error.message : "Failed to fetch collection media.");
+    } finally {
+      setIsCollectionFilesLoading(false);
+    }
+  };
+
+  const parseNullableCollectionCoverId = (value) => {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    if (!/^\d+$/.test(trimmed)) {
+      throw new Error("Cover must be a positive media id.");
+    }
+
+    const parsed = Number.parseInt(trimmed, 10);
+    if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+      throw new Error("Cover must be a positive media id.");
+    }
+
+    return parsed;
+  };
+
+  const resetCollectionForm = () => {
+    setCollectionFormLabel("");
+    setCollectionFormDescription("");
+    setCollectionFormCover("");
+    setEditingCollectionId(null);
+    setCollectionPreviewMedia(null);
+  };
+
+  const closeCollectionModal = () => {
+    resetCollectionForm();
+    setCollectionsError("");
+    setIsCollectionModalOpen(false);
+    setIsCollectionPreviewLoading(false);
+  };
+
+  const openCreateCollectionModal = () => {
+    resetCollectionForm();
+    setCollectionsError("");
+    setIsCollectionModalOpen(true);
+  };
+
+  const handleSubmitCollection = async (event) => {
+    event.preventDefault();
+    const label = collectionFormLabel.trim();
+    if (!label) {
+      setCollectionsError("Collection name is required.");
+      return;
+    }
+
+    let cover = null;
+    try {
+      cover = parseNullableCollectionCoverId(collectionFormCover);
+    } catch (error) {
+      setCollectionsError(error instanceof Error ? error.message : "Cover is invalid.");
+      return;
+    }
+
+    setIsCollectionSaving(true);
+    setCollectionsError("");
+    try {
+      const payload = {
+        label,
+        description: collectionFormDescription.trim() || null,
+        cover
+      };
+      const isEdit = Number.isInteger(editingCollectionId) && editingCollectionId > 0;
+      const endpoint = isEdit ? `/api/collections/${editingCollectionId}` : "/api/collections";
+      const method = isEdit ? "PUT" : "POST";
+
+      const response = await fetch(endpoint, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const result = await readResponsePayload(response);
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to save collection.");
+      }
+
+      closeCollectionModal();
+      await loadCollections(collectionsSearchQuery);
+    } catch (error) {
+      setCollectionsError(error instanceof Error ? error.message : "Failed to save collection.");
+    } finally {
+      setIsCollectionSaving(false);
+    }
+  };
+
+  const handleStartEditCollection = (item) => {
+    setEditingCollectionId(item?.id ?? null);
+    setCollectionFormLabel(String(item?.label || ""));
+    setCollectionFormDescription(String(item?.description || ""));
+    setCollectionFormCover(item?.cover ? String(item.cover) : "");
+    setCollectionsError("");
+    setIsCollectionModalOpen(true);
+  };
+
+  const handleOpenCollection = async (item) => {
+    if (!item?.id) {
+      return;
+    }
+
+    setSelectedCollection(item);
+    setSelectedMedia(null);
+    await loadCollectionMedia(item.id, 1);
+  };
+
+  const handleEditSelectedCollection = () => {
+    if (!selectedCollection) {
+      return;
+    }
+
+    setSelectedCollection(null);
+    handleStartEditCollection(selectedCollection);
+  };
+
+  const handleRequestDeleteCollection = (item) => {
+    if (!item?.id) {
+      return;
+    }
+
+    setPendingCollectionDelete({
+      id: item.id,
+      name: String(item.label || "")
+    });
+  };
+
+  const closeDeleteCollectionConfirm = () => {
+    if (isCollectionDeleting) {
+      return;
+    }
+
+    setPendingCollectionDelete(null);
+  };
+
+  const handleConfirmDeleteCollection = async () => {
+    if (!pendingCollectionDelete?.id || isCollectionDeleting) {
+      return;
+    }
+
+    setIsCollectionDeleting(true);
+    setCollectionsError("");
+    try {
+      const response = await fetch(`/api/collections/${pendingCollectionDelete.id}`, {
+        method: "DELETE"
+      });
+      const result = await readResponsePayload(response);
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to delete collection.");
+      }
+
+      if (selectedCollection?.id === pendingCollectionDelete.id) {
+        setSelectedCollection(null);
+        setCollectionFiles([]);
+        setCollectionFilesError("");
+        setCollectionFilesPage(1);
+        setCollectionFilesTotalPages(0);
+        setCollectionFilesTotalCount(0);
+      }
+
+      setPendingCollectionDelete(null);
+      await loadCollections(collectionsSearchQuery);
+    } catch (error) {
+      setCollectionsError(error instanceof Error ? error.message : "Failed to delete collection.");
+    } finally {
+      setIsCollectionDeleting(false);
     }
   };
 
@@ -1995,6 +2350,98 @@ function App() {
     const files = Array.isArray(payload?.files) ? payload.files : [];
     return files.find((item) => item?.id === normalizedId) || null;
   };
+
+  useEffect(() => {
+    if (!isCollectionModalOpen) {
+      return undefined;
+    }
+
+    const handleEsc = (event) => {
+      if (event.key === "Escape") {
+        closeCollectionModal();
+      }
+    };
+
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [isCollectionModalOpen]);
+
+  useEffect(() => {
+    if (!selectedCollection) {
+      return undefined;
+    }
+
+    const handleEsc = (event) => {
+      if (event.key === "Escape") {
+        setSelectedCollection(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [selectedCollection]);
+
+  useEffect(() => {
+    if (!isCollectionModalOpen) {
+      setCollectionPreviewMedia(null);
+      setIsCollectionPreviewLoading(false);
+      return;
+    }
+
+    const trimmedCover = String(collectionFormCover || "").trim();
+    if (!trimmedCover) {
+      setCollectionPreviewMedia(null);
+      setIsCollectionPreviewLoading(false);
+      return;
+    }
+
+    if (!/^\d+$/.test(trimmedCover)) {
+      setCollectionPreviewMedia(null);
+      setIsCollectionPreviewLoading(false);
+      return;
+    }
+
+    const coverId = Number.parseInt(trimmedCover, 10);
+    if (!Number.isSafeInteger(coverId) || coverId <= 0) {
+      setCollectionPreviewMedia(null);
+      setIsCollectionPreviewLoading(false);
+      return;
+    }
+
+    let isCancelled = false;
+    const localCandidate = [selectedMedia, ...mediaFiles, ...favoritesFiles, ...collectionFiles]
+      .find((item) => item?.id === coverId) || null;
+    if (localCandidate) {
+      setCollectionPreviewMedia(localCandidate);
+      setIsCollectionPreviewLoading(false);
+      return () => {
+        isCancelled = true;
+      };
+    }
+
+    setIsCollectionPreviewLoading(true);
+    void fetchMediaById(coverId)
+      .then((item) => {
+        if (!isCancelled) {
+          setCollectionPreviewMedia(item);
+        }
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setCollectionPreviewMedia(null);
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsCollectionPreviewLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isCollectionModalOpen, collectionFormCover, selectedMedia, mediaFiles, favoritesFiles, collectionFiles]);
+
   const handleOpenRelatedMediaById = async (targetId, relationLabel) => {
     const normalizedId = Number(targetId);
     if (!Number.isSafeInteger(normalizedId) || normalizedId <= 0) {
@@ -2209,6 +2656,7 @@ function App() {
       child: activeUploadItem.draft.child ? Number(activeUploadItem.draft.child) : null
     }
     : null;
+  const collectionPreviewTileUrl = collectionPreviewMedia ? resolveTileUrl(collectionPreviewMedia) : "";
   const hasUploadHistory = uploadTaskStatuses.length > 0 || backgroundUploadState.total > 0;
   const backgroundRemaining = backgroundUploadState.queued + (backgroundUploadState.isProcessing ? 1 : 0);
   const uploadDropdownSummary = backgroundUploadState.total === 0
@@ -2317,6 +2765,7 @@ function App() {
     setSubmittedText("");
     setActivePage("gallery");
     setSelectedMedia(null);
+    setSelectedCollection(null);
     setIsSlideMenuOpen(false);
     loadMedia(1, "");
   };
@@ -2324,16 +2773,20 @@ function App() {
     setActivePage("favorites");
     setIsSlideMenuOpen(false);
     setSelectedMedia(null);
+    setSelectedCollection(null);
   };
   const openTagsPage = () => {
     setActivePage("tags");
     setIsSlideMenuOpen(false);
     setSelectedMedia(null);
+    setSelectedCollection(null);
   };
   const openCollectionsPage = () => {
     setActivePage("collections");
     setIsSlideMenuOpen(false);
     setSelectedMedia(null);
+    setInputValue(collectionsSearchQuery);
+    setSubmittedText(collectionsSearchQuery);
   };
   const handleCreateTagType = async (event) => {
     event.preventDefault();
@@ -2713,17 +3166,23 @@ function App() {
               aria-hidden="true"
             >
               {inputValue ? (
-                parseSearchSegments(inputValue).map((segment, index) => (
-                  <span
-                    key={`${index}-${segment.text}`}
-                    className={segment.isTag ? "top-input-segment is-tag" : "top-input-segment"}
-                    style={segment.isTag && segment.color ? { outlineColor: segment.color } : undefined}
-                  >
-                    {segment.text}
-                  </span>
-                ))
+                activePage === "collections" ? (
+                  <span className="top-input-segment">{inputValue}</span>
+                ) : (
+                  parseSearchSegments(inputValue).map((segment, index) => (
+                    <span
+                      key={`${index}-${segment.text}`}
+                      className={segment.isTag ? "top-input-segment is-tag" : "top-input-segment"}
+                      style={segment.isTag && segment.color ? { outlineColor: segment.color } : undefined}
+                    >
+                      {segment.text}
+                    </span>
+                  ))
+                )
               ) : (
-                <span className="top-input-placeholder">title:cat id:42</span>
+                <span className="top-input-placeholder">
+                  {activePage === "collections" ? "collection name" : "title:cat id:42"}
+                </span>
               )}
             </div>
             <input
@@ -2738,7 +3197,7 @@ function App() {
               onKeyUp={updateSearchCaretPosition}
               onKeyDown={handleSearchInputKeyDown}
               onScroll={syncSearchHighlightScroll}
-              placeholder="title:cat id:42"
+              placeholder={activePage === "collections" ? "collection name" : "title:cat id:42"}
             />
             {hasSearchSuggestions ? (
               <ul className="top-search-suggestions">
@@ -3008,10 +3467,58 @@ function App() {
         </section>
       ) : isCollectionsPage ? (
         <section className="collections-page">
-          <div className="collections-callout">
-            <h2>Collections</h2>
-            <p>Collections page is ready. Add collection content here.</p>
+          <div className="collections-toolbar">
+            <button
+              type="button"
+              className="collections-btn collections-btn-primary"
+              onClick={openCreateCollectionModal}
+            >
+              New collection
+            </button>
           </div>
+
+          {isCollectionsLoading ? <p className="collections-state">Loading collections...</p> : null}
+          {!isCollectionsLoading && collections.length === 0 ? (
+            <p className="collections-state">No collections found.</p>
+          ) : null}
+          {!isCollectionsLoading && collections.length > 0 ? (
+            <ul className="collections-list">
+              {collections.map((item) => (
+                <li
+                  key={item.id}
+                  className="collections-item collections-item-clickable"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => void handleOpenCollection(item)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      void handleOpenCollection(item);
+                    }
+                  }}
+                >
+                  <div className="collections-item-cover">
+                    {item.coverMedia?.tileUrl ? (
+                      <img
+                        src={item.coverMedia.tileUrl}
+                        alt={String(item.label || "Collection cover")}
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="collections-item-cover-fallback">No cover</div>
+                    )}
+                  </div>
+                  <div className="collections-item-body">
+                    <h3>{item.label}</h3>
+                    <p>{item.description || "No description."}</p>
+                    <p className="collections-meta">
+                      Cover: {item.cover ? `#${item.cover}` : "not set"}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </section>
       ) : (
         <section className="tags-page">
@@ -3429,6 +3936,197 @@ function App() {
         </div>
       ) : null}
 
+      {isCollectionModalOpen ? (
+        <div
+          className="media-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          onClick={closeCollectionModal}
+        >
+          <div
+            className="collection-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="media-modal-header">
+              <h2 className="upload-modal-title">{editingCollectionId ? "Edit collection" : "Create collection"}</h2>
+              <button
+                type="button"
+                className="media-action-btn"
+                onClick={closeCollectionModal}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="collection-modal-body">
+              <form className="collections-form" onSubmit={handleSubmitCollection}>
+                <input
+                  type="text"
+                  className="collections-input"
+                  value={collectionFormLabel}
+                  onChange={(event) => setCollectionFormLabel(event.target.value)}
+                  placeholder="Collection name"
+                  aria-label="Collection name"
+                />
+                <input
+                  type="text"
+                  className="collections-input"
+                  value={collectionFormDescription}
+                  onChange={(event) => setCollectionFormDescription(event.target.value)}
+                  placeholder="Description"
+                  aria-label="Collection description"
+                />
+                <input
+                  type="text"
+                  className="collections-input"
+                  value={collectionFormCover}
+                  onChange={(event) => setCollectionFormCover(event.target.value)}
+                  placeholder="Cover media id (optional)"
+                  aria-label="Collection cover media id"
+                />
+                {collectionsError ? <p className="collections-error">{collectionsError}</p> : null}
+                <div className="collections-form-actions">
+                  <button
+                    type="submit"
+                    className="collections-btn collections-btn-primary"
+                    disabled={isCollectionSaving}
+                  >
+                    {isCollectionSaving ? "Saving..." : editingCollectionId ? "Save" : "Create"}
+                  </button>
+                  <button
+                    type="button"
+                    className="collections-btn"
+                    onClick={closeCollectionModal}
+                    disabled={isCollectionSaving}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+
+              <div className="collections-preview">
+                <p className="collections-preview-title">Preview</p>
+                <div className="collections-item">
+                  <div className="collections-item-cover">
+                    {isCollectionPreviewLoading ? (
+                      <div className="collections-item-cover-fallback">Loading...</div>
+                    ) : collectionPreviewTileUrl ? (
+                      <img
+                        src={collectionPreviewTileUrl}
+                        alt="Collection preview cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="collections-item-cover-fallback">No cover</div>
+                    )}
+                  </div>
+                  <div className="collections-item-body">
+                    <h3>{collectionFormLabel.trim() || "Untitled collection"}</h3>
+                    <p>{collectionFormDescription.trim() || "No description."}</p>
+                    <p className="collections-meta">
+                      Cover: {collectionFormCover.trim() ? `#${collectionFormCover.trim()}` : "not set"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {selectedCollection ? (
+        <div
+          className="media-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setSelectedCollection(null)}
+        >
+          <div
+            className="collection-view-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="media-modal-header">
+              <h2 className="upload-modal-title">{selectedCollection.label}</h2>
+              <button
+                type="button"
+                className="media-action-btn"
+                onClick={() => setSelectedCollection(null)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="collection-view-meta">
+              <p>{selectedCollection.description || "No description."}</p>
+              <div className="collections-item-actions">
+                <button
+                  type="button"
+                  className="collections-btn"
+                  onClick={handleEditSelectedCollection}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="collections-btn collections-btn-danger"
+                  onClick={() => handleRequestDeleteCollection(selectedCollection)}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+
+            <div className="collection-view-content">
+              {collectionFilesError ? <p className="collections-error">{collectionFilesError}</p> : null}
+              {!collectionFilesError && isCollectionFilesLoading && collectionFilesTotalCount === 0 ? (
+                <p className="collections-state">Loading collection files...</p>
+              ) : null}
+              {!collectionFilesError && !isCollectionFilesLoading && collectionFilesTotalCount === 0 ? (
+                <p className="collections-state">Collection is empty.</p>
+              ) : null}
+              {!collectionFilesError && collectionFilesTotalCount > 0 ? (
+                <>
+                  {renderCollectionFilesPagination(true)}
+                  <div className="media-grid">
+                    {visibleCollectionFiles.map((file) => (
+                      <article
+                        key={file.relativePath}
+                        className="media-tile"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedMedia(file)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedMedia(file);
+                          }
+                        }}
+                      >
+                        <div className="media-preview">
+                          {file._tileUrl && !failedPreviewPaths.has(file.relativePath) ? (
+                            <img
+                              src={file._tileUrl}
+                              alt={getDisplayName(file.name)}
+                              loading="lazy"
+                              onError={() => {
+                                setFailedPreviewPaths((prev) => new Set(prev).add(file.relativePath));
+                              }}
+                            />
+                          ) : (
+                            <div className="media-fallback">Preview unavailable</div>
+                          )}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                  {renderCollectionFilesPagination(false)}
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {selectedMedia ? (
         <div
           className="media-modal-overlay"
@@ -3626,6 +4324,39 @@ function App() {
                 className="media-action-btn"
                 onClick={closeTagDeleteConfirm}
                 disabled={isDeletingTagEntity}
+              >
+                No
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {pendingCollectionDelete ? (
+        <div
+          className="media-confirm-overlay"
+          onClick={closeDeleteCollectionConfirm}
+        >
+          <div
+            className="media-confirm-dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p>
+              Are you sure you want to delete collection "{pendingCollectionDelete.name}"?
+            </p>
+            <div className="media-delete-buttons">
+              <button
+                type="button"
+                className="media-action-btn media-action-danger"
+                onClick={handleConfirmDeleteCollection}
+                disabled={isCollectionDeleting}
+              >
+                {isCollectionDeleting ? "Deleting..." : "Yes"}
+              </button>
+              <button
+                type="button"
+                className="media-action-btn"
+                onClick={closeDeleteCollectionConfirm}
+                disabled={isCollectionDeleting}
               >
                 No
               </button>

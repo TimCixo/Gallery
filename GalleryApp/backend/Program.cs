@@ -127,6 +127,242 @@ public class Program
             });
         });
 
+        app.MapGet("/api/collections", (string? search) =>
+        {
+            var normalizedSearch = NormalizeOptionalText(search);
+
+            using var connection = new SqliteConnection(connectionString);
+            connection.Open();
+
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT
+                    c.Id,
+                    c.Lable,
+                    c.Description,
+                    c.Cover,
+                    m.Path
+                FROM Collections c
+                LEFT JOIN Media m ON m.Id = c.Cover
+                WHERE c.Lable <> 'Favorites'
+                  AND ($search IS NULL OR LOWER(c.Lable) LIKE $search)
+                ORDER BY c.Id DESC;
+                """;
+            command.Parameters.AddWithValue("$search", normalizedSearch is null
+                ? DBNull.Value
+                : $"%{normalizedSearch.ToLowerInvariant()}%");
+
+            using var reader = command.ExecuteReader();
+            var items = new List<object>();
+            while (reader.Read())
+            {
+                var coverId = reader.IsDBNull(3) ? (long?)null : reader.GetInt64(3);
+                var coverPath = reader.IsDBNull(4) ? null : reader.GetString(4);
+                items.Add(new
+                {
+                    id = reader.GetInt64(0),
+                    label = reader.GetString(1),
+                    description = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    cover = coverId,
+                    coverMedia = BuildCollectionCoverPayload(mediaRootPath, coverId, coverPath)
+                });
+            }
+
+            return Results.Ok(new { items });
+        });
+
+        app.MapPost("/api/collections", (CollectionCreateRequest request) =>
+        {
+            var label = NormalizeOptionalText(request.Label);
+            if (label is null)
+            {
+                return Results.BadRequest(new { error = "Collection name is required." });
+            }
+
+            var description = NormalizeOptionalText(request.Description);
+            var cover = request.Cover;
+            if (cover.HasValue && cover.Value <= 0)
+            {
+                return Results.BadRequest(new { error = "Cover must be a positive media id." });
+            }
+
+            using var connection = new SqliteConnection(connectionString);
+            connection.Open();
+
+            if (cover.HasValue && !MediaRecordExists(connection, cover.Value))
+            {
+                return Results.BadRequest(new { error = "Cover media id was not found." });
+            }
+
+            using var duplicateCommand = connection.CreateCommand();
+            duplicateCommand.CommandText = """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM Collections
+                    WHERE Lable = $label COLLATE NOCASE
+                );
+                """;
+            duplicateCommand.Parameters.AddWithValue("$label", label);
+            var hasDuplicate = Convert.ToInt64(duplicateCommand.ExecuteScalar()) == 1;
+            if (hasDuplicate)
+            {
+                return Results.Conflict(new { error = "Collection with this name already exists." });
+            }
+
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                INSERT INTO Collections (Lable, Description, Cover)
+                VALUES ($label, $description, $cover);
+
+                SELECT last_insert_rowid();
+                """;
+            command.Parameters.AddWithValue("$label", label);
+            command.Parameters.AddWithValue("$description", description ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("$cover", cover ?? (object)DBNull.Value);
+
+            var createdId = Convert.ToInt64(command.ExecuteScalar());
+            return Results.Ok(new
+            {
+                id = createdId,
+                label,
+                description,
+                cover
+            });
+        });
+
+        app.MapPut("/api/collections/{id:long}", (long id, CollectionUpdateRequest request) =>
+        {
+            if (id <= 0)
+            {
+                return Results.BadRequest(new { error = "Invalid collection id." });
+            }
+
+            var label = NormalizeOptionalText(request.Label);
+            if (label is null)
+            {
+                return Results.BadRequest(new { error = "Collection name is required." });
+            }
+
+            var description = NormalizeOptionalText(request.Description);
+            var cover = request.Cover;
+            if (cover.HasValue && cover.Value <= 0)
+            {
+                return Results.BadRequest(new { error = "Cover must be a positive media id." });
+            }
+
+            using var connection = new SqliteConnection(connectionString);
+            connection.Open();
+
+            if (cover.HasValue && !MediaRecordExists(connection, cover.Value))
+            {
+                return Results.BadRequest(new { error = "Cover media id was not found." });
+            }
+
+            using var duplicateCommand = connection.CreateCommand();
+            duplicateCommand.CommandText = """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM Collections
+                    WHERE Lable = $label COLLATE NOCASE
+                      AND Id <> $id
+                );
+                """;
+            duplicateCommand.Parameters.AddWithValue("$label", label);
+            duplicateCommand.Parameters.AddWithValue("$id", id);
+            var hasDuplicate = Convert.ToInt64(duplicateCommand.ExecuteScalar()) == 1;
+            if (hasDuplicate)
+            {
+                return Results.Conflict(new { error = "Collection with this name already exists." });
+            }
+
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                UPDATE Collections
+                SET Lable = $label, Description = $description, Cover = $cover
+                WHERE Id = $id
+                  AND Lable <> 'Favorites';
+                """;
+            command.Parameters.AddWithValue("$label", label);
+            command.Parameters.AddWithValue("$description", description ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("$cover", cover ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("$id", id);
+
+            var affectedRows = command.ExecuteNonQuery();
+            if (affectedRows == 0)
+            {
+                return Results.NotFound(new { error = "Collection not found." });
+            }
+
+            return Results.Ok(new
+            {
+                id,
+                label,
+                description,
+                cover
+            });
+        });
+
+        app.MapGet("/api/collections/{id:long}/media", (long id, int? page, int? pageSize) =>
+        {
+            if (id <= 0)
+            {
+                return Results.BadRequest(new { error = "Invalid collection id." });
+            }
+
+            var normalizedPageSize = Math.Clamp(pageSize ?? 36, 1, 100);
+            var normalizedPage = Math.Max(page ?? 1, 1);
+            var allFiles = LoadCollectionMediaItems(connectionString, mediaRootPath, id);
+
+            var totalCount = allFiles.Count;
+            var totalPages = totalCount == 0
+                ? 0
+                : (int)Math.Ceiling(totalCount / (double)normalizedPageSize);
+            var effectivePage = totalPages == 0
+                ? 1
+                : Math.Min(normalizedPage, totalPages);
+            var skip = totalPages == 0 ? 0 : (effectivePage - 1) * normalizedPageSize;
+            var files = allFiles
+                .Skip(skip)
+                .Take(normalizedPageSize)
+                .ToArray();
+
+            return Results.Ok(new
+            {
+                page = effectivePage,
+                pageSize = normalizedPageSize,
+                totalCount,
+                totalPages,
+                files
+            });
+        });
+
+        app.MapDelete("/api/collections/{id:long}", (long id) =>
+        {
+            if (id <= 0)
+            {
+                return Results.BadRequest(new { error = "Invalid collection id." });
+            }
+
+            using var connection = new SqliteConnection(connectionString);
+            connection.Open();
+
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                DELETE FROM Collections
+                WHERE Id = $id
+                  AND Lable <> 'Favorites';
+                """;
+            command.Parameters.AddWithValue("$id", id);
+
+            var affectedRows = command.ExecuteNonQuery();
+            if (affectedRows == 0)
+            {
+                return Results.NotFound(new { error = "Collection not found." });
+            }
+
+            return Results.Ok(new { id });
+        });
+
         app.MapGet("/api/tag-types", () =>
         {
             using var connection = new SqliteConnection(connectionString);
@@ -1095,6 +1331,7 @@ public class Program
             CREATE INDEX IF NOT EXISTS IX_Media_Parent ON Media(Parent);
             CREATE INDEX IF NOT EXISTS IX_Media_Child ON Media(Child);
             CREATE INDEX IF NOT EXISTS IX_Collections_Cover ON Collections(Cover);
+            CREATE INDEX IF NOT EXISTS IX_Collections_Lable ON Collections(Lable);
             CREATE INDEX IF NOT EXISTS IX_CollectionsMedia_CollectionId ON CollectionsMedia(CollectionId);
             CREATE INDEX IF NOT EXISTS IX_CollectionsMedia_MediaId ON CollectionsMedia(MediaId);
             CREATE INDEX IF NOT EXISTS IX_Tags_TagTypeId ON Tags(TagTypeId);
@@ -1495,6 +1732,34 @@ public class Program
         return Convert.ToInt64(insertCommand.ExecuteScalar());
     }
 
+    private static object? BuildCollectionCoverPayload(string mediaRootPath, long? coverId, string? coverPath)
+    {
+        if (!coverId.HasValue || string.IsNullOrWhiteSpace(coverPath))
+        {
+            return null;
+        }
+
+        var normalizedPath = coverPath.Replace("\\", "/");
+        if (!TryResolveMediaFilePath(mediaRootPath, normalizedPath, out var absolutePath, out var extension))
+        {
+            return null;
+        }
+
+        var fileInfo = new FileInfo(absolutePath);
+        var mediaType = IsImageFile(extension) ? "image" : IsVideoFile(extension) ? "video" : "file";
+        var originalUrl = BuildMediaUrl(normalizedPath);
+        var tileUrl = BuildTileUrl(normalizedPath, extension, fileInfo.LastWriteTimeUtc.Ticks);
+
+        return new
+        {
+            id = coverId.Value,
+            relativePath = normalizedPath,
+            originalUrl,
+            tileUrl,
+            mediaType
+        };
+    }
+
     private static string? NormalizeOptionalText(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -1551,6 +1816,99 @@ public class Program
             FROM Media m{whereSql}
             ORDER BY m.Id DESC;
             """;
+
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var path = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                continue;
+            }
+
+            var normalizedPath = path.Replace("\\", "/");
+            var normalizedRelativePath = normalizedPath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+            var rootPath = Path.GetFullPath(mediaRootPath + Path.DirectorySeparatorChar);
+            var absolutePath = Path.GetFullPath(Path.Combine(mediaRootPath, normalizedRelativePath));
+            if (!absolutePath.StartsWith(rootPath, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var extension = Path.GetExtension(absolutePath);
+            if (!File.Exists(absolutePath) || !IsAllowedMediaFile(absolutePath))
+            {
+                continue;
+            }
+
+            var fileInfo = new FileInfo(absolutePath);
+            var mediaType = IsImageFile(extension) ? "image" : IsVideoFile(extension) ? "video" : "file";
+            var originalUrl = BuildMediaUrl(normalizedPath);
+            var tileUrl = BuildTileUrl(normalizedPath, extension, fileInfo.LastWriteTimeUtc.Ticks);
+            var item = new MediaMetadata(
+                Id: reader.GetInt64(0),
+                RelativePath: normalizedPath,
+                Title: reader.IsDBNull(2) ? null : reader.GetString(2),
+                Description: reader.IsDBNull(3) ? null : reader.GetString(3),
+                Source: reader.IsDBNull(4) ? null : reader.GetString(4),
+                Parent: reader.IsDBNull(5) ? null : reader.GetInt64(5),
+                Child: reader.IsDBNull(6) ? null : reader.GetInt64(6),
+                IsFavorite: !reader.IsDBNull(7) && reader.GetInt64(7) == 1);
+
+            result.Add(new
+            {
+                id = item.Id,
+                name = Path.GetFileName(normalizedPath),
+                relativePath = item.RelativePath,
+                title = item.Title,
+                description = item.Description,
+                source = item.Source,
+                parent = item.Parent,
+                child = item.Child,
+                isFavorite = item.IsFavorite,
+                originalUrl,
+                tileUrl,
+                mediaType,
+                sizeBytes = fileInfo.Length,
+                modifiedAtUtc = fileInfo.LastWriteTimeUtc
+            });
+        }
+
+        return result;
+    }
+
+    private static List<object> LoadCollectionMediaItems(
+        string connectionString,
+        string mediaRootPath,
+        long collectionId)
+    {
+        var result = new List<object>();
+
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT
+                m.Id,
+                m.Path,
+                m.Title,
+                m.Description,
+                m.Source,
+                m.Parent,
+                m.Child,
+                EXISTS (
+                    SELECT 1
+                    FROM CollectionsMedia cmFav
+                    INNER JOIN Collections cFav ON cFav.Id = cmFav.CollectionId
+                    WHERE cmFav.MediaId = m.Id AND cFav.Lable = 'Favorites'
+                ) AS IsFavorite
+            FROM Media m
+            INNER JOIN CollectionsMedia cm ON cm.MediaId = m.Id
+            WHERE cm.CollectionId = $collectionId
+            ORDER BY m.Id DESC;
+            """;
+        command.Parameters.AddWithValue("$collectionId", collectionId);
 
         using var reader = command.ExecuteReader();
         while (reader.Read())
@@ -1858,6 +2216,8 @@ public class Program
         IReadOnlyList<long>? TagIds);
 
     private sealed record FavoriteUpdateRequest(bool IsFavorite);
+    private sealed record CollectionCreateRequest(string? Label, string? Description, long? Cover);
+    private sealed record CollectionUpdateRequest(string? Label, string? Description, long? Cover);
     private sealed record TagTypeCreateRequest(string? Name, string? Color);
     private sealed record TagTypeUpdateRequest(string? Name, string? Color);
     private sealed record TagCreateRequest(string? Name, string? Description);
