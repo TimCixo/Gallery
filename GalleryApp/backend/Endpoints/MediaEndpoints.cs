@@ -5,6 +5,7 @@ using GalleryApp.Api.Models.Requests;
 using GalleryApp.Api.Services;
 using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using static GalleryApp.Api.Services.LegacyHelpers;

@@ -1,6 +1,7 @@
 using GalleryApp.Api;
 using GalleryApp.Api.Models.Requests;
 using GalleryApp.Api.Services;
+using GalleryApp.Api.Validation;
 using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -52,7 +53,7 @@ app.MapPost("/api/tag-types", (TagTypeCreateRequest request) =>
     }
 
     var color = NormalizeOptionalText(request.Color)?.ToUpperInvariant();
-    if (color is null || !HexColorRegex.IsMatch(color))
+    if (color is null || !ReusableValidation.IsValidHexColor(color))
     {
         return Results.BadRequest(new { error = "Color must be a valid hex code (#RRGGBB)." });
     }
@@ -93,7 +94,7 @@ app.MapPut("/api/tag-types/{id:long}", (long id, TagTypeUpdateRequest request) =
     }
 
     var color = NormalizeOptionalText(request.Color)?.ToUpperInvariant();
-    if (color is null || !HexColorRegex.IsMatch(color))
+    if (color is null || !ReusableValidation.IsValidHexColor(color))
     {
         return Results.BadRequest(new { error = "Color must be a valid hex code (#RRGGBB)." });
     }
