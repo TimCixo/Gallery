@@ -9,6 +9,8 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Formats.Webp;
 using System.Text.RegularExpressions;
+using GalleryApp.Api.Data.Repositories;
+using GalleryApp.Api.Data.Search;
 
 namespace GalleryApp.Api;
 
@@ -39,6 +41,9 @@ public class Program
         }.ToString();
 
         builder.Services.AddSingleton(connectionString);
+        builder.Services.AddSingleton<MediaRepository>();
+        builder.Services.AddSingleton<CollectionRepository>();
+        builder.Services.AddSingleton<TagRepository>();
         builder.Services.AddCors(options =>
         {
             options.AddPolicy("Frontend", policy =>
@@ -68,66 +73,42 @@ public class Program
                 timestampUtc = DateTime.UtcNow
             }));
 
-        app.MapGet("/api/media", (int? page, int? pageSize, string? search) =>
+        app.MapGet("/api/media", (int? page, int? pageSize, string? search, MediaRepository mediaRepository) =>
         {
             var normalizedPageSize = Math.Clamp(pageSize ?? 36, 1, 100);
             var normalizedPage = Math.Max(page ?? 1, 1);
-            var searchCriteria = ParseMediaSearchCriteria(search);
-            var allFiles = LoadMediaItems(connectionString, mediaRootPath, searchCriteria, favoritesOnly: false);
+            var searchCriteria = MediaSearchParser.ParseMediaSearchCriteria(search);
+            var allFiles = BuildMediaPayload(mediaRootPath, mediaRepository.GetMedia(searchCriteria, favoritesOnly: false));
 
             var totalCount = allFiles.Count;
             var totalPages = totalCount == 0
                 ? 0
                 : (int)Math.Ceiling(totalCount / (double)normalizedPageSize);
-            var effectivePage = totalPages == 0
-                ? 1
-                : Math.Min(normalizedPage, totalPages);
+            var effectivePage = totalPages == 0 ? 1 : Math.Min(normalizedPage, totalPages);
             var skip = totalPages == 0 ? 0 : (effectivePage - 1) * normalizedPageSize;
-            var files = allFiles
-                .Skip(skip)
-                .Take(normalizedPageSize)
-                .ToArray();
+            var files = allFiles.Skip(skip).Take(normalizedPageSize).ToArray();
 
-            return Results.Ok(new
-            {
-                page = effectivePage,
-                pageSize = normalizedPageSize,
-                totalCount,
-                totalPages,
-                files
-            });
+            return Results.Ok(new { page = effectivePage, pageSize = normalizedPageSize, totalCount, totalPages, files });
         });
 
-        app.MapGet("/api/favorites", (int? page, int? pageSize) =>
+        app.MapGet("/api/favorites", (int? page, int? pageSize, MediaRepository mediaRepository) =>
         {
             var normalizedPageSize = Math.Clamp(pageSize ?? 36, 1, 100);
             var normalizedPage = Math.Max(page ?? 1, 1);
-            var allFiles = LoadMediaItems(connectionString, mediaRootPath, criteria: null, favoritesOnly: true);
+            var allFiles = BuildMediaPayload(mediaRootPath, mediaRepository.GetMedia(criteria: null, favoritesOnly: true));
 
             var totalCount = allFiles.Count;
             var totalPages = totalCount == 0
                 ? 0
                 : (int)Math.Ceiling(totalCount / (double)normalizedPageSize);
-            var effectivePage = totalPages == 0
-                ? 1
-                : Math.Min(normalizedPage, totalPages);
+            var effectivePage = totalPages == 0 ? 1 : Math.Min(normalizedPage, totalPages);
             var skip = totalPages == 0 ? 0 : (effectivePage - 1) * normalizedPageSize;
-            var files = allFiles
-                .Skip(skip)
-                .Take(normalizedPageSize)
-                .ToArray();
+            var files = allFiles.Skip(skip).Take(normalizedPageSize).ToArray();
 
-            return Results.Ok(new
-            {
-                page = effectivePage,
-                pageSize = normalizedPageSize,
-                totalCount,
-                totalPages,
-                files
-            });
+            return Results.Ok(new { page = effectivePage, pageSize = normalizedPageSize, totalCount, totalPages, files });
         });
 
-        app.MapGet("/api/collections", (string? search, long? mediaId) =>
+        app.MapGet("/api/collections", (string? search, long? mediaId, CollectionRepository collectionRepository) =>
         {
             var normalizedSearch = NormalizeOptionalText(search);
             if (mediaId.HasValue && mediaId.Value <= 0)
@@ -135,55 +116,21 @@ public class Program
                 return Results.BadRequest(new { error = "Invalid media id." });
             }
 
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-
-            using var command = connection.CreateCommand();
-            command.CommandText = """
-                SELECT
-                    c.Id,
-                    c.Lable,
-                    c.Description,
-                    c.Cover,
-                    m.Path,
-                    EXISTS (
-                        SELECT 1
-                        FROM CollectionsMedia cm
-                        WHERE cm.CollectionId = c.Id
-                          AND ($mediaId IS NOT NULL AND cm.MediaId = $mediaId)
-                    ) AS ContainsMedia
-                FROM Collections c
-                LEFT JOIN Media m ON m.Id = c.Cover
-                WHERE c.Lable <> 'Favorites'
-                  AND ($search IS NULL OR LOWER(c.Lable) LIKE $search)
-                ORDER BY c.Id DESC;
-                """;
-            command.Parameters.AddWithValue("$search", normalizedSearch is null
-                ? DBNull.Value
-                : $"%{normalizedSearch.ToLowerInvariant()}%");
-            command.Parameters.AddWithValue("$mediaId", mediaId ?? (object)DBNull.Value);
-
-            using var reader = command.ExecuteReader();
-            var items = new List<object>();
-            while (reader.Read())
+            var records = collectionRepository.GetCollections(normalizedSearch, mediaId);
+            var items = records.Select(record => new
             {
-                var coverId = reader.IsDBNull(3) ? (long?)null : reader.GetInt64(3);
-                var coverPath = reader.IsDBNull(4) ? null : reader.GetString(4);
-                items.Add(new
-                {
-                    id = reader.GetInt64(0),
-                    label = reader.GetString(1),
-                    description = reader.IsDBNull(2) ? null : reader.GetString(2),
-                    cover = coverId,
-                    coverMedia = BuildCollectionCoverPayload(mediaRootPath, coverId, coverPath),
-                    containsMedia = !reader.IsDBNull(5) && reader.GetInt64(5) == 1
-                });
-            }
+                id = record.Id,
+                label = record.Label,
+                description = record.Description,
+                cover = record.Cover,
+                coverMedia = BuildCollectionCoverPayload(mediaRootPath, record.Cover, record.CoverPath),
+                containsMedia = record.ContainsMedia
+            }).ToArray();
 
             return Results.Ok(new { items });
         });
 
-        app.MapPost("/api/collections", (CollectionCreateRequest request) =>
+        app.MapPost("/api/collections", (CollectionCreateRequest request, CollectionRepository collectionRepository, MediaRepository mediaRepository) =>
         {
             var label = NormalizeOptionalText(request.Label);
             if (label is null)
@@ -198,51 +145,21 @@ public class Program
                 return Results.BadRequest(new { error = "Cover must be a positive media id." });
             }
 
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-
-            if (cover.HasValue && !MediaRecordExists(connection, cover.Value))
+            if (cover.HasValue && !mediaRepository.MediaRecordExists(cover.Value))
             {
                 return Results.BadRequest(new { error = "Cover media id was not found." });
             }
 
-            using var duplicateCommand = connection.CreateCommand();
-            duplicateCommand.CommandText = """
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM Collections
-                    WHERE Lable = $label COLLATE NOCASE
-                );
-                """;
-            duplicateCommand.Parameters.AddWithValue("$label", label);
-            var hasDuplicate = Convert.ToInt64(duplicateCommand.ExecuteScalar()) == 1;
-            if (hasDuplicate)
+            if (collectionRepository.CollectionNameExists(label))
             {
                 return Results.Conflict(new { error = "Collection with this name already exists." });
             }
 
-            using var command = connection.CreateCommand();
-            command.CommandText = """
-                INSERT INTO Collections (Lable, Description, Cover)
-                VALUES ($label, $description, $cover);
-
-                SELECT last_insert_rowid();
-                """;
-            command.Parameters.AddWithValue("$label", label);
-            command.Parameters.AddWithValue("$description", description ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("$cover", cover ?? (object)DBNull.Value);
-
-            var createdId = Convert.ToInt64(command.ExecuteScalar());
-            return Results.Ok(new
-            {
-                id = createdId,
-                label,
-                description,
-                cover
-            });
+            var createdId = collectionRepository.CreateCollection(label, description, cover);
+            return Results.Ok(new { id = createdId, label, description, cover });
         });
 
-        app.MapPut("/api/collections/{id:long}", (long id, CollectionUpdateRequest request) =>
+        app.MapPut("/api/collections/{id:long}", (long id, CollectionUpdateRequest request, CollectionRepository collectionRepository, MediaRepository mediaRepository) =>
         {
             if (id <= 0)
             {
@@ -262,59 +179,25 @@ public class Program
                 return Results.BadRequest(new { error = "Cover must be a positive media id." });
             }
 
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-
-            if (cover.HasValue && !MediaRecordExists(connection, cover.Value))
+            if (cover.HasValue && !mediaRepository.MediaRecordExists(cover.Value))
             {
                 return Results.BadRequest(new { error = "Cover media id was not found." });
             }
 
-            using var duplicateCommand = connection.CreateCommand();
-            duplicateCommand.CommandText = """
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM Collections
-                    WHERE Lable = $label COLLATE NOCASE
-                      AND Id <> $id
-                );
-                """;
-            duplicateCommand.Parameters.AddWithValue("$label", label);
-            duplicateCommand.Parameters.AddWithValue("$id", id);
-            var hasDuplicate = Convert.ToInt64(duplicateCommand.ExecuteScalar()) == 1;
-            if (hasDuplicate)
+            if (collectionRepository.CollectionNameExists(label, id))
             {
                 return Results.Conflict(new { error = "Collection with this name already exists." });
             }
 
-            using var command = connection.CreateCommand();
-            command.CommandText = """
-                UPDATE Collections
-                SET Lable = $label, Description = $description, Cover = $cover
-                WHERE Id = $id
-                  AND Lable <> 'Favorites';
-                """;
-            command.Parameters.AddWithValue("$label", label);
-            command.Parameters.AddWithValue("$description", description ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("$cover", cover ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("$id", id);
-
-            var affectedRows = command.ExecuteNonQuery();
-            if (affectedRows == 0)
+            if (!collectionRepository.UpdateCollection(id, label, description, cover))
             {
                 return Results.NotFound(new { error = "Collection not found." });
             }
 
-            return Results.Ok(new
-            {
-                id,
-                label,
-                description,
-                cover
-            });
+            return Results.Ok(new { id, label, description, cover });
         });
 
-        app.MapGet("/api/collections/{id:long}/media", (long id, int? page, int? pageSize) =>
+        app.MapGet("/api/collections/{id:long}/media", (long id, int? page, int? pageSize, MediaRepository mediaRepository) =>
         {
             if (id <= 0)
             {
@@ -323,51 +206,25 @@ public class Program
 
             var normalizedPageSize = Math.Clamp(pageSize ?? 36, 1, 100);
             var normalizedPage = Math.Max(page ?? 1, 1);
-            var allFiles = LoadCollectionMediaItems(connectionString, mediaRootPath, id);
+            var allFiles = BuildMediaPayload(mediaRootPath, mediaRepository.GetCollectionMedia(id));
 
             var totalCount = allFiles.Count;
-            var totalPages = totalCount == 0
-                ? 0
-                : (int)Math.Ceiling(totalCount / (double)normalizedPageSize);
-            var effectivePage = totalPages == 0
-                ? 1
-                : Math.Min(normalizedPage, totalPages);
+            var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)normalizedPageSize);
+            var effectivePage = totalPages == 0 ? 1 : Math.Min(normalizedPage, totalPages);
             var skip = totalPages == 0 ? 0 : (effectivePage - 1) * normalizedPageSize;
-            var files = allFiles
-                .Skip(skip)
-                .Take(normalizedPageSize)
-                .ToArray();
+            var files = allFiles.Skip(skip).Take(normalizedPageSize).ToArray();
 
-            return Results.Ok(new
-            {
-                page = effectivePage,
-                pageSize = normalizedPageSize,
-                totalCount,
-                totalPages,
-                files
-            });
+            return Results.Ok(new { page = effectivePage, pageSize = normalizedPageSize, totalCount, totalPages, files });
         });
 
-        app.MapDelete("/api/collections/{id:long}", (long id) =>
+        app.MapDelete("/api/collections/{id:long}", (long id, CollectionRepository collectionRepository) =>
         {
             if (id <= 0)
             {
                 return Results.BadRequest(new { error = "Invalid collection id." });
             }
 
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-
-            using var command = connection.CreateCommand();
-            command.CommandText = """
-                DELETE FROM Collections
-                WHERE Id = $id
-                  AND Lable <> 'Favorites';
-                """;
-            command.Parameters.AddWithValue("$id", id);
-
-            var affectedRows = command.ExecuteNonQuery();
-            if (affectedRows == 0)
+            if (!collectionRepository.DeleteCollection(id))
             {
                 return Results.NotFound(new { error = "Collection not found." });
             }
@@ -375,7 +232,7 @@ public class Program
             return Results.Ok(new { id });
         });
 
-        app.MapPost("/api/collections/{id:long}/media", (long id, CollectionMediaAddRequest request) =>
+        app.MapPost("/api/collections/{id:long}/media", (long id, CollectionMediaAddRequest request, CollectionRepository collectionRepository, MediaRepository mediaRepository) =>
         {
             if (id <= 0)
             {
@@ -387,97 +244,27 @@ public class Program
                 return Results.BadRequest(new { error = "Invalid media id." });
             }
 
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-
-            using var collectionExistsCommand = connection.CreateCommand();
-            collectionExistsCommand.CommandText = """
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM Collections
-                    WHERE Id = $collectionId
-                );
-                """;
-            collectionExistsCommand.Parameters.AddWithValue("$collectionId", id);
-            var collectionExists = Convert.ToInt64(collectionExistsCommand.ExecuteScalar()) == 1;
-            if (!collectionExists)
+            if (!collectionRepository.CollectionExists(id))
             {
                 return Results.NotFound(new { error = "Collection not found." });
             }
 
-            if (!MediaRecordExists(connection, request.MediaId))
+            if (!mediaRepository.MediaRecordExists(request.MediaId))
             {
                 return Results.BadRequest(new { error = "Media record not found." });
             }
 
-            using var existsCommand = connection.CreateCommand();
-            existsCommand.CommandText = """
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM CollectionsMedia
-                    WHERE CollectionId = $collectionId
-                      AND MediaId = $mediaId
-                );
-                """;
-            existsCommand.Parameters.AddWithValue("$collectionId", id);
-            existsCommand.Parameters.AddWithValue("$mediaId", request.MediaId);
-            var alreadyIncluded = Convert.ToInt64(existsCommand.ExecuteScalar()) == 1;
-
-            using var command = connection.CreateCommand();
-            if (alreadyIncluded)
-            {
-                command.CommandText = """
-                    DELETE FROM CollectionsMedia
-                    WHERE CollectionId = $collectionId AND MediaId = $mediaId;
-                    """;
-            }
-            else
-            {
-                command.CommandText = """
-                    INSERT INTO CollectionsMedia (CollectionId, MediaId)
-                    VALUES ($collectionId, $mediaId);
-                    """;
-            }
-            command.Parameters.AddWithValue("$collectionId", id);
-            command.Parameters.AddWithValue("$mediaId", request.MediaId);
-            command.ExecuteNonQuery();
-
-            return Results.Ok(new
-            {
-                collectionId = id,
-                mediaId = request.MediaId,
-                isIncluded = !alreadyIncluded
-            });
+            var included = collectionRepository.ToggleCollectionMedia(id, request.MediaId);
+            return Results.Ok(new { collectionId = id, mediaId = request.MediaId, isIncluded = included });
         });
 
-        app.MapGet("/api/tag-types", () =>
+        app.MapGet("/api/tag-types", (TagRepository tagRepository) =>
         {
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-
-            using var command = connection.CreateCommand();
-            command.CommandText = """
-                SELECT Id, Name, Color
-                FROM TagTypes
-                ORDER BY Id DESC;
-                """;
-
-            using var reader = command.ExecuteReader();
-            var items = new List<object>();
-            while (reader.Read())
-            {
-                items.Add(new
-                {
-                    id = reader.GetInt64(0),
-                    name = reader.GetString(1),
-                    color = reader.GetString(2)
-                });
-            }
-
+            var items = tagRepository.GetTagTypes().Select(item => new { id = item.Id, name = item.Name, color = item.Color }).ToArray();
             return Results.Ok(new { items });
         });
 
-        app.MapPost("/api/tag-types", (TagTypeCreateRequest request) =>
+        app.MapPost("/api/tag-types", (TagTypeCreateRequest request, TagRepository tagRepository) =>
         {
             var name = NormalizeOptionalText(request.Name);
             if (name is null)
@@ -491,29 +278,11 @@ public class Program
                 return Results.BadRequest(new { error = "Color must be a valid hex code (#RRGGBB)." });
             }
 
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-
-            using var command = connection.CreateCommand();
-            command.CommandText = """
-                INSERT INTO TagTypes (Name, Color)
-                VALUES ($name, $color);
-
-                SELECT last_insert_rowid();
-                """;
-            command.Parameters.AddWithValue("$name", name);
-            command.Parameters.AddWithValue("$color", color);
-
-            var createdId = Convert.ToInt64(command.ExecuteScalar());
-            return Results.Ok(new
-            {
-                id = createdId,
-                name,
-                color
-            });
+            var createdId = tagRepository.CreateTagType(name, color);
+            return Results.Ok(new { id = createdId, name, color });
         });
 
-        app.MapPut("/api/tag-types/{id:long}", (long id, TagTypeUpdateRequest request) =>
+        app.MapPut("/api/tag-types/{id:long}", (long id, TagTypeUpdateRequest request, TagRepository tagRepository) =>
         {
             if (id <= 0)
             {
@@ -532,105 +301,43 @@ public class Program
                 return Results.BadRequest(new { error = "Color must be a valid hex code (#RRGGBB)." });
             }
 
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-
-            using var command = connection.CreateCommand();
-            command.CommandText = """
-                UPDATE TagTypes
-                SET Name = $name, Color = $color
-                WHERE Id = $id;
-                """;
-            command.Parameters.AddWithValue("$name", name);
-            command.Parameters.AddWithValue("$color", color);
-            command.Parameters.AddWithValue("$id", id);
-
-            var affectedRows = command.ExecuteNonQuery();
-            if (affectedRows == 0)
+            if (!tagRepository.UpdateTagType(id, name, color))
             {
                 return Results.NotFound(new { error = "TagType not found." });
             }
 
-            return Results.Ok(new
-            {
-                id,
-                name,
-                color
-            });
+            return Results.Ok(new { id, name, color });
         });
 
-        app.MapGet("/api/tag-types/{id:long}/tags", (long id) =>
+        app.MapGet("/api/tag-types/{id:long}/tags", (long id, TagRepository tagRepository) =>
         {
             if (id <= 0)
             {
                 return Results.BadRequest(new { error = "Invalid tag type id." });
             }
 
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-
-            using var command = connection.CreateCommand();
-            command.CommandText = """
-                SELECT Id, Name, Description
-                FROM Tags
-                WHERE TagTypeId = $tagTypeId
-                ORDER BY Name COLLATE NOCASE ASC, Id ASC;
-                """;
-            command.Parameters.AddWithValue("$tagTypeId", id);
-
-            using var reader = command.ExecuteReader();
-            var items = new List<object>();
-            while (reader.Read())
-            {
-                items.Add(new
-                {
-                    id = reader.GetInt64(0),
-                    name = reader.GetString(1),
-                    description = reader.IsDBNull(2) ? null : reader.GetString(2)
-                });
-            }
-
+            var items = tagRepository.GetTagsByType(id)
+                .Select(item => new { id = item.Id, name = item.Name, description = item.Description })
+                .ToArray();
             return Results.Ok(new { items });
         });
 
-        app.MapGet("/api/tags", () =>
+        app.MapGet("/api/tags", (TagRepository tagRepository) =>
         {
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-
-            using var command = connection.CreateCommand();
-            command.CommandText = """
-                SELECT
-                    t.Id,
-                    t.Name,
-                    t.Description,
-                    tt.Id AS TagTypeId,
-                    tt.Name AS TagTypeName,
-                    tt.Color AS TagTypeColor
-                FROM Tags t
-                INNER JOIN TagTypes tt ON tt.Id = t.TagTypeId
-                ORDER BY tt.Name COLLATE NOCASE ASC, t.Name COLLATE NOCASE ASC, t.Id ASC;
-                """;
-
-            using var reader = command.ExecuteReader();
-            var items = new List<object>();
-            while (reader.Read())
+            var items = tagRepository.GetAllTags().Select(item => new
             {
-                items.Add(new
-                {
-                    id = reader.GetInt64(0),
-                    name = reader.GetString(1),
-                    description = reader.IsDBNull(2) ? null : reader.GetString(2),
-                    tagTypeId = reader.GetInt64(3),
-                    tagTypeName = reader.GetString(4),
-                    tagTypeColor = reader.GetString(5)
-                });
-            }
+                id = item.Id,
+                name = item.Name,
+                description = item.Description,
+                tagTypeId = item.TagTypeId,
+                tagTypeName = item.TagTypeName,
+                tagTypeColor = item.TagTypeColor
+            }).ToArray();
 
             return Results.Ok(new { items });
         });
 
-        app.MapPost("/api/tag-types/{id:long}/tags", (long id, TagCreateRequest request) =>
+        app.MapPost("/api/tag-types/{id:long}/tags", (long id, TagCreateRequest request, TagRepository tagRepository) =>
         {
             if (id <= 0)
             {
@@ -644,62 +351,21 @@ public class Program
             }
 
             var description = NormalizeOptionalText(request.Description);
-
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-
-            using var checkCommand = connection.CreateCommand();
-            checkCommand.CommandText = """
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM TagTypes
-                    WHERE Id = $tagTypeId
-                );
-                """;
-            checkCommand.Parameters.AddWithValue("$tagTypeId", id);
-            var tagTypeExists = Convert.ToInt64(checkCommand.ExecuteScalar()) == 1;
-            if (!tagTypeExists)
+            if (!tagRepository.TagTypeExists(id))
             {
                 return Results.NotFound(new { error = "TagType not found." });
             }
 
-            using var duplicateCommand = connection.CreateCommand();
-            duplicateCommand.CommandText = """
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM Tags
-                    WHERE Name = $name COLLATE NOCASE
-                );
-                """;
-            duplicateCommand.Parameters.AddWithValue("$name", name);
-            var hasDuplicate = Convert.ToInt64(duplicateCommand.ExecuteScalar()) == 1;
-            if (hasDuplicate)
+            if (tagRepository.TagNameExists(name))
             {
                 return Results.Conflict(new { error = "Tag with this name already exists." });
             }
 
-            using var command = connection.CreateCommand();
-            command.CommandText = """
-                INSERT INTO Tags (Name, Description, TagTypeId)
-                VALUES ($name, $description, $tagTypeId);
-
-                SELECT last_insert_rowid();
-                """;
-            command.Parameters.AddWithValue("$name", name);
-            command.Parameters.AddWithValue("$description", description ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("$tagTypeId", id);
-
-            var createdId = Convert.ToInt64(command.ExecuteScalar());
-            return Results.Ok(new
-            {
-                id = createdId,
-                name,
-                description,
-                tagTypeId = id
-            });
+            var createdId = tagRepository.CreateTag(name, description, id);
+            return Results.Ok(new { id = createdId, name, description, tagTypeId = id });
         });
 
-        app.MapPut("/api/tags/{id:long}", (long id, TagUpdateRequest request) =>
+        app.MapPut("/api/tags/{id:long}", (long id, TagUpdateRequest request, TagRepository tagRepository) =>
         {
             if (id <= 0)
             {
@@ -713,70 +379,27 @@ public class Program
             }
 
             var description = NormalizeOptionalText(request.Description);
-
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-
-            using var duplicateCommand = connection.CreateCommand();
-            duplicateCommand.CommandText = """
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM Tags
-                    WHERE Name = $name COLLATE NOCASE
-                      AND Id <> $id
-                );
-                """;
-            duplicateCommand.Parameters.AddWithValue("$name", name);
-            duplicateCommand.Parameters.AddWithValue("$id", id);
-            var hasDuplicate = Convert.ToInt64(duplicateCommand.ExecuteScalar()) == 1;
-            if (hasDuplicate)
+            if (tagRepository.TagNameExists(name, id))
             {
                 return Results.Conflict(new { error = "Tag with this name already exists." });
             }
 
-            using var command = connection.CreateCommand();
-            command.CommandText = """
-                UPDATE Tags
-                SET Name = $name, Description = $description
-                WHERE Id = $id;
-                """;
-            command.Parameters.AddWithValue("$name", name);
-            command.Parameters.AddWithValue("$description", description ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("$id", id);
-
-            var affectedRows = command.ExecuteNonQuery();
-            if (affectedRows == 0)
+            if (!tagRepository.UpdateTag(id, name, description))
             {
                 return Results.NotFound(new { error = "Tag not found." });
             }
 
-            return Results.Ok(new
-            {
-                id,
-                name,
-                description
-            });
+            return Results.Ok(new { id, name, description });
         });
 
-        app.MapDelete("/api/tags/{id:long}", (long id) =>
+        app.MapDelete("/api/tags/{id:long}", (long id, TagRepository tagRepository) =>
         {
             if (id <= 0)
             {
                 return Results.BadRequest(new { error = "Invalid tag id." });
             }
 
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-
-            using var command = connection.CreateCommand();
-            command.CommandText = """
-                DELETE FROM Tags
-                WHERE Id = $id;
-                """;
-            command.Parameters.AddWithValue("$id", id);
-
-            var affectedRows = command.ExecuteNonQuery();
-            if (affectedRows == 0)
+            if (!tagRepository.DeleteTag(id))
             {
                 return Results.NotFound(new { error = "Tag not found." });
             }
@@ -784,43 +407,18 @@ public class Program
             return Results.Ok(new { id });
         });
 
-        app.MapDelete("/api/tag-types/{id:long}", (long id) =>
+        app.MapDelete("/api/tag-types/{id:long}", (long id, TagRepository tagRepository) =>
         {
             if (id <= 0)
             {
                 return Results.BadRequest(new { error = "Invalid tag type id." });
             }
 
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-
-            using var transaction = connection.BeginTransaction();
-            using var command = connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText = """
-                DELETE FROM MediaTags
-                WHERE TagId IN (
-                    SELECT Id
-                    FROM Tags
-                    WHERE TagTypeId = $id
-                );
-
-                DELETE FROM Tags
-                WHERE TagTypeId = $id;
-
-                DELETE FROM TagTypes
-                WHERE Id = $id;
-                """;
-            command.Parameters.AddWithValue("$id", id);
-
-            var affectedRows = command.ExecuteNonQuery();
-            if (affectedRows == 0)
+            if (!tagRepository.DeleteTagType(id))
             {
-                transaction.Rollback();
                 return Results.NotFound(new { error = "TagType not found." });
             }
 
-            transaction.Commit();
             return Results.Ok(new { id });
         });
 
@@ -853,7 +451,7 @@ public class Program
             return Results.NotFound(new { error = "Preview is supported only for video and gif files." });
         });
 
-        app.MapPut("/api/media/{id:long}", (long id, MediaUpdateRequest request) =>
+        app.MapPut("/api/media/{id:long}", (long id, MediaUpdateRequest request, MediaRepository mediaRepository) =>
         {
             if (id <= 0)
             {
@@ -865,10 +463,7 @@ public class Program
             var source = NormalizeOptionalText(request.Source);
             var parent = request.Parent;
             var child = request.Child;
-            var normalizedTagIds = request.TagIds?
-                .Where(tagId => tagId > 0)
-                .Distinct()
-                .ToArray();
+            var normalizedTagIds = request.TagIds?.Where(tagId => tagId > 0).Distinct().ToArray();
 
             if (source is not null && !IsValidHttpUrl(source))
             {
@@ -890,270 +485,70 @@ public class Program
                 return Results.BadRequest(new { error = "Parent and Child cannot reference the same media item." });
             }
 
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-
-            if (!MediaRecordExists(connection, id))
+            if (!mediaRepository.MediaRecordExists(id))
             {
                 return Results.NotFound(new { error = "Media record not found." });
             }
 
-            if (parent.HasValue && !MediaRecordExists(connection, parent.Value))
+            if (parent.HasValue && !mediaRepository.MediaRecordExists(parent.Value))
             {
                 return Results.BadRequest(new { error = "Parent media id was not found." });
             }
 
-            if (child.HasValue && !MediaRecordExists(connection, child.Value))
+            if (child.HasValue && !mediaRepository.MediaRecordExists(child.Value))
             {
                 return Results.BadRequest(new { error = "Child media id was not found." });
             }
 
-            var currentLinks = GetMediaLinks(connection, id);
+            var currentLinks = mediaRepository.GetMediaLinks(id);
             if (currentLinks is null)
             {
                 return Results.NotFound(new { error = "Media record not found." });
             }
-            var previousParent = currentLinks.Value.Parent;
-            var previousChild = currentLinks.Value.Child;
 
-            if (normalizedTagIds is not null && normalizedTagIds.Length > 0)
+            if (normalizedTagIds is not null && normalizedTagIds.Length > 0 && !mediaRepository.AreAllTagsExist(normalizedTagIds))
             {
-                using var tagExistsCommand = connection.CreateCommand();
-                var tagIdParams = new List<string>();
-                for (var i = 0; i < normalizedTagIds.Length; i++)
-                {
-                    var parameterName = $"$tagId{i}";
-                    tagIdParams.Add(parameterName);
-                    tagExistsCommand.Parameters.AddWithValue(parameterName, normalizedTagIds[i]);
-                }
-
-                tagExistsCommand.CommandText = $"""
-                    SELECT COUNT(*)
-                    FROM Tags
-                    WHERE Id IN ({string.Join(", ", tagIdParams)});
-                    """;
-
-                var existingTagCount = Convert.ToInt32(tagExistsCommand.ExecuteScalar());
-                if (existingTagCount != normalizedTagIds.Length)
-                {
-                    return Results.BadRequest(new { error = "One or more tags were not found." });
-                }
+                return Results.BadRequest(new { error = "One or more tags were not found." });
             }
 
-            using var transaction = connection.BeginTransaction();
-            using (var command = connection.CreateCommand())
-            {
-                command.Transaction = transaction;
-                command.CommandText = """
-                    UPDATE Media
-                    SET
-                        Title = $title,
-                        Description = $description,
-                        Source = $source,
-                        Parent = $parent,
-                        Child = $child
-                    WHERE Id = $id;
-                    """;
-                command.Parameters.AddWithValue("$title", title ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("$description", description ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("$source", source ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("$parent", parent ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("$child", child ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("$id", id);
-                command.ExecuteNonQuery();
-            }
-
-            if (previousParent.HasValue && previousParent.Value != parent)
-            {
-                using var clearOldParentReverse = connection.CreateCommand();
-                clearOldParentReverse.Transaction = transaction;
-                clearOldParentReverse.CommandText = """
-                    UPDATE Media
-                    SET Child = NULL
-                    WHERE Id = $oldParentId AND Child = $mediaId;
-                    """;
-                clearOldParentReverse.Parameters.AddWithValue("$oldParentId", previousParent.Value);
-                clearOldParentReverse.Parameters.AddWithValue("$mediaId", id);
-                clearOldParentReverse.ExecuteNonQuery();
-            }
-
-            if (previousChild.HasValue && previousChild.Value != child)
-            {
-                using var clearOldChildReverse = connection.CreateCommand();
-                clearOldChildReverse.Transaction = transaction;
-                clearOldChildReverse.CommandText = """
-                    UPDATE Media
-                    SET Parent = NULL
-                    WHERE Id = $oldChildId AND Parent = $mediaId;
-                    """;
-                clearOldChildReverse.Parameters.AddWithValue("$oldChildId", previousChild.Value);
-                clearOldChildReverse.Parameters.AddWithValue("$mediaId", id);
-                clearOldChildReverse.ExecuteNonQuery();
-            }
-
-            if (parent.HasValue)
-            {
-                var parentLinks = GetMediaLinks(connection, parent.Value, transaction);
-                var parentPreviousChild = parentLinks?.Child;
-
-                using var setParentReverse = connection.CreateCommand();
-                setParentReverse.Transaction = transaction;
-                setParentReverse.CommandText = """
-                    UPDATE Media
-                    SET Child = $mediaId
-                    WHERE Id = $parentId;
-                    """;
-                setParentReverse.Parameters.AddWithValue("$mediaId", id);
-                setParentReverse.Parameters.AddWithValue("$parentId", parent.Value);
-                setParentReverse.ExecuteNonQuery();
-
-                if (parentPreviousChild.HasValue && parentPreviousChild.Value != id)
-                {
-                    using var clearConflictedChildParent = connection.CreateCommand();
-                    clearConflictedChildParent.Transaction = transaction;
-                    clearConflictedChildParent.CommandText = """
-                        UPDATE Media
-                        SET Parent = NULL
-                        WHERE Id = $oldChildId AND Parent = $parentId;
-                        """;
-                    clearConflictedChildParent.Parameters.AddWithValue("$oldChildId", parentPreviousChild.Value);
-                    clearConflictedChildParent.Parameters.AddWithValue("$parentId", parent.Value);
-                    clearConflictedChildParent.ExecuteNonQuery();
-                }
-            }
-
-            if (child.HasValue)
-            {
-                var childLinks = GetMediaLinks(connection, child.Value, transaction);
-                var childPreviousParent = childLinks?.Parent;
-
-                using var setChildReverse = connection.CreateCommand();
-                setChildReverse.Transaction = transaction;
-                setChildReverse.CommandText = """
-                    UPDATE Media
-                    SET Parent = $mediaId
-                    WHERE Id = $childId;
-                    """;
-                setChildReverse.Parameters.AddWithValue("$mediaId", id);
-                setChildReverse.Parameters.AddWithValue("$childId", child.Value);
-                setChildReverse.ExecuteNonQuery();
-
-                if (childPreviousParent.HasValue && childPreviousParent.Value != id)
-                {
-                    using var clearConflictedParentChild = connection.CreateCommand();
-                    clearConflictedParentChild.Transaction = transaction;
-                    clearConflictedParentChild.CommandText = """
-                        UPDATE Media
-                        SET Child = NULL
-                        WHERE Id = $oldParentId AND Child = $childId;
-                        """;
-                    clearConflictedParentChild.Parameters.AddWithValue("$oldParentId", childPreviousParent.Value);
-                    clearConflictedParentChild.Parameters.AddWithValue("$childId", child.Value);
-                    clearConflictedParentChild.ExecuteNonQuery();
-                }
-            }
-
-            if (normalizedTagIds is not null)
-            {
-                using (var deleteTagsCommand = connection.CreateCommand())
-                {
-                    deleteTagsCommand.Transaction = transaction;
-                    deleteTagsCommand.CommandText = """
-                        DELETE FROM MediaTags
-                        WHERE MediaId = $mediaId;
-                        """;
-                    deleteTagsCommand.Parameters.AddWithValue("$mediaId", id);
-                    deleteTagsCommand.ExecuteNonQuery();
-                }
-
-                foreach (var tagId in normalizedTagIds)
-                {
-                    using var insertTagCommand = connection.CreateCommand();
-                    insertTagCommand.Transaction = transaction;
-                    insertTagCommand.CommandText = """
-                        INSERT INTO MediaTags (MediaId, TagId)
-                        VALUES ($mediaId, $tagId);
-                        """;
-                    insertTagCommand.Parameters.AddWithValue("$mediaId", id);
-                    insertTagCommand.Parameters.AddWithValue("$tagId", tagId);
-                    insertTagCommand.ExecuteNonQuery();
-                }
-            }
-
-            transaction.Commit();
-            return Results.Ok(new
-            {
+            mediaRepository.UpdateMedia(
                 id,
                 title,
                 description,
                 source,
                 parent,
-                child
-            });
+                child,
+                currentLinks.Value.Parent,
+                currentLinks.Value.Child,
+                normalizedTagIds);
+
+            return Results.Ok(new { id, title, description, source, parent, child });
         });
 
-        app.MapPut("/api/media/{id:long}/favorite", (long id, FavoriteUpdateRequest request) =>
+        app.MapPut("/api/media/{id:long}/favorite", (long id, FavoriteUpdateRequest request, MediaRepository mediaRepository) =>
         {
             if (id <= 0)
             {
                 return Results.BadRequest(new { error = "Invalid media id." });
             }
 
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-
-            if (!MediaRecordExists(connection, id))
+            if (!mediaRepository.MediaRecordExists(id))
             {
                 return Results.NotFound(new { error = "Media record not found." });
             }
 
-            var favoritesCollectionId = EnsureFavoritesCollection(connection);
-
-            using var command = connection.CreateCommand();
-            if (request.IsFavorite)
-            {
-                command.CommandText = """
-                    INSERT OR IGNORE INTO CollectionsMedia (CollectionId, MediaId)
-                    VALUES ($collectionId, $mediaId);
-                    """;
-            }
-            else
-            {
-                command.CommandText = """
-                    DELETE FROM CollectionsMedia
-                    WHERE CollectionId = $collectionId AND MediaId = $mediaId;
-                    """;
-            }
-
-            command.Parameters.AddWithValue("$collectionId", favoritesCollectionId);
-            command.Parameters.AddWithValue("$mediaId", id);
-            command.ExecuteNonQuery();
-
-            return Results.Ok(new
-            {
-                id,
-                isFavorite = request.IsFavorite
-            });
+            mediaRepository.UpdateFavorite(id, request.IsFavorite);
+            return Results.Ok(new { id, isFavorite = request.IsFavorite });
         });
 
-        app.MapDelete("/api/media/{id:long}", (long id) =>
+        app.MapDelete("/api/media/{id:long}", (long id, MediaRepository mediaRepository) =>
         {
             if (id <= 0)
             {
                 return Results.BadRequest(new { error = "Invalid media id." });
             }
 
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-
-            using var pathCommand = connection.CreateCommand();
-            pathCommand.CommandText = """
-                SELECT Path
-                FROM Media
-                WHERE Id = $id;
-                """;
-            pathCommand.Parameters.AddWithValue("$id", id);
-            var rawPath = pathCommand.ExecuteScalar() as string;
+            var rawPath = mediaRepository.GetMediaPath(id);
             if (string.IsNullOrWhiteSpace(rawPath))
             {
                 return Results.NotFound(new { error = "Media record not found." });
@@ -1183,19 +578,7 @@ public class Program
                 }
             }
 
-            using var transaction = connection.BeginTransaction();
-            using var deleteCommand = connection.CreateCommand();
-            deleteCommand.Transaction = transaction;
-            deleteCommand.CommandText = """
-                UPDATE Media SET Parent = NULL WHERE Parent = $id;
-                UPDATE Media SET Child = NULL WHERE Child = $id;
-                DELETE FROM CollectionsMedia WHERE MediaId = $id;
-                DELETE FROM Media WHERE Id = $id;
-                """;
-            deleteCommand.Parameters.AddWithValue("$id", id);
-            deleteCommand.ExecuteNonQuery();
-            transaction.Commit();
-
+            mediaRepository.DeleteMediaRecordAndRelations(id);
             return Results.Ok(new { id });
         });
 
@@ -1751,169 +1134,17 @@ public class Program
         command.ExecuteNonQuery();
     }
 
-    private static bool MediaRecordExists(SqliteConnection connection, long id)
-    {
-        using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT EXISTS (
-                SELECT 1
-                FROM Media
-                WHERE Id = $id
-            );
-            """;
-        command.Parameters.AddWithValue("$id", id);
-        var result = command.ExecuteScalar();
-        return Convert.ToInt64(result) == 1;
-    }
-
-    private static (long? Parent, long? Child)? GetMediaLinks(
-        SqliteConnection connection,
-        long mediaId,
-        SqliteTransaction? transaction = null)
-    {
-        using var command = connection.CreateCommand();
-        command.Transaction = transaction;
-        command.CommandText = """
-            SELECT Parent, Child
-            FROM Media
-            WHERE Id = $id;
-            """;
-        command.Parameters.AddWithValue("$id", mediaId);
-
-        using var reader = command.ExecuteReader();
-        if (!reader.Read())
-        {
-            return null;
-        }
-
-        var parent = reader.IsDBNull(0) ? (long?)null : reader.GetInt64(0);
-        var child = reader.IsDBNull(1) ? (long?)null : reader.GetInt64(1);
-        return (parent, child);
-    }
-
-    private static long EnsureFavoritesCollection(SqliteConnection connection)
-    {
-        using var findCommand = connection.CreateCommand();
-        findCommand.CommandText = """
-            SELECT Id
-            FROM Collections
-            WHERE Lable = 'Favorites'
-            ORDER BY Id
-            LIMIT 1;
-            """;
-
-        var existingId = findCommand.ExecuteScalar();
-        if (existingId is not null && existingId != DBNull.Value)
-        {
-            return Convert.ToInt64(existingId);
-        }
-
-        using var insertCommand = connection.CreateCommand();
-        insertCommand.CommandText = """
-            INSERT INTO Collections (Lable, Description, Cover)
-            VALUES ('Favorites', NULL, NULL);
-
-            SELECT last_insert_rowid();
-            """;
-
-        return Convert.ToInt64(insertCommand.ExecuteScalar());
-    }
-
-    private static object? BuildCollectionCoverPayload(string mediaRootPath, long? coverId, string? coverPath)
-    {
-        if (!coverId.HasValue || string.IsNullOrWhiteSpace(coverPath))
-        {
-            return null;
-        }
-
-        var normalizedPath = coverPath.Replace("\\", "/");
-        if (!TryResolveMediaFilePath(mediaRootPath, normalizedPath, out var absolutePath, out var extension))
-        {
-            return null;
-        }
-
-        var fileInfo = new FileInfo(absolutePath);
-        var mediaType = IsImageFile(extension) ? "image" : IsVideoFile(extension) ? "video" : "file";
-        var originalUrl = BuildMediaUrl(normalizedPath);
-        var tileUrl = BuildTileUrl(normalizedPath, extension, fileInfo.LastWriteTimeUtc.Ticks);
-
-        return new
-        {
-            id = coverId.Value,
-            relativePath = normalizedPath,
-            originalUrl,
-            tileUrl,
-            mediaType
-        };
-    }
-
-    private static string? NormalizeOptionalText(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        return value.Trim();
-    }
-
-    private static bool IsValidHttpUrl(string value)
-    {
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
-        {
-            return false;
-        }
-
-        return uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
-            || uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static List<object> LoadMediaItems(
-        string connectionString,
-        string mediaRootPath,
-        MediaSearchCriteria? criteria = null,
-        bool favoritesOnly = false)
+    private static List<object> BuildMediaPayload(string mediaRootPath, IEnumerable<MediaRepository.MediaRow> mediaRows)
     {
         var result = new List<object>();
-
-        using var connection = new SqliteConnection(connectionString);
-        connection.Open();
-
-        using var command = connection.CreateCommand();
-        var whereClauses = BuildMediaSearchWhereClauses(command, criteria, favoritesOnly);
-        var whereSql = whereClauses.Count == 0
-            ? string.Empty
-            : $"{Environment.NewLine}            WHERE {string.Join($"{Environment.NewLine}              AND ", whereClauses)}";
-
-        command.CommandText = $"""
-            SELECT
-                m.Id,
-                m.Path,
-                m.Title,
-                m.Description,
-                m.Source,
-                m.Parent,
-                m.Child,
-                EXISTS (
-                    SELECT 1
-                    FROM CollectionsMedia cm
-                    INNER JOIN Collections c ON c.Id = cm.CollectionId
-                    WHERE cm.MediaId = m.Id AND c.Lable = 'Favorites'
-                ) AS IsFavorite
-            FROM Media m{whereSql}
-            ORDER BY m.Id DESC;
-            """;
-
-        using var reader = command.ExecuteReader();
-        while (reader.Read())
+        foreach (var row in mediaRows)
         {
-            var path = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
-            if (string.IsNullOrWhiteSpace(path))
+            if (string.IsNullOrWhiteSpace(row.Path))
             {
                 continue;
             }
 
-            var normalizedPath = path.Replace("\\", "/");
+            var normalizedPath = row.Path.Replace("\\", "/");
             var normalizedRelativePath = normalizedPath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
             var rootPath = Path.GetFullPath(mediaRootPath + Path.DirectorySeparatorChar);
             var absolutePath = Path.GetFullPath(Path.Combine(mediaRootPath, normalizedRelativePath));
@@ -1932,27 +1163,18 @@ public class Program
             var mediaType = IsImageFile(extension) ? "image" : IsVideoFile(extension) ? "video" : "file";
             var originalUrl = BuildMediaUrl(normalizedPath);
             var tileUrl = BuildTileUrl(normalizedPath, extension, fileInfo.LastWriteTimeUtc.Ticks);
-            var item = new MediaMetadata(
-                Id: reader.GetInt64(0),
-                RelativePath: normalizedPath,
-                Title: reader.IsDBNull(2) ? null : reader.GetString(2),
-                Description: reader.IsDBNull(3) ? null : reader.GetString(3),
-                Source: reader.IsDBNull(4) ? null : reader.GetString(4),
-                Parent: reader.IsDBNull(5) ? null : reader.GetInt64(5),
-                Child: reader.IsDBNull(6) ? null : reader.GetInt64(6),
-                IsFavorite: !reader.IsDBNull(7) && reader.GetInt64(7) == 1);
 
             result.Add(new
             {
-                id = item.Id,
+                id = row.Id,
                 name = Path.GetFileName(normalizedPath),
-                relativePath = item.RelativePath,
-                title = item.Title,
-                description = item.Description,
-                source = item.Source,
-                parent = item.Parent,
-                child = item.Child,
-                isFavorite = item.IsFavorite,
+                relativePath = normalizedPath,
+                title = row.Title,
+                description = row.Description,
+                source = row.Source,
+                parent = row.Parent,
+                child = row.Child,
+                isFavorite = row.IsFavorite,
                 originalUrl,
                 tileUrl,
                 mediaType,
@@ -1962,334 +1184,6 @@ public class Program
         }
 
         return result;
-    }
-
-    private static List<object> LoadCollectionMediaItems(
-        string connectionString,
-        string mediaRootPath,
-        long collectionId)
-    {
-        var result = new List<object>();
-
-        using var connection = new SqliteConnection(connectionString);
-        connection.Open();
-
-        using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT
-                m.Id,
-                m.Path,
-                m.Title,
-                m.Description,
-                m.Source,
-                m.Parent,
-                m.Child,
-                EXISTS (
-                    SELECT 1
-                    FROM CollectionsMedia cmFav
-                    INNER JOIN Collections cFav ON cFav.Id = cmFav.CollectionId
-                    WHERE cmFav.MediaId = m.Id AND cFav.Lable = 'Favorites'
-                ) AS IsFavorite
-            FROM Media m
-            INNER JOIN CollectionsMedia cm ON cm.MediaId = m.Id
-            WHERE cm.CollectionId = $collectionId
-            ORDER BY m.Id DESC;
-            """;
-        command.Parameters.AddWithValue("$collectionId", collectionId);
-
-        using var reader = command.ExecuteReader();
-        while (reader.Read())
-        {
-            var path = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                continue;
-            }
-
-            var normalizedPath = path.Replace("\\", "/");
-            var normalizedRelativePath = normalizedPath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
-            var rootPath = Path.GetFullPath(mediaRootPath + Path.DirectorySeparatorChar);
-            var absolutePath = Path.GetFullPath(Path.Combine(mediaRootPath, normalizedRelativePath));
-            if (!absolutePath.StartsWith(rootPath, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var extension = Path.GetExtension(absolutePath);
-            if (!File.Exists(absolutePath) || !IsAllowedMediaFile(absolutePath))
-            {
-                continue;
-            }
-
-            var fileInfo = new FileInfo(absolutePath);
-            var mediaType = IsImageFile(extension) ? "image" : IsVideoFile(extension) ? "video" : "file";
-            var originalUrl = BuildMediaUrl(normalizedPath);
-            var tileUrl = BuildTileUrl(normalizedPath, extension, fileInfo.LastWriteTimeUtc.Ticks);
-            var item = new MediaMetadata(
-                Id: reader.GetInt64(0),
-                RelativePath: normalizedPath,
-                Title: reader.IsDBNull(2) ? null : reader.GetString(2),
-                Description: reader.IsDBNull(3) ? null : reader.GetString(3),
-                Source: reader.IsDBNull(4) ? null : reader.GetString(4),
-                Parent: reader.IsDBNull(5) ? null : reader.GetInt64(5),
-                Child: reader.IsDBNull(6) ? null : reader.GetInt64(6),
-                IsFavorite: !reader.IsDBNull(7) && reader.GetInt64(7) == 1);
-
-            result.Add(new
-            {
-                id = item.Id,
-                name = Path.GetFileName(normalizedPath),
-                relativePath = item.RelativePath,
-                title = item.Title,
-                description = item.Description,
-                source = item.Source,
-                parent = item.Parent,
-                child = item.Child,
-                isFavorite = item.IsFavorite,
-                originalUrl,
-                tileUrl,
-                mediaType,
-                sizeBytes = fileInfo.Length,
-                modifiedAtUtc = fileInfo.LastWriteTimeUtc
-            });
-        }
-
-        return result;
-    }
-
-    private static List<string> BuildMediaSearchWhereClauses(
-        SqliteCommand command,
-        MediaSearchCriteria? criteria,
-        bool favoritesOnly = false)
-    {
-        var whereClauses = new List<string>();
-        if (favoritesOnly)
-        {
-            whereClauses.Add("""
-                EXISTS (
-                    SELECT 1
-                    FROM CollectionsMedia cm
-                    INNER JOIN Collections c ON c.Id = cm.CollectionId
-                    WHERE cm.MediaId = m.Id AND c.Lable = 'Favorites'
-                )
-                """);
-        }
-
-        if (criteria is null || !criteria.HasFilters)
-        {
-            return whereClauses;
-        }
-
-        var parameterIndex = 0;
-
-        AddContainsClauses(criteria.PathTerms, "m.Path");
-        AddContainsClauses(criteria.TitleTerms, "IFNULL(m.Title, '')");
-        AddContainsClauses(criteria.DescriptionTerms, "IFNULL(m.Description, '')");
-        AddContainsClauses(criteria.SourceTerms, "IFNULL(m.Source, '')");
-        AddTagClauses(criteria.TagFilters);
-
-        if (criteria.Ids.Count > 0)
-        {
-            var idParams = new List<string>();
-            foreach (var id in criteria.Ids.Distinct())
-            {
-                var paramName = $"$p{parameterIndex++}";
-                idParams.Add(paramName);
-                command.Parameters.AddWithValue(paramName, id);
-            }
-
-            whereClauses.Add(idParams.Count == 1
-                ? $"m.Id = {idParams[0]}"
-                : $"m.Id IN ({string.Join(", ", idParams)})");
-        }
-
-        return whereClauses;
-
-        void AddContainsClauses(IEnumerable<string> terms, string sqlField)
-        {
-            foreach (var term in terms.Where(value => !string.IsNullOrWhiteSpace(value)))
-            {
-                var paramName = $"$p{parameterIndex++}";
-                command.Parameters.AddWithValue(paramName, $"%{term.Trim().ToLowerInvariant()}%");
-                whereClauses.Add($"LOWER({sqlField}) LIKE {paramName}");
-            }
-        }
-
-        void AddTagClauses(IEnumerable<MediaSearchTagFilter> filters)
-        {
-            foreach (var filter in filters)
-            {
-                if (string.IsNullOrWhiteSpace(filter.TagTypeName) || string.IsNullOrWhiteSpace(filter.TagName))
-                {
-                    continue;
-                }
-
-                var typeParamName = $"$p{parameterIndex++}";
-                var tagParamName = $"$p{parameterIndex++}";
-                command.Parameters.AddWithValue(typeParamName, filter.TagTypeName.Trim().ToLowerInvariant());
-                command.Parameters.AddWithValue(tagParamName, $"%{filter.TagName.Trim().ToLowerInvariant()}%");
-                whereClauses.Add($"""
-                    EXISTS (
-                        SELECT 1
-                        FROM MediaTags mt
-                        INNER JOIN Tags t ON t.Id = mt.TagId
-                        INNER JOIN TagTypes tt ON tt.Id = t.TagTypeId
-                        WHERE mt.MediaId = m.Id
-                          AND LOWER(tt.Name) = {typeParamName}
-                          AND LOWER(t.Name) LIKE {tagParamName}
-                    )
-                    """);
-            }
-        }
-    }
-
-    private static MediaSearchCriteria ParseMediaSearchCriteria(string? search)
-    {
-        var criteria = new MediaSearchCriteria();
-        if (string.IsNullOrWhiteSpace(search))
-        {
-            return criteria;
-        }
-
-        var text = search.Trim();
-        var index = 0;
-
-        while (index < text.Length)
-        {
-            while (index < text.Length && char.IsWhiteSpace(text[index]))
-            {
-                index++;
-            }
-
-            if (index >= text.Length)
-            {
-                break;
-            }
-
-            var hasAtPrefix = text[index] == '@';
-            var tagStart = hasAtPrefix ? index + 1 : index;
-            var separatorIndex = text.IndexOf(':', tagStart);
-            if (separatorIndex < 0)
-            {
-                while (index < text.Length && !char.IsWhiteSpace(text[index]))
-                {
-                    index++;
-                }
-
-                continue;
-            }
-
-            var hasWhitespaceBeforeSeparator = false;
-            for (var i = tagStart; i < separatorIndex; i++)
-            {
-                if (char.IsWhiteSpace(text[i]))
-                {
-                    hasWhitespaceBeforeSeparator = true;
-                    break;
-                }
-            }
-
-            if (hasWhitespaceBeforeSeparator || separatorIndex == tagStart)
-            {
-                while (index < text.Length && !char.IsWhiteSpace(text[index]))
-                {
-                    index++;
-                }
-                continue;
-            }
-
-            var tag = text.Substring(tagStart, separatorIndex - tagStart).Trim().ToLowerInvariant();
-            index = separatorIndex + 1;
-
-            while (index < text.Length && char.IsWhiteSpace(text[index]))
-            {
-                index++;
-            }
-
-            if (index >= text.Length)
-            {
-                break;
-            }
-
-            string rawValue;
-            if (text[index] == '"' || text[index] == '“' || text[index] == '”')
-            {
-                var openingQuote = text[index];
-                var closingQuote = openingQuote == '“' ? '”' : '"';
-                var valueStart = index + 1;
-                var closingQuoteIndex = text.IndexOf(closingQuote, valueStart);
-                if (closingQuoteIndex < 0 && closingQuote != '"')
-                {
-                    closingQuoteIndex = text.IndexOf('"', valueStart);
-                }
-
-                if (closingQuoteIndex < 0)
-                {
-                    rawValue = text[valueStart..];
-                    index = text.Length;
-                }
-                else
-                {
-                    rawValue = text.Substring(valueStart, closingQuoteIndex - valueStart);
-                    index = closingQuoteIndex + 1;
-                }
-
-                if (index < text.Length && !char.IsWhiteSpace(text[index]))
-                {
-                    while (index < text.Length && !char.IsWhiteSpace(text[index]))
-                    {
-                        index++;
-                    }
-
-                    continue;
-                }
-            }
-            else
-            {
-                var valueStart = index;
-                while (index < text.Length && !char.IsWhiteSpace(text[index]))
-                {
-                    index++;
-                }
-
-                rawValue = text.Substring(valueStart, index - valueStart);
-            }
-
-            var value = rawValue.Trim();
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                continue;
-            }
-
-            switch (tag)
-            {
-                case "path":
-                    criteria.PathTerms.Add(value);
-                    break;
-                case "title":
-                    criteria.TitleTerms.Add(value);
-                    break;
-                case "description":
-                    criteria.DescriptionTerms.Add(value);
-                    break;
-                case "source":
-                    criteria.SourceTerms.Add(value);
-                    break;
-                case "id":
-                    if (long.TryParse(value, out var parsedId) && parsedId > 0)
-                    {
-                        criteria.Ids.Add(parsedId);
-                    }
-                    break;
-                default:
-                    criteria.TagFilters.Add(new MediaSearchTagFilter(
-                        TagTypeName: tag,
-                        TagName: value));
-                    break;
-            }
-        }
-
-        return criteria;
     }
 
     private sealed class MediaConversionException(string message) : Exception(message);
@@ -2311,35 +1205,4 @@ public class Program
     private sealed record TagCreateRequest(string? Name, string? Description);
     private sealed record TagUpdateRequest(string? Name, string? Description);
 
-    private sealed record MediaMetadata(
-        long Id,
-        string RelativePath,
-        string? Title,
-        string? Description,
-        string? Source,
-        long? Parent,
-        long? Child,
-        bool IsFavorite);
-
-    private sealed class MediaSearchCriteria
-    {
-        public List<string> PathTerms { get; } = [];
-        public List<string> TitleTerms { get; } = [];
-        public List<string> DescriptionTerms { get; } = [];
-        public List<string> SourceTerms { get; } = [];
-        public List<long> Ids { get; } = [];
-        public List<MediaSearchTagFilter> TagFilters { get; } = [];
-
-        public bool HasFilters =>
-            PathTerms.Count > 0
-            || TitleTerms.Count > 0
-            || DescriptionTerms.Count > 0
-            || SourceTerms.Count > 0
-            || Ids.Count > 0
-            || TagFilters.Count > 0;
-    }
-
-    private sealed record MediaSearchTagFilter(
-        string TagTypeName,
-        string TagName);
 }
