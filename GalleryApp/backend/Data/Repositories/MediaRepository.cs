@@ -1,0 +1,340 @@
+using GalleryApp.Api.Data.Search;
+using Microsoft.Data.Sqlite;
+
+namespace GalleryApp.Api.Data.Repositories;
+
+public sealed class MediaRepository(string connectionString)
+{
+    public sealed record MediaRow(long Id, string Path, string? Title, string? Description, string? Source, long? Parent, long? Child, bool IsFavorite);
+
+    public List<MediaRow> GetMedia(MediaSearchCriteria? criteria, bool favoritesOnly)
+    {
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        var whereClauses = MediaSearchSqlBuilder.BuildMediaSearchWhereClauses(command, criteria, favoritesOnly);
+        var whereSql = whereClauses.Count == 0
+            ? string.Empty
+            : $"{Environment.NewLine}WHERE {string.Join($"{Environment.NewLine}  AND ", whereClauses)}";
+
+        command.CommandText = $"""
+            SELECT
+                m.Id,
+                m.Path,
+                m.Title,
+                m.Description,
+                m.Source,
+                m.Parent,
+                m.Child,
+                EXISTS (
+                    SELECT 1
+                    FROM CollectionsMedia cm
+                    INNER JOIN Collections c ON c.Id = cm.CollectionId
+                    WHERE cm.MediaId = m.Id AND c.Lable = 'Favorites'
+                ) AS IsFavorite
+            FROM Media m
+            {whereSql}
+            ORDER BY m.Id DESC;
+            """;
+
+        return ReadMediaRows(command);
+    }
+
+    public List<MediaRow> GetCollectionMedia(long collectionId)
+    {
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT
+                m.Id,
+                m.Path,
+                m.Title,
+                m.Description,
+                m.Source,
+                m.Parent,
+                m.Child,
+                EXISTS (
+                    SELECT 1
+                    FROM CollectionsMedia cmFav
+                    INNER JOIN Collections cFav ON cFav.Id = cmFav.CollectionId
+                    WHERE cmFav.MediaId = m.Id AND cFav.Lable = 'Favorites'
+                ) AS IsFavorite
+            FROM CollectionsMedia cm
+            INNER JOIN Media m ON m.Id = cm.MediaId
+            WHERE cm.CollectionId = $collectionId
+            ORDER BY m.Id DESC;
+            """;
+        command.Parameters.AddWithValue("$collectionId", collectionId);
+        return ReadMediaRows(command);
+    }
+
+    public bool MediaRecordExists(long id)
+    {
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT EXISTS (SELECT 1 FROM Media WHERE Id = $id);";
+        command.Parameters.AddWithValue("$id", id);
+        return Convert.ToInt64(command.ExecuteScalar()) == 1;
+    }
+
+    public bool AreAllTagsExist(long[] tagIds)
+    {
+        if (tagIds.Length == 0)
+        {
+            return true;
+        }
+
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        var tagIdParams = new List<string>();
+        for (var i = 0; i < tagIds.Length; i++)
+        {
+            var parameterName = $"$tagId{i}";
+            tagIdParams.Add(parameterName);
+            command.Parameters.AddWithValue(parameterName, tagIds[i]);
+        }
+
+        command.CommandText = $"SELECT COUNT(*) FROM Tags WHERE Id IN ({string.Join(", ", tagIdParams)});";
+        var existingTagCount = Convert.ToInt32(command.ExecuteScalar());
+        return existingTagCount == tagIds.Length;
+    }
+
+    public (long? Parent, long? Child)? GetMediaLinks(long mediaId)
+    {
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT Parent, Child FROM Media WHERE Id = $id;";
+        command.Parameters.AddWithValue("$id", mediaId);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return null;
+        }
+
+        var parentOrdinal = reader.GetOrdinal("Parent");
+        var childOrdinal = reader.GetOrdinal("Child");
+        var parent = reader.IsDBNull(parentOrdinal) ? (long?)null : reader.GetInt64(parentOrdinal);
+        var child = reader.IsDBNull(childOrdinal) ? (long?)null : reader.GetInt64(childOrdinal);
+        return (parent, child);
+    }
+
+    public void UpdateMedia(long id, string? title, string? description, string? source, long? parent, long? child, long? previousParent, long? previousChild, long[]? tagIds)
+    {
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+        using var transaction = connection.BeginTransaction();
+
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = """
+                UPDATE Media
+                SET Title = $title, Description = $description, Source = $source, Parent = $parent, Child = $child
+                WHERE Id = $id;
+                """;
+            command.Parameters.AddWithValue("$title", title ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("$description", description ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("$source", source ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("$parent", parent ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("$child", child ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("$id", id);
+            command.ExecuteNonQuery();
+        }
+
+        if (previousParent.HasValue && previousParent.Value != parent)
+        {
+            using var clearOldParentReverse = connection.CreateCommand();
+            clearOldParentReverse.Transaction = transaction;
+            clearOldParentReverse.CommandText = "UPDATE Media SET Child = NULL WHERE Id = $oldParentId AND Child = $mediaId;";
+            clearOldParentReverse.Parameters.AddWithValue("$oldParentId", previousParent.Value);
+            clearOldParentReverse.Parameters.AddWithValue("$mediaId", id);
+            clearOldParentReverse.ExecuteNonQuery();
+        }
+
+        if (previousChild.HasValue && previousChild.Value != child)
+        {
+            using var clearOldChildReverse = connection.CreateCommand();
+            clearOldChildReverse.Transaction = transaction;
+            clearOldChildReverse.CommandText = "UPDATE Media SET Parent = NULL WHERE Id = $oldChildId AND Parent = $mediaId;";
+            clearOldChildReverse.Parameters.AddWithValue("$oldChildId", previousChild.Value);
+            clearOldChildReverse.Parameters.AddWithValue("$mediaId", id);
+            clearOldChildReverse.ExecuteNonQuery();
+        }
+
+        if (parent.HasValue)
+        {
+            using var setParentReverse = connection.CreateCommand();
+            setParentReverse.Transaction = transaction;
+            setParentReverse.CommandText = "UPDATE Media SET Child = $mediaId WHERE Id = $parentId;";
+            setParentReverse.Parameters.AddWithValue("$mediaId", id);
+            setParentReverse.Parameters.AddWithValue("$parentId", parent.Value);
+            setParentReverse.ExecuteNonQuery();
+
+            var parentPreviousChild = GetMediaLinksForTransaction(connection, parent.Value, transaction)?.Child;
+            if (parentPreviousChild.HasValue && parentPreviousChild.Value != id)
+            {
+                using var clearConflictedChildParent = connection.CreateCommand();
+                clearConflictedChildParent.Transaction = transaction;
+                clearConflictedChildParent.CommandText = "UPDATE Media SET Parent = NULL WHERE Id = $oldChildId AND Parent = $parentId;";
+                clearConflictedChildParent.Parameters.AddWithValue("$oldChildId", parentPreviousChild.Value);
+                clearConflictedChildParent.Parameters.AddWithValue("$parentId", parent.Value);
+                clearConflictedChildParent.ExecuteNonQuery();
+            }
+        }
+
+        if (child.HasValue)
+        {
+            using var setChildReverse = connection.CreateCommand();
+            setChildReverse.Transaction = transaction;
+            setChildReverse.CommandText = "UPDATE Media SET Parent = $mediaId WHERE Id = $childId;";
+            setChildReverse.Parameters.AddWithValue("$mediaId", id);
+            setChildReverse.Parameters.AddWithValue("$childId", child.Value);
+            setChildReverse.ExecuteNonQuery();
+
+            var childPreviousParent = GetMediaLinksForTransaction(connection, child.Value, transaction)?.Parent;
+            if (childPreviousParent.HasValue && childPreviousParent.Value != id)
+            {
+                using var clearConflictedParentChild = connection.CreateCommand();
+                clearConflictedParentChild.Transaction = transaction;
+                clearConflictedParentChild.CommandText = "UPDATE Media SET Child = NULL WHERE Id = $oldParentId AND Child = $childId;";
+                clearConflictedParentChild.Parameters.AddWithValue("$oldParentId", childPreviousParent.Value);
+                clearConflictedParentChild.Parameters.AddWithValue("$childId", child.Value);
+                clearConflictedParentChild.ExecuteNonQuery();
+            }
+        }
+
+        if (tagIds is not null)
+        {
+            using (var deleteTagsCommand = connection.CreateCommand())
+            {
+                deleteTagsCommand.Transaction = transaction;
+                deleteTagsCommand.CommandText = "DELETE FROM MediaTags WHERE MediaId = $mediaId;";
+                deleteTagsCommand.Parameters.AddWithValue("$mediaId", id);
+                deleteTagsCommand.ExecuteNonQuery();
+            }
+
+            foreach (var tagId in tagIds)
+            {
+                using var insertTagCommand = connection.CreateCommand();
+                insertTagCommand.Transaction = transaction;
+                insertTagCommand.CommandText = "INSERT INTO MediaTags (MediaId, TagId) VALUES ($mediaId, $tagId);";
+                insertTagCommand.Parameters.AddWithValue("$mediaId", id);
+                insertTagCommand.Parameters.AddWithValue("$tagId", tagId);
+                insertTagCommand.ExecuteNonQuery();
+            }
+        }
+
+        transaction.Commit();
+    }
+
+    public void UpdateFavorite(long id, bool isFavorite)
+    {
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+        var favoritesCollectionId = EnsureFavoritesCollection(connection);
+        using var command = connection.CreateCommand();
+        command.CommandText = isFavorite
+            ? "INSERT OR IGNORE INTO CollectionsMedia (CollectionId, MediaId) VALUES ($collectionId, $mediaId);"
+            : "DELETE FROM CollectionsMedia WHERE CollectionId = $collectionId AND MediaId = $mediaId;";
+        command.Parameters.AddWithValue("$collectionId", favoritesCollectionId);
+        command.Parameters.AddWithValue("$mediaId", id);
+        command.ExecuteNonQuery();
+    }
+
+    public string? GetMediaPath(long id)
+    {
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+        using var pathCommand = connection.CreateCommand();
+        pathCommand.CommandText = "SELECT Path FROM Media WHERE Id = $id;";
+        pathCommand.Parameters.AddWithValue("$id", id);
+        return pathCommand.ExecuteScalar() as string;
+    }
+
+    public void DeleteMediaRecordAndRelations(long id)
+    {
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+        using var transaction = connection.BeginTransaction();
+        using var deleteCommand = connection.CreateCommand();
+        deleteCommand.Transaction = transaction;
+        deleteCommand.CommandText = """
+            UPDATE Media SET Parent = NULL WHERE Parent = $id;
+            UPDATE Media SET Child = NULL WHERE Child = $id;
+            DELETE FROM CollectionsMedia WHERE MediaId = $id;
+            DELETE FROM Media WHERE Id = $id;
+            """;
+        deleteCommand.Parameters.AddWithValue("$id", id);
+        deleteCommand.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static List<MediaRow> ReadMediaRows(SqliteCommand command)
+    {
+        using var reader = command.ExecuteReader();
+        var idOrdinal = reader.GetOrdinal("Id");
+        var pathOrdinal = reader.GetOrdinal("Path");
+        var titleOrdinal = reader.GetOrdinal("Title");
+        var descriptionOrdinal = reader.GetOrdinal("Description");
+        var sourceOrdinal = reader.GetOrdinal("Source");
+        var parentOrdinal = reader.GetOrdinal("Parent");
+        var childOrdinal = reader.GetOrdinal("Child");
+        var favoriteOrdinal = reader.GetOrdinal("IsFavorite");
+
+        var result = new List<MediaRow>();
+        while (reader.Read())
+        {
+            result.Add(new MediaRow(
+                reader.GetInt64(idOrdinal),
+                reader.IsDBNull(pathOrdinal) ? string.Empty : reader.GetString(pathOrdinal),
+                reader.IsDBNull(titleOrdinal) ? null : reader.GetString(titleOrdinal),
+                reader.IsDBNull(descriptionOrdinal) ? null : reader.GetString(descriptionOrdinal),
+                reader.IsDBNull(sourceOrdinal) ? null : reader.GetString(sourceOrdinal),
+                reader.IsDBNull(parentOrdinal) ? null : reader.GetInt64(parentOrdinal),
+                reader.IsDBNull(childOrdinal) ? null : reader.GetInt64(childOrdinal),
+                !reader.IsDBNull(favoriteOrdinal) && reader.GetInt64(favoriteOrdinal) == 1));
+        }
+
+        return result;
+    }
+
+    private static (long? Parent, long? Child)? GetMediaLinksForTransaction(SqliteConnection connection, long mediaId, SqliteTransaction transaction)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT Parent, Child FROM Media WHERE Id = $id;";
+        command.Parameters.AddWithValue("$id", mediaId);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return null;
+        }
+
+        var parentOrdinal = reader.GetOrdinal("Parent");
+        var childOrdinal = reader.GetOrdinal("Child");
+        var parent = reader.IsDBNull(parentOrdinal) ? (long?)null : reader.GetInt64(parentOrdinal);
+        var child = reader.IsDBNull(childOrdinal) ? (long?)null : reader.GetInt64(childOrdinal);
+        return (parent, child);
+    }
+
+    private static long EnsureFavoritesCollection(SqliteConnection connection)
+    {
+        using var findCommand = connection.CreateCommand();
+        findCommand.CommandText = "SELECT Id FROM Collections WHERE Lable = 'Favorites' ORDER BY Id LIMIT 1;";
+        var existingId = findCommand.ExecuteScalar();
+        if (existingId is not null && existingId != DBNull.Value)
+        {
+            return Convert.ToInt64(existingId);
+        }
+
+        using var insertCommand = connection.CreateCommand();
+        insertCommand.CommandText = "INSERT INTO Collections (Lable, Description, Cover) VALUES ('Favorites', NULL, NULL); SELECT last_insert_rowid();";
+        return Convert.ToInt64(insertCommand.ExecuteScalar());
+    }
+}
