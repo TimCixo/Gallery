@@ -66,6 +66,8 @@ function App() {
   const [favoritesTotalFiles, setFavoritesTotalFiles] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
+  const [pageJumpInput, setPageJumpInput] = useState("1");
+  const [favoritesPageJumpInput, setFavoritesPageJumpInput] = useState("1");
   const [totalFiles, setTotalFiles] = useState(0);
   const [failedPreviewPaths, setFailedPreviewPaths] = useState(new Set());
   const [selectedMedia, setSelectedMedia] = useState(null);
@@ -1188,25 +1190,69 @@ function App() {
     loadMedia(nextPage, submittedText);
   };
 
-  const renderPagination = () => (
-    <div className="media-pagination">
-      <button
-        type="button"
-        onClick={() => handlePageChange(currentPage - 1)}
-        disabled={isMediaLoading || currentPage <= 1 || totalPages === 0}
-      >
-        Prev
-      </button>
-      <p>
-        Page {totalPages === 0 ? 0 : currentPage} of {totalPages}
-      </p>
-      <button
-        type="button"
-        onClick={() => handlePageChange(currentPage + 1)}
-        disabled={isMediaLoading || totalPages === 0 || currentPage >= totalPages}
-      >
-        Next
-      </button>
+  useEffect(() => {
+    setPageJumpInput(String(currentPage));
+  }, [currentPage]);
+
+  const handlePageJumpSubmit = (event) => {
+    event.preventDefault();
+    if (isMediaLoading || totalPages <= 0) {
+      return;
+    }
+
+    const parsed = Number.parseInt(pageJumpInput, 10);
+    if (!Number.isFinite(parsed)) {
+      setPageJumpInput(String(currentPage));
+      return;
+    }
+
+    const targetPage = Math.min(Math.max(parsed, 1), totalPages);
+    setPageJumpInput(String(targetPage));
+    handlePageChange(targetPage);
+  };
+
+  const renderPagination = (showLoadingState = false) => (
+    <div className="media-pagination-wrap">
+      <div className="media-pagination">
+        <button
+          type="button"
+          onClick={() => handlePageChange(currentPage - 1)}
+          disabled={isMediaLoading || currentPage <= 1 || totalPages === 0}
+        >
+          Prev
+        </button>
+        <p>
+          Page {totalPages === 0 ? 0 : currentPage} of {totalPages}
+        </p>
+        <button
+          type="button"
+          onClick={() => handlePageChange(currentPage + 1)}
+          disabled={isMediaLoading || totalPages === 0 || currentPage >= totalPages}
+        >
+          Next
+        </button>
+        <form className="media-pagination-jump" onSubmit={handlePageJumpSubmit}>
+          <input
+            type="number"
+            min={1}
+            max={Math.max(totalPages, 1)}
+            step={1}
+            inputMode="numeric"
+            value={pageJumpInput}
+            onChange={(event) => setPageJumpInput(event.target.value)}
+            disabled={isMediaLoading || totalPages === 0}
+            aria-label="Go to page"
+          />
+          <button type="submit" disabled={isMediaLoading || totalPages === 0}>
+            Go
+          </button>
+        </form>
+      </div>
+      {showLoadingState ? (
+        <p className="media-pagination-status" aria-live="polite">
+          {isMediaLoading ? "Loading media..." : "\u00A0"}
+        </p>
+      ) : null}
     </div>
   );
 
@@ -1222,25 +1268,69 @@ function App() {
     loadFavorites(nextPage);
   };
 
-  const renderFavoritesPagination = () => (
-    <div className="media-pagination">
-      <button
-        type="button"
-        onClick={() => handleFavoritesPageChange(favoritesPage - 1)}
-        disabled={isFavoritesLoading || favoritesPage <= 1 || favoritesTotalPages === 0}
-      >
-        Prev
-      </button>
-      <p>
-        Page {favoritesTotalPages === 0 ? 0 : favoritesPage} of {favoritesTotalPages}
-      </p>
-      <button
-        type="button"
-        onClick={() => handleFavoritesPageChange(favoritesPage + 1)}
-        disabled={isFavoritesLoading || favoritesTotalPages === 0 || favoritesPage >= favoritesTotalPages}
-      >
-        Next
-      </button>
+  useEffect(() => {
+    setFavoritesPageJumpInput(String(favoritesPage));
+  }, [favoritesPage]);
+
+  const handleFavoritesPageJumpSubmit = (event) => {
+    event.preventDefault();
+    if (isFavoritesLoading || favoritesTotalPages <= 0) {
+      return;
+    }
+
+    const parsed = Number.parseInt(favoritesPageJumpInput, 10);
+    if (!Number.isFinite(parsed)) {
+      setFavoritesPageJumpInput(String(favoritesPage));
+      return;
+    }
+
+    const targetPage = Math.min(Math.max(parsed, 1), favoritesTotalPages);
+    setFavoritesPageJumpInput(String(targetPage));
+    handleFavoritesPageChange(targetPage);
+  };
+
+  const renderFavoritesPagination = (showLoadingState = false) => (
+    <div className="media-pagination-wrap">
+      <div className="media-pagination">
+        <button
+          type="button"
+          onClick={() => handleFavoritesPageChange(favoritesPage - 1)}
+          disabled={isFavoritesLoading || favoritesPage <= 1 || favoritesTotalPages === 0}
+        >
+          Prev
+        </button>
+        <p>
+          Page {favoritesTotalPages === 0 ? 0 : favoritesPage} of {favoritesTotalPages}
+        </p>
+        <button
+          type="button"
+          onClick={() => handleFavoritesPageChange(favoritesPage + 1)}
+          disabled={isFavoritesLoading || favoritesTotalPages === 0 || favoritesPage >= favoritesTotalPages}
+        >
+          Next
+        </button>
+        <form className="media-pagination-jump" onSubmit={handleFavoritesPageJumpSubmit}>
+          <input
+            type="number"
+            min={1}
+            max={Math.max(favoritesTotalPages, 1)}
+            step={1}
+            inputMode="numeric"
+            value={favoritesPageJumpInput}
+            onChange={(event) => setFavoritesPageJumpInput(event.target.value)}
+            disabled={isFavoritesLoading || favoritesTotalPages === 0}
+            aria-label="Go to favorites page"
+          />
+          <button type="submit" disabled={isFavoritesLoading || favoritesTotalPages === 0}>
+            Go
+          </button>
+        </form>
+      </div>
+      {showLoadingState ? (
+        <p className="media-pagination-status" aria-live="polite">
+          {isFavoritesLoading ? "Loading favorites..." : "\u00A0"}
+        </p>
+      ) : null}
     </div>
   );
 
@@ -2697,7 +2787,9 @@ function App() {
       {isGalleryPage ? (
       <section className="media-section">
         {mediaError ? <p className="media-state error">{mediaError}</p> : null}
-        {!mediaError && isMediaLoading ? <p className="media-state">Loading media...</p> : null}
+        {!mediaError && isMediaLoading && visibleMediaFiles.length === 0 ? (
+          <p className="media-state">Loading media...</p>
+        ) : null}
         {!mediaError && !isMediaLoading && totalFiles === 0 ? (
           <p className="media-state">No files in backend/App_Data/Media.</p>
         ) : null}
@@ -2707,7 +2799,7 @@ function App() {
 
         {!mediaError && visibleMediaFiles.length > 0 ? (
           <>
-            {renderPagination()}
+            {renderPagination(true)}
             <div className="media-grid">
               {visibleMediaFiles.map((file) => (
                 <article
@@ -2740,20 +2832,22 @@ function App() {
                 </article>
               ))}
             </div>
-            {renderPagination()}
+            {renderPagination(false)}
           </>
         ) : null}
       </section>
       ) : isFavoritesPage ? (
         <section className="favorites-page">
           {favoritesError ? <p className="media-state error">{favoritesError}</p> : null}
-          {!favoritesError && isFavoritesLoading ? <p className="media-state">Loading favorites...</p> : null}
+          {!favoritesError && isFavoritesLoading && favoritesTotalFiles === 0 ? (
+            <p className="media-state">Loading favorites...</p>
+          ) : null}
           {!favoritesError && !isFavoritesLoading && favoritesTotalFiles === 0 ? (
             <p className="media-state">No favorite media yet.</p>
           ) : null}
           {!favoritesError && favoritesTotalFiles > 0 ? (
             <>
-              {renderFavoritesPagination()}
+              {renderFavoritesPagination(true)}
               <div className="media-grid">
                 {visibleFavoriteFiles.map((file) => (
                   <article
@@ -2786,7 +2880,7 @@ function App() {
                   </article>
                 ))}
               </div>
-              {renderFavoritesPagination()}
+              {renderFavoritesPagination(false)}
             </>
           ) : null}
         </section>
