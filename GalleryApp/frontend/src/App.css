@@ -345,6 +345,29 @@
   color: #475569;
 }
 
+.collections-page {
+  flex: 1;
+  padding: 1.76rem 1rem 1.25rem;
+}
+
+.collections-callout {
+  border: 1px solid #d5dbe1;
+  border-radius: 0.6rem;
+  background-color: #f8fafc;
+  padding: 0.9rem;
+}
+
+.collections-callout h2 {
+  margin: 0 0 0.45rem;
+  font-size: 1.1rem;
+  color: #0f172a;
+}
+
+.collections-callout p {
+  margin: 0;
+  color: #475569;
+}
+
 .tags-page {
   flex: 1;
   padding: 1.76rem 1rem 1.25rem;

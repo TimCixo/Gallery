@@ -2229,6 +2229,7 @@ function App() {
   };
   const isGalleryPage = activePage === "gallery";
   const isFavoritesPage = activePage === "favorites";
+  const isCollectionsPage = activePage === "collections";
   const isFileDragEvent = (event) => Array.from(event.dataTransfer?.types || []).includes("Files");
   const handleRootDragEnter = (event) => {
     if (!isGalleryPage || !isFileDragEvent(event)) {
@@ -2326,6 +2327,11 @@ function App() {
   };
   const openTagsPage = () => {
     setActivePage("tags");
+    setIsSlideMenuOpen(false);
+    setSelectedMedia(null);
+  };
+  const openCollectionsPage = () => {
+    setActivePage("collections");
     setIsSlideMenuOpen(false);
     setSelectedMedia(null);
   };
@@ -2888,7 +2894,13 @@ function App() {
               >
                 Tags
               </button>
-              <button type="button" className="slide-menu-item">Collections</button>
+              <button
+                type="button"
+                className="slide-menu-item"
+                onClick={openCollectionsPage}
+              >
+                Collections
+              </button>
             </nav>
           </aside>
         </div>
@@ -2993,6 +3005,13 @@ function App() {
               {renderFavoritesPagination(false)}
             </>
           ) : null}
+        </section>
+      ) : isCollectionsPage ? (
+        <section className="collections-page">
+          <div className="collections-callout">
+            <h2>Collections</h2>
+            <p>Collections page is ready. Add collection content here.</p>
+          </div>
         </section>
       ) : (
         <section className="tags-page">
