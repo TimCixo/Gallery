@@ -101,6 +101,11 @@ function App() {
   const [isDeletingTagEntity, setIsDeletingTagEntity] = useState(false);
   const [mediaModalError, setMediaModalError] = useState("");
   const [isFavoriteUpdating, setIsFavoriteUpdating] = useState(false);
+  const [isCollectionPickerOpen, setIsCollectionPickerOpen] = useState(false);
+  const [collectionPickerItems, setCollectionPickerItems] = useState([]);
+  const [isCollectionPickerLoading, setIsCollectionPickerLoading] = useState(false);
+  const [collectionPickerError, setCollectionPickerError] = useState("");
+  const [isAddingMediaToCollection, setIsAddingMediaToCollection] = useState(false);
   const [mediaTagCatalog, setMediaTagCatalog] = useState([]);
   const [isMediaTagCatalogLoading, setIsMediaTagCatalogLoading] = useState(false);
   const [mediaTagCatalogError, setMediaTagCatalogError] = useState("");
@@ -1125,6 +1130,11 @@ function App() {
     setShowDeleteConfirm(false);
     setMediaModalError("");
     setIsFavoriteUpdating(false);
+    setIsCollectionPickerOpen(false);
+    setCollectionPickerItems([]);
+    setCollectionPickerError("");
+    setIsCollectionPickerLoading(false);
+    setIsAddingMediaToCollection(false);
     setActiveTagTypeDropdownId(null);
     setTagTypeQueryById({});
     setMediaDraft(createMediaDraft(selectedMedia));
@@ -2759,6 +2769,69 @@ function App() {
       setIsFavoriteUpdating(false);
     }
   };
+  const openCollectionPickerForSelectedMedia = async () => {
+    if (!selectedMedia?.id || isCollectionPickerLoading || isAddingMediaToCollection) {
+      return;
+    }
+
+    setIsCollectionPickerOpen(true);
+    setCollectionPickerError("");
+    setIsCollectionPickerLoading(true);
+    try {
+      const response = await fetch(`/api/collections?mediaId=${selectedMedia.id}`);
+      const result = await readResponsePayload(response);
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to fetch collections.");
+      }
+
+      setCollectionPickerItems(Array.isArray(result.items) ? result.items : []);
+    } catch (error) {
+      setCollectionPickerItems([]);
+      setCollectionPickerError(error instanceof Error ? error.message : "Failed to fetch collections.");
+    } finally {
+      setIsCollectionPickerLoading(false);
+    }
+  };
+  const closeCollectionPicker = () => {
+    if (isAddingMediaToCollection) {
+      return;
+    }
+
+    setIsCollectionPickerOpen(false);
+    setCollectionPickerError("");
+  };
+  const handleAddSelectedMediaToCollection = async (collectionId) => {
+    if (!selectedMedia?.id || !Number.isInteger(collectionId) || collectionId <= 0 || isAddingMediaToCollection) {
+      return;
+    }
+
+    setIsAddingMediaToCollection(true);
+    setCollectionPickerError("");
+    setMediaModalError("");
+    try {
+      const response = await fetch(`/api/collections/${collectionId}/media`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mediaId: selectedMedia.id })
+      });
+      const result = await readResponsePayload(response);
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to add media to collection.");
+      }
+
+      setCollectionPickerItems((current) => current.map((item) => (
+        item.id === collectionId
+          ? { ...item, containsMedia: Boolean(result?.isIncluded) }
+          : item
+      )));
+      setCollectionPickerError("");
+      setMediaModalError("");
+    } catch (error) {
+      setCollectionPickerError(error instanceof Error ? error.message : "Failed to add media to collection.");
+    } finally {
+      setIsAddingMediaToCollection(false);
+    }
+  };
   const openGalleryPage = (event) => {
     event.preventDefault();
     setInputValue("");
@@ -4161,6 +4234,16 @@ function App() {
               <div className="media-favorite-row">
                 <button
                   type="button"
+                  className="media-icon-btn media-icon-btn-collections"
+                  onClick={openCollectionPickerForSelectedMedia}
+                  disabled={!selectedMedia?.id || isCollectionPickerLoading || isAddingMediaToCollection}
+                  aria-label="Add to collection"
+                  title="Add to collection"
+                >
+                  {"\uD83D\uDCC1"}
+                </button>
+                <button
+                  type="button"
                   className={`media-favorite-btn${isSelectedMediaFavorite ? " is-active" : ""}`}
                   aria-label={isSelectedMediaFavorite ? "Remove from favorites" : "Add to favorites"}
                   title={isSelectedMediaFavorite ? "Remove from favorites" : "Add to favorites"}
@@ -4291,6 +4374,52 @@ function App() {
                     disabled={isDeletingMedia}
                   >
                     No
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {isCollectionPickerOpen ? (
+            <div
+              className="media-confirm-overlay"
+              onClick={closeCollectionPicker}
+            >
+              <div
+                className="collection-picker-dialog"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <p className="collection-picker-title">Select collection</p>
+                {collectionPickerError ? <p className="media-action-error">{collectionPickerError}</p> : null}
+                {isCollectionPickerLoading ? (
+                  <p className="collections-state">Loading collections...</p>
+                ) : collectionPickerItems.length === 0 ? (
+                  <p className="collections-state">No collections available.</p>
+                ) : (
+                  <ul className="collection-picker-list">
+                    {collectionPickerItems.map((item) => (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          className={`collection-picker-item${item.containsMedia ? " is-included" : ""}`}
+                          onClick={() => void handleAddSelectedMediaToCollection(item.id)}
+                          disabled={isAddingMediaToCollection}
+                        >
+                          <span>{item.label}</span>
+                          <em>{item.containsMedia ? "Included" : "Not included"}</em>
+                          <small>{item.description || "No description."}</small>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="media-delete-buttons">
+                  <button
+                    type="button"
+                    className="media-action-btn"
+                    onClick={closeCollectionPicker}
+                    disabled={isAddingMediaToCollection}
+                  >
+                    Close
                   </button>
                 </div>
               </div>

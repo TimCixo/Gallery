@@ -127,9 +127,13 @@ public class Program
             });
         });
 
-        app.MapGet("/api/collections", (string? search) =>
+        app.MapGet("/api/collections", (string? search, long? mediaId) =>
         {
             var normalizedSearch = NormalizeOptionalText(search);
+            if (mediaId.HasValue && mediaId.Value <= 0)
+            {
+                return Results.BadRequest(new { error = "Invalid media id." });
+            }
 
             using var connection = new SqliteConnection(connectionString);
             connection.Open();
@@ -141,7 +145,13 @@ public class Program
                     c.Lable,
                     c.Description,
                     c.Cover,
-                    m.Path
+                    m.Path,
+                    EXISTS (
+                        SELECT 1
+                        FROM CollectionsMedia cm
+                        WHERE cm.CollectionId = c.Id
+                          AND ($mediaId IS NOT NULL AND cm.MediaId = $mediaId)
+                    ) AS ContainsMedia
                 FROM Collections c
                 LEFT JOIN Media m ON m.Id = c.Cover
                 WHERE c.Lable <> 'Favorites'
@@ -151,6 +161,7 @@ public class Program
             command.Parameters.AddWithValue("$search", normalizedSearch is null
                 ? DBNull.Value
                 : $"%{normalizedSearch.ToLowerInvariant()}%");
+            command.Parameters.AddWithValue("$mediaId", mediaId ?? (object)DBNull.Value);
 
             using var reader = command.ExecuteReader();
             var items = new List<object>();
@@ -164,7 +175,8 @@ public class Program
                     label = reader.GetString(1),
                     description = reader.IsDBNull(2) ? null : reader.GetString(2),
                     cover = coverId,
-                    coverMedia = BuildCollectionCoverPayload(mediaRootPath, coverId, coverPath)
+                    coverMedia = BuildCollectionCoverPayload(mediaRootPath, coverId, coverPath),
+                    containsMedia = !reader.IsDBNull(5) && reader.GetInt64(5) == 1
                 });
             }
 
@@ -361,6 +373,81 @@ public class Program
             }
 
             return Results.Ok(new { id });
+        });
+
+        app.MapPost("/api/collections/{id:long}/media", (long id, CollectionMediaAddRequest request) =>
+        {
+            if (id <= 0)
+            {
+                return Results.BadRequest(new { error = "Invalid collection id." });
+            }
+
+            if (request.MediaId <= 0)
+            {
+                return Results.BadRequest(new { error = "Invalid media id." });
+            }
+
+            using var connection = new SqliteConnection(connectionString);
+            connection.Open();
+
+            using var collectionExistsCommand = connection.CreateCommand();
+            collectionExistsCommand.CommandText = """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM Collections
+                    WHERE Id = $collectionId
+                );
+                """;
+            collectionExistsCommand.Parameters.AddWithValue("$collectionId", id);
+            var collectionExists = Convert.ToInt64(collectionExistsCommand.ExecuteScalar()) == 1;
+            if (!collectionExists)
+            {
+                return Results.NotFound(new { error = "Collection not found." });
+            }
+
+            if (!MediaRecordExists(connection, request.MediaId))
+            {
+                return Results.BadRequest(new { error = "Media record not found." });
+            }
+
+            using var existsCommand = connection.CreateCommand();
+            existsCommand.CommandText = """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM CollectionsMedia
+                    WHERE CollectionId = $collectionId
+                      AND MediaId = $mediaId
+                );
+                """;
+            existsCommand.Parameters.AddWithValue("$collectionId", id);
+            existsCommand.Parameters.AddWithValue("$mediaId", request.MediaId);
+            var alreadyIncluded = Convert.ToInt64(existsCommand.ExecuteScalar()) == 1;
+
+            using var command = connection.CreateCommand();
+            if (alreadyIncluded)
+            {
+                command.CommandText = """
+                    DELETE FROM CollectionsMedia
+                    WHERE CollectionId = $collectionId AND MediaId = $mediaId;
+                    """;
+            }
+            else
+            {
+                command.CommandText = """
+                    INSERT INTO CollectionsMedia (CollectionId, MediaId)
+                    VALUES ($collectionId, $mediaId);
+                    """;
+            }
+            command.Parameters.AddWithValue("$collectionId", id);
+            command.Parameters.AddWithValue("$mediaId", request.MediaId);
+            command.ExecuteNonQuery();
+
+            return Results.Ok(new
+            {
+                collectionId = id,
+                mediaId = request.MediaId,
+                isIncluded = !alreadyIncluded
+            });
         });
 
         app.MapGet("/api/tag-types", () =>
@@ -2218,6 +2305,7 @@ public class Program
     private sealed record FavoriteUpdateRequest(bool IsFavorite);
     private sealed record CollectionCreateRequest(string? Label, string? Description, long? Cover);
     private sealed record CollectionUpdateRequest(string? Label, string? Description, long? Cover);
+    private sealed record CollectionMediaAddRequest(long MediaId);
     private sealed record TagTypeCreateRequest(string? Name, string? Color);
     private sealed record TagTypeUpdateRequest(string? Name, string? Color);
     private sealed record TagCreateRequest(string? Name, string? Description);
