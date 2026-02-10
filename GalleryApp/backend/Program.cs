@@ -8,14 +8,12 @@ using Microsoft.Extensions.FileProviders;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Formats.Webp;
-using System.Text.RegularExpressions;
+using GalleryApp.Api.Validation;
 
 namespace GalleryApp.Api;
 
 public class Program
 {
-    private static readonly Regex HexColorRegex = new("^#[0-9A-Fa-f]{6}$", RegexOptions.Compiled);
-
     public static void Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
@@ -129,11 +127,14 @@ public class Program
 
         app.MapGet("/api/collections", (string? search, long? mediaId) =>
         {
-            var normalizedSearch = NormalizeOptionalText(search);
-            if (mediaId.HasValue && mediaId.Value <= 0)
+            var validation = CollectionValidator.ValidateQuery(search, mediaId);
+            if (!validation.IsValid)
             {
-                return Results.BadRequest(new { error = "Invalid media id." });
+                return ApiResults.BadRequest(validation.Error!);
             }
+
+            var normalizedSearch = validation.Value!.Search;
+            mediaId = validation.Value.MediaId;
 
             using var connection = new SqliteConnection(connectionString);
             connection.Open();
@@ -185,25 +186,22 @@ public class Program
 
         app.MapPost("/api/collections", (CollectionCreateRequest request) =>
         {
-            var label = NormalizeOptionalText(request.Label);
-            if (label is null)
+            var validation = CollectionValidator.ValidateCreateOrUpdate(request.Label, request.Description, request.Cover);
+            if (!validation.IsValid)
             {
-                return Results.BadRequest(new { error = "Collection name is required." });
+                return ApiResults.BadRequest(validation.Error!);
             }
 
-            var description = NormalizeOptionalText(request.Description);
-            var cover = request.Cover;
-            if (cover.HasValue && cover.Value <= 0)
-            {
-                return Results.BadRequest(new { error = "Cover must be a positive media id." });
-            }
+            var label = validation.Value!.Label;
+            var description = validation.Value.Description;
+            var cover = validation.Value.Cover;
 
             using var connection = new SqliteConnection(connectionString);
             connection.Open();
 
             if (cover.HasValue && !MediaRecordExists(connection, cover.Value))
             {
-                return Results.BadRequest(new { error = "Cover media id was not found." });
+                return ApiResults.BadRequest("Cover media id was not found.");
             }
 
             using var duplicateCommand = connection.CreateCommand();
@@ -244,30 +242,28 @@ public class Program
 
         app.MapPut("/api/collections/{id:long}", (long id, CollectionUpdateRequest request) =>
         {
-            if (id <= 0)
+            var idValidation = CollectionValidator.ValidateCollectionId(id);
+            if (!idValidation.IsValid)
             {
-                return Results.BadRequest(new { error = "Invalid collection id." });
+                return ApiResults.BadRequest(idValidation.Error!);
             }
 
-            var label = NormalizeOptionalText(request.Label);
-            if (label is null)
+            var validation = CollectionValidator.ValidateCreateOrUpdate(request.Label, request.Description, request.Cover);
+            if (!validation.IsValid)
             {
-                return Results.BadRequest(new { error = "Collection name is required." });
+                return ApiResults.BadRequest(validation.Error!);
             }
 
-            var description = NormalizeOptionalText(request.Description);
-            var cover = request.Cover;
-            if (cover.HasValue && cover.Value <= 0)
-            {
-                return Results.BadRequest(new { error = "Cover must be a positive media id." });
-            }
+            var label = validation.Value!.Label;
+            var description = validation.Value.Description;
+            var cover = validation.Value.Cover;
 
             using var connection = new SqliteConnection(connectionString);
             connection.Open();
 
             if (cover.HasValue && !MediaRecordExists(connection, cover.Value))
             {
-                return Results.BadRequest(new { error = "Cover media id was not found." });
+                return ApiResults.BadRequest("Cover media id was not found.");
             }
 
             using var duplicateCommand = connection.CreateCommand();
@@ -316,9 +312,10 @@ public class Program
 
         app.MapGet("/api/collections/{id:long}/media", (long id, int? page, int? pageSize) =>
         {
-            if (id <= 0)
+            var idValidation = CollectionValidator.ValidateCollectionId(id);
+            if (!idValidation.IsValid)
             {
-                return Results.BadRequest(new { error = "Invalid collection id." });
+                return ApiResults.BadRequest(idValidation.Error!);
             }
 
             var normalizedPageSize = Math.Clamp(pageSize ?? 36, 1, 100);
@@ -350,9 +347,10 @@ public class Program
 
         app.MapDelete("/api/collections/{id:long}", (long id) =>
         {
-            if (id <= 0)
+            var idValidation = CollectionValidator.ValidateCollectionId(id);
+            if (!idValidation.IsValid)
             {
-                return Results.BadRequest(new { error = "Invalid collection id." });
+                return ApiResults.BadRequest(idValidation.Error!);
             }
 
             using var connection = new SqliteConnection(connectionString);
@@ -377,15 +375,13 @@ public class Program
 
         app.MapPost("/api/collections/{id:long}/media", (long id, CollectionMediaAddRequest request) =>
         {
-            if (id <= 0)
+            var validation = CollectionValidator.ValidateCollectionMediaAdd(id, request.MediaId);
+            if (!validation.IsValid)
             {
-                return Results.BadRequest(new { error = "Invalid collection id." });
+                return ApiResults.BadRequest(validation.Error!);
             }
 
-            if (request.MediaId <= 0)
-            {
-                return Results.BadRequest(new { error = "Invalid media id." });
-            }
+            id = validation.Value!.CollectionId;
 
             using var connection = new SqliteConnection(connectionString);
             connection.Open();
@@ -407,7 +403,7 @@ public class Program
 
             if (!MediaRecordExists(connection, request.MediaId))
             {
-                return Results.BadRequest(new { error = "Media record not found." });
+                return ApiResults.BadRequest("Media record not found.");
             }
 
             using var existsCommand = connection.CreateCommand();
@@ -479,17 +475,14 @@ public class Program
 
         app.MapPost("/api/tag-types", (TagTypeCreateRequest request) =>
         {
-            var name = NormalizeOptionalText(request.Name);
-            if (name is null)
+            var validation = TagTypeValidator.ValidateCreateOrUpdate(request.Name, request.Color);
+            if (!validation.IsValid)
             {
-                return Results.BadRequest(new { error = "Name is required." });
+                return ApiResults.BadRequest(validation.Error!);
             }
 
-            var color = NormalizeOptionalText(request.Color)?.ToUpperInvariant();
-            if (color is null || !HexColorRegex.IsMatch(color))
-            {
-                return Results.BadRequest(new { error = "Color must be a valid hex code (#RRGGBB)." });
-            }
+            var name = validation.Value!.Name;
+            var color = validation.Value.Color;
 
             using var connection = new SqliteConnection(connectionString);
             connection.Open();
@@ -515,22 +508,20 @@ public class Program
 
         app.MapPut("/api/tag-types/{id:long}", (long id, TagTypeUpdateRequest request) =>
         {
-            if (id <= 0)
+            var idValidation = TagTypeValidator.ValidateTagTypeId(id);
+            if (!idValidation.IsValid)
             {
-                return Results.BadRequest(new { error = "Invalid tag type id." });
+                return ApiResults.BadRequest(idValidation.Error!);
             }
 
-            var name = NormalizeOptionalText(request.Name);
-            if (name is null)
+            var validation = TagTypeValidator.ValidateCreateOrUpdate(request.Name, request.Color);
+            if (!validation.IsValid)
             {
-                return Results.BadRequest(new { error = "Name is required." });
+                return ApiResults.BadRequest(validation.Error!);
             }
 
-            var color = NormalizeOptionalText(request.Color)?.ToUpperInvariant();
-            if (color is null || !HexColorRegex.IsMatch(color))
-            {
-                return Results.BadRequest(new { error = "Color must be a valid hex code (#RRGGBB)." });
-            }
+            var name = validation.Value!.Name;
+            var color = validation.Value.Color;
 
             using var connection = new SqliteConnection(connectionString);
             connection.Open();
@@ -561,9 +552,10 @@ public class Program
 
         app.MapGet("/api/tag-types/{id:long}/tags", (long id) =>
         {
-            if (id <= 0)
+            var idValidation = TagTypeValidator.ValidateTagTypeId(id);
+            if (!idValidation.IsValid)
             {
-                return Results.BadRequest(new { error = "Invalid tag type id." });
+                return ApiResults.BadRequest(idValidation.Error!);
             }
 
             using var connection = new SqliteConnection(connectionString);
@@ -637,13 +629,13 @@ public class Program
                 return Results.BadRequest(new { error = "Invalid tag type id." });
             }
 
-            var name = NormalizeOptionalText(request.Name);
+            var name = ReusableValidation.NormalizeOptionalText(request.Name);
             if (name is null)
             {
                 return Results.BadRequest(new { error = "Tag name is required." });
             }
 
-            var description = NormalizeOptionalText(request.Description);
+            var description = ReusableValidation.NormalizeOptionalText(request.Description);
 
             using var connection = new SqliteConnection(connectionString);
             connection.Open();
@@ -706,13 +698,13 @@ public class Program
                 return Results.BadRequest(new { error = "Invalid tag id." });
             }
 
-            var name = NormalizeOptionalText(request.Name);
+            var name = ReusableValidation.NormalizeOptionalText(request.Name);
             if (name is null)
             {
                 return Results.BadRequest(new { error = "Tag name is required." });
             }
 
-            var description = NormalizeOptionalText(request.Description);
+            var description = ReusableValidation.NormalizeOptionalText(request.Description);
 
             using var connection = new SqliteConnection(connectionString);
             connection.Open();
@@ -855,40 +847,25 @@ public class Program
 
         app.MapPut("/api/media/{id:long}", (long id, MediaUpdateRequest request) =>
         {
-            if (id <= 0)
+            var validation = MediaValidator.ValidateUpdate(
+                id,
+                request.Title,
+                request.Description,
+                request.Source,
+                request.Parent,
+                request.Child,
+                request.TagIds);
+            if (!validation.IsValid)
             {
-                return Results.BadRequest(new { error = "Invalid media id." });
+                return ApiResults.BadRequest(validation.Error!);
             }
 
-            var title = NormalizeOptionalText(request.Title);
-            var description = NormalizeOptionalText(request.Description);
-            var source = NormalizeOptionalText(request.Source);
-            var parent = request.Parent;
-            var child = request.Child;
-            var normalizedTagIds = request.TagIds?
-                .Where(tagId => tagId > 0)
-                .Distinct()
-                .ToArray();
-
-            if (source is not null && !IsValidHttpUrl(source))
-            {
-                return Results.BadRequest(new { error = "Source must be a valid absolute http/https URL." });
-            }
-
-            if (parent.HasValue && parent.Value <= 0)
-            {
-                return Results.BadRequest(new { error = "Parent must be a positive id." });
-            }
-
-            if (child.HasValue && child.Value <= 0)
-            {
-                return Results.BadRequest(new { error = "Child must be a positive id." });
-            }
-
-            if (parent == id || child == id)
-            {
-                return Results.BadRequest(new { error = "Parent and Child cannot reference the same media item." });
-            }
+            var title = validation.Value!.Title;
+            var description = validation.Value.Description;
+            var source = validation.Value.Source;
+            var parent = validation.Value.Parent;
+            var child = validation.Value.Child;
+            var normalizedTagIds = validation.Value.TagIds;
 
             using var connection = new SqliteConnection(connectionString);
             connection.Open();
@@ -900,12 +877,12 @@ public class Program
 
             if (parent.HasValue && !MediaRecordExists(connection, parent.Value))
             {
-                return Results.BadRequest(new { error = "Parent media id was not found." });
+                return ApiResults.BadRequest("Parent media id was not found.");
             }
 
             if (child.HasValue && !MediaRecordExists(connection, child.Value))
             {
-                return Results.BadRequest(new { error = "Child media id was not found." });
+                return ApiResults.BadRequest("Child media id was not found.");
             }
 
             var currentLinks = GetMediaLinks(connection, id);
@@ -936,7 +913,7 @@ public class Program
                 var existingTagCount = Convert.ToInt32(tagExistsCommand.ExecuteScalar());
                 if (existingTagCount != normalizedTagIds.Length)
                 {
-                    return Results.BadRequest(new { error = "One or more tags were not found." });
+                    return ApiResults.BadRequest("One or more tags were not found.");
                 }
             }
 
@@ -1094,9 +1071,10 @@ public class Program
 
         app.MapPut("/api/media/{id:long}/favorite", (long id, FavoriteUpdateRequest request) =>
         {
-            if (id <= 0)
+            var idValidation = MediaValidator.ValidateMediaId(id);
+            if (!idValidation.IsValid)
             {
-                return Results.BadRequest(new { error = "Invalid media id." });
+                return ApiResults.BadRequest(idValidation.Error!);
             }
 
             using var connection = new SqliteConnection(connectionString);
@@ -1138,9 +1116,10 @@ public class Program
 
         app.MapDelete("/api/media/{id:long}", (long id) =>
         {
-            if (id <= 0)
+            var idValidation = MediaValidator.ValidateMediaId(id);
+            if (!idValidation.IsValid)
             {
-                return Results.BadRequest(new { error = "Invalid media id." });
+                return ApiResults.BadRequest(idValidation.Error!);
             }
 
             using var connection = new SqliteConnection(connectionString);
@@ -1845,27 +1824,6 @@ public class Program
             tileUrl,
             mediaType
         };
-    }
-
-    private static string? NormalizeOptionalText(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        return value.Trim();
-    }
-
-    private static bool IsValidHttpUrl(string value)
-    {
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
-        {
-            return false;
-        }
-
-        return uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
-            || uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
     }
 
     private static List<object> LoadMediaItems(
