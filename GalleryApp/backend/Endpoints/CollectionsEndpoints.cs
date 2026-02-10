@@ -1,4 +1,6 @@
 using GalleryApp.Api;
+using GalleryApp.Api.Infrastructure.Pagination;
+using GalleryApp.Api.Models.Pagination;
 using GalleryApp.Api.Models.Requests;
 using GalleryApp.Api.Services;
 using Microsoft.Data.Sqlite;
@@ -210,31 +212,10 @@ app.MapGet("/api/collections/{id:long}/media", (long id, int? page, int? pageSiz
         return Results.BadRequest(new { error = "Invalid collection id." });
     }
 
-    var normalizedPageSize = Math.Clamp(pageSize ?? 36, 1, 100);
-    var normalizedPage = Math.Max(page ?? 1, 1);
     var allFiles = LoadCollectionMediaItems(connectionString, mediaRootPath, id);
+    var pagedResult = PaginationHelper.CreatePagedResult(allFiles, new PagedRequest(page, pageSize));
 
-    var totalCount = allFiles.Count;
-    var totalPages = totalCount == 0
-        ? 0
-        : (int)Math.Ceiling(totalCount / (double)normalizedPageSize);
-    var effectivePage = totalPages == 0
-        ? 1
-        : Math.Min(normalizedPage, totalPages);
-    var skip = totalPages == 0 ? 0 : (effectivePage - 1) * normalizedPageSize;
-    var files = allFiles
-        .Skip(skip)
-        .Take(normalizedPageSize)
-        .ToArray();
-
-    return Results.Ok(new
-    {
-        page = effectivePage,
-        pageSize = normalizedPageSize,
-        totalCount,
-        totalPages,
-        files
-    });
+    return Results.Ok(pagedResult);
 });
 
 app.MapDelete("/api/collections/{id:long}", (long id) =>

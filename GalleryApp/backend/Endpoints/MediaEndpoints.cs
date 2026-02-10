@@ -1,4 +1,6 @@
 using GalleryApp.Api;
+using GalleryApp.Api.Infrastructure.Pagination;
+using GalleryApp.Api.Models.Pagination;
 using GalleryApp.Api.Models.Requests;
 using GalleryApp.Api.Services;
 using Microsoft.Data.Sqlite;
@@ -18,61 +20,19 @@ public static class MediaEndpoints
 
 app.MapGet("/api/media", (int? page, int? pageSize, string? search) =>
 {
-    var normalizedPageSize = Math.Clamp(pageSize ?? 36, 1, 100);
-    var normalizedPage = Math.Max(page ?? 1, 1);
     var searchCriteria = ParseMediaSearchCriteria(search);
     var allFiles = LoadMediaItems(connectionString, mediaRootPath, searchCriteria, favoritesOnly: false);
+    var pagedResult = PaginationHelper.CreatePagedResult(allFiles, new PagedRequest(page, pageSize));
 
-    var totalCount = allFiles.Count;
-    var totalPages = totalCount == 0
-        ? 0
-        : (int)Math.Ceiling(totalCount / (double)normalizedPageSize);
-    var effectivePage = totalPages == 0
-        ? 1
-        : Math.Min(normalizedPage, totalPages);
-    var skip = totalPages == 0 ? 0 : (effectivePage - 1) * normalizedPageSize;
-    var files = allFiles
-        .Skip(skip)
-        .Take(normalizedPageSize)
-        .ToArray();
-
-    return Results.Ok(new
-    {
-        page = effectivePage,
-        pageSize = normalizedPageSize,
-        totalCount,
-        totalPages,
-        files
-    });
+    return Results.Ok(pagedResult);
 });
 
 app.MapGet("/api/favorites", (int? page, int? pageSize) =>
 {
-    var normalizedPageSize = Math.Clamp(pageSize ?? 36, 1, 100);
-    var normalizedPage = Math.Max(page ?? 1, 1);
     var allFiles = LoadMediaItems(connectionString, mediaRootPath, criteria: null, favoritesOnly: true);
+    var pagedResult = PaginationHelper.CreatePagedResult(allFiles, new PagedRequest(page, pageSize));
 
-    var totalCount = allFiles.Count;
-    var totalPages = totalCount == 0
-        ? 0
-        : (int)Math.Ceiling(totalCount / (double)normalizedPageSize);
-    var effectivePage = totalPages == 0
-        ? 1
-        : Math.Min(normalizedPage, totalPages);
-    var skip = totalPages == 0 ? 0 : (effectivePage - 1) * normalizedPageSize;
-    var files = allFiles
-        .Skip(skip)
-        .Take(normalizedPageSize)
-        .ToArray();
-
-    return Results.Ok(new
-    {
-        page = effectivePage,
-        pageSize = normalizedPageSize,
-        totalCount,
-        totalPages,
-        files
-    });
+    return Results.Ok(pagedResult);
 });
 
 app.MapGet("/api/media/preview", (string path) =>
