@@ -325,6 +325,98 @@ app.MapPut("/api/tags/{id:long}", (long id, TagUpdateRequest request) =>
     });
 });
 
+app.MapPatch("/api/tags/{id:long}/tag-type", (long id, TagMoveRequest request) =>
+{
+    if (id <= 0)
+    {
+        return Results.BadRequest(new { error = "Invalid tag id." });
+    }
+
+    if (request.TagTypeId <= 0)
+    {
+        return Results.BadRequest(new { error = "Invalid target tag type id." });
+    }
+
+    using var connection = new SqliteConnection(connectionString);
+    connection.Open();
+
+    using var existingTagCommand = connection.CreateCommand();
+    existingTagCommand.CommandText = """
+        SELECT Name, TagTypeId
+        FROM Tags
+        WHERE Id = $id;
+        """;
+    existingTagCommand.Parameters.AddWithValue("$id", id);
+
+    using var existingTagReader = existingTagCommand.ExecuteReader();
+    if (!existingTagReader.Read())
+    {
+        return Results.NotFound(new { error = "Tag not found." });
+    }
+
+    var tagName = existingTagReader.GetString(0);
+    var currentTagTypeId = existingTagReader.GetInt64(1);
+
+    if (currentTagTypeId == request.TagTypeId)
+    {
+        return Results.Ok(new
+        {
+            id,
+            tagTypeId = currentTagTypeId
+        });
+    }
+
+    using var targetTagTypeCommand = connection.CreateCommand();
+    targetTagTypeCommand.CommandText = """
+        SELECT EXISTS (
+            SELECT 1
+            FROM TagTypes
+            WHERE Id = $tagTypeId
+        );
+        """;
+    targetTagTypeCommand.Parameters.AddWithValue("$tagTypeId", request.TagTypeId);
+    var targetExists = Convert.ToInt64(targetTagTypeCommand.ExecuteScalar()) == 1;
+    if (!targetExists)
+    {
+        return Results.NotFound(new { error = "TagType not found." });
+    }
+
+    using var duplicateCommand = connection.CreateCommand();
+    duplicateCommand.CommandText = """
+        SELECT EXISTS (
+            SELECT 1
+            FROM Tags
+            WHERE TagTypeId = $targetTagTypeId
+              AND Name = $name COLLATE NOCASE
+              AND Id <> $id
+        );
+        """;
+    duplicateCommand.Parameters.AddWithValue("$targetTagTypeId", request.TagTypeId);
+    duplicateCommand.Parameters.AddWithValue("$name", tagName);
+    duplicateCommand.Parameters.AddWithValue("$id", id);
+    var hasDuplicate = Convert.ToInt64(duplicateCommand.ExecuteScalar()) == 1;
+    if (hasDuplicate)
+    {
+        return Results.Conflict(new { error = "Tag with this name already exists in target TagType." });
+    }
+
+    using var updateCommand = connection.CreateCommand();
+    updateCommand.CommandText = """
+        UPDATE Tags
+        SET TagTypeId = $tagTypeId
+        WHERE Id = $id;
+        """;
+    updateCommand.Parameters.AddWithValue("$tagTypeId", request.TagTypeId);
+    updateCommand.Parameters.AddWithValue("$id", id);
+    updateCommand.ExecuteNonQuery();
+
+    return Results.Ok(new
+    {
+        id,
+        tagTypeId = request.TagTypeId
+    });
+});
+
 app.MapDelete("/api/tags/{id:long}", (long id) =>
 {
     if (id <= 0)

@@ -702,6 +702,13 @@
   border-radius: 0.55rem;
   background-color: #ffffff;
   overflow: hidden;
+  transition: box-shadow 0.16s ease, border-color 0.16s ease, background-color 0.16s ease;
+}
+
+.tag-type-callout-drop-target {
+  border-color: #2563eb;
+  background-color: #eff6ff;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18);
 }
 
 .tag-type-summary {
@@ -801,6 +808,15 @@
 
 .tag-table tbody tr:not(:last-child) td {
   border-bottom: 1px solid #e2e8f0;
+}
+
+.tag-table-row {
+  cursor: grab;
+}
+
+.tag-table-row-dragging {
+  opacity: 0.45;
+  cursor: grabbing;
 }
 
 .tag-table th:nth-child(3),
