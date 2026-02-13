@@ -79,6 +79,7 @@ public sealed class MediaProcessingService(ILogger<MediaProcessingService> logge
     {
         ".jpg",
         ".jpeg",
+        ".jfif",
         ".png",
         ".gif",
         ".webp",
