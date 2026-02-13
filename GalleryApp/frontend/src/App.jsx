@@ -4396,22 +4396,22 @@ function App() {
           >
             <div className="media-modal-header media-modal-header-empty" />
 
-            {!isEditingMedia ? (
-              <div className="media-modal-content">
-                {isVideoFile(selectedMedia) ? (
-                  <video
-                    src={resolveOriginalMediaUrl(selectedMedia)}
-                    controls
-                    autoPlay
-                  />
-                ) : (
-                  <img
-                    src={resolveOriginalMediaUrl(selectedMedia)}
-                    alt={getDisplayName(selectedMedia.name)}
-                  />
-                )}
-              </div>
-            ) : null}
+            <div className="media-modal-content">
+              {isVideoFile(selectedMedia) ? (
+                <video
+                  src={resolveOriginalMediaUrl(selectedMedia)}
+                  controls
+                  autoPlay={!isEditingMedia}
+                  poster={resolvePreviewMediaUrl(selectedMedia)}
+                  preload="metadata"
+                />
+              ) : (
+                <img
+                  src={resolveOriginalMediaUrl(selectedMedia)}
+                  alt={getDisplayName(selectedMedia.name)}
+                />
+              )}
+            </div>
 
             <div className="media-modal-meta">
               <div className="media-favorite-row">
@@ -4446,13 +4446,34 @@ function App() {
                   {"\u274C"}
                 </button>
               </div>
-              {renderMediaMetaTable({
-                file: selectedMedia,
-                draft: mediaDraft,
-                editable: isEditingMedia,
-                onDraftChange: (patch) => setMediaDraft((current) => ({ ...current, ...patch })),
-                showTagsRow: true
-              })}
+              <div className={`media-meta-primary${isEditingMedia ? " is-editing" : ""}`}>
+                {renderMediaMetaTable({
+                  file: selectedMedia,
+                  draft: mediaDraft,
+                  editable: isEditingMedia,
+                  onDraftChange: (patch) => setMediaDraft((current) => ({ ...current, ...patch })),
+                  showTagsRow: true
+                })}
+                {isEditingMedia ? (
+                  <div className="media-edit-thumbnail" aria-label="Current media thumbnail">
+                    {isVideoFile(selectedMedia) ? (
+                      <video
+                        src={resolveOriginalMediaUrl(selectedMedia)}
+                        poster={resolvePreviewMediaUrl(selectedMedia)}
+                        preload="metadata"
+                        playsInline
+                        muted
+                      />
+                    ) : (
+                      <img
+                        src={resolvePreviewMediaUrl(selectedMedia)}
+                        alt={getDisplayName(selectedMedia.name)}
+                        loading="lazy"
+                      />
+                    )}
+                  </div>
+                ) : null}
+              </div>
 
               <details className="media-system-callout">
                 <summary className="media-system-summary">System details</summary>
@@ -4681,6 +4702,5 @@ function App() {
 }
 
 export default App;
-
 
 
