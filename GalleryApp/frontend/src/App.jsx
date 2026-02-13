@@ -5207,42 +5207,42 @@ function App() {
           >
             <div className="media-modal-header media-modal-header-empty" />
 
-            {!isEditingMedia ? (
-              <div className="media-modal-content">
-                <button
-                  type="button"
-                  className="media-nav-btn media-nav-btn-prev"
-                  onClick={() => handleNavigateSelectedMedia(-1)}
-                  disabled={!canNavigateSelectedMedia}
-                  aria-label="Previous media"
-                  title="Previous media"
-                >
-                  {"<"}
-                </button>
-                {isVideoFile(selectedMedia) ? (
-                  <video
-                    src={resolveOriginalMediaUrl(selectedMedia)}
-                    controls
-                    autoPlay
-                  />
-                ) : (
-                  <img
-                    src={resolveOriginalMediaUrl(selectedMedia)}
-                    alt={getDisplayName(selectedMedia.name)}
-                  />
-                )}
-                <button
-                  type="button"
-                  className="media-nav-btn media-nav-btn-next"
-                  onClick={() => handleNavigateSelectedMedia(1)}
-                  disabled={!canNavigateSelectedMedia}
-                  aria-label="Next media"
-                  title="Next media"
-                >
-                  {">"}
-                </button>
-              </div>
-            ) : null}
+            <div className="media-modal-content">
+              <button
+                type="button"
+                className="media-nav-btn media-nav-btn-prev"
+                onClick={() => handleNavigateSelectedMedia(-1)}
+                disabled={!canNavigateSelectedMedia}
+                aria-label="Previous media"
+                title="Previous media"
+              >
+                {"<"}
+              </button>
+              {isVideoFile(selectedMedia) ? (
+                <video
+                  src={resolveOriginalMediaUrl(selectedMedia)}
+                  controls
+                  autoPlay={!isEditingMedia}
+                  poster={resolvePreviewMediaUrl(selectedMedia)}
+                  preload="metadata"
+                />
+              ) : (
+                <img
+                  src={resolveOriginalMediaUrl(selectedMedia)}
+                  alt={getDisplayName(selectedMedia.name)}
+                />
+              )}
+              <button
+                type="button"
+                className="media-nav-btn media-nav-btn-next"
+                onClick={() => handleNavigateSelectedMedia(1)}
+                disabled={!canNavigateSelectedMedia}
+                aria-label="Next media"
+                title="Next media"
+              >
+                {">"}
+              </button>
+            </div>
 
             <div className="media-modal-meta">
               <div className="media-favorite-row">
@@ -5277,13 +5277,34 @@ function App() {
                   {"\u274C"}
                 </button>
               </div>
-              {renderMediaMetaTable({
-                file: selectedMedia,
-                draft: mediaDraft,
-                editable: isEditingMedia,
-                onDraftChange: (patch) => setMediaDraft((current) => ({ ...current, ...patch })),
-                showTagsRow: true
-              })}
+              <div className={`media-meta-primary${isEditingMedia ? " is-editing" : ""}`}>
+                {renderMediaMetaTable({
+                  file: selectedMedia,
+                  draft: mediaDraft,
+                  editable: isEditingMedia,
+                  onDraftChange: (patch) => setMediaDraft((current) => ({ ...current, ...patch })),
+                  showTagsRow: true
+                })}
+                {isEditingMedia ? (
+                  <div className="media-edit-thumbnail" aria-label="Current media thumbnail">
+                    {isVideoFile(selectedMedia) ? (
+                      <video
+                        src={resolveOriginalMediaUrl(selectedMedia)}
+                        poster={resolvePreviewMediaUrl(selectedMedia)}
+                        preload="metadata"
+                        playsInline
+                        muted
+                      />
+                    ) : (
+                      <img
+                        src={resolvePreviewMediaUrl(selectedMedia)}
+                        alt={getDisplayName(selectedMedia.name)}
+                        loading="lazy"
+                      />
+                    )}
+                  </div>
+                ) : null}
+              </div>
 
               <details className="media-system-callout">
                 <summary className="media-system-summary">System details</summary>
