@@ -480,6 +480,49 @@ function App() {
     .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) }));
   const visibleCollectionFiles = collectionFiles
     .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) }));
+  const getMediaIdentity = (file) => {
+    if (!file || typeof file !== "object") {
+      return "";
+    }
+
+    const id = Number(file.id);
+    if (Number.isSafeInteger(id) && id > 0) {
+      return `id:${id}`;
+    }
+
+    const path = String(file.relativePath || "").trim();
+    if (path) {
+      return `path:${path}`;
+    }
+
+    return "";
+  };
+  const selectedMediaIdentity = getMediaIdentity(selectedMedia);
+  const modalMediaScope = selectedCollection
+    ? "collection"
+    : activePage === "favorites"
+      ? "favorites"
+      : "gallery";
+  const currentModalMediaFiles = modalMediaScope === "collection"
+    ? visibleCollectionFiles
+    : modalMediaScope === "favorites"
+      ? visibleFavoriteFiles
+      : visibleMediaFiles;
+  const selectedMediaIndex = currentModalMediaFiles.findIndex(
+    (file) => getMediaIdentity(file) === selectedMediaIdentity
+  );
+  const canNavigateSelectedMedia = selectedMediaIndex >= 0 && currentModalMediaFiles.length > 1;
+  const handleNavigateSelectedMedia = (offset) => {
+    if (!canNavigateSelectedMedia || !Number.isInteger(offset) || offset === 0) {
+      return;
+    }
+
+    const nextIndex = (selectedMediaIndex + offset + currentModalMediaFiles.length) % currentModalMediaFiles.length;
+    const nextFile = currentModalMediaFiles[nextIndex];
+    if (nextFile) {
+      setSelectedMedia(nextFile);
+    }
+  };
   const resolveOriginalMediaUrl = (file) => file?.originalUrl || file?.url || file?._tileUrl || "";
   const isVideoFile = (file) => {
     if (!file) {
@@ -1165,6 +1208,36 @@ function App() {
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   }, [selectedMedia]);
+
+  useEffect(() => {
+    if (!selectedMedia) {
+      return undefined;
+    }
+
+    const handleMediaArrows = (event) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+        return;
+      }
+
+      const activeElement = document.activeElement;
+      if (
+        activeElement instanceof HTMLElement &&
+        (activeElement.tagName === "INPUT" || activeElement.tagName === "TEXTAREA" || activeElement.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (!canNavigateSelectedMedia) {
+        return;
+      }
+
+      event.preventDefault();
+      handleNavigateSelectedMedia(event.key === "ArrowRight" ? 1 : -1);
+    };
+
+    window.addEventListener("keydown", handleMediaArrows);
+    return () => window.removeEventListener("keydown", handleMediaArrows);
+  }, [selectedMedia, canNavigateSelectedMedia, selectedMediaIndex, currentModalMediaFiles]);
 
   useEffect(() => {
     if (!isUploadOpen) {
@@ -4398,6 +4471,16 @@ function App() {
 
             {!isEditingMedia ? (
               <div className="media-modal-content">
+                <button
+                  type="button"
+                  className="media-nav-btn media-nav-btn-prev"
+                  onClick={() => handleNavigateSelectedMedia(-1)}
+                  disabled={!canNavigateSelectedMedia}
+                  aria-label="Previous media"
+                  title="Previous media"
+                >
+                  {"<"}
+                </button>
                 {isVideoFile(selectedMedia) ? (
                   <video
                     src={resolveOriginalMediaUrl(selectedMedia)}
@@ -4410,6 +4493,16 @@ function App() {
                     alt={getDisplayName(selectedMedia.name)}
                   />
                 )}
+                <button
+                  type="button"
+                  className="media-nav-btn media-nav-btn-next"
+                  onClick={() => handleNavigateSelectedMedia(1)}
+                  disabled={!canNavigateSelectedMedia}
+                  aria-label="Next media"
+                  title="Next media"
+                >
+                  {">"}
+                </button>
               </div>
             ) : null}
 
@@ -4681,6 +4774,5 @@ function App() {
 }
 
 export default App;
-
 
 

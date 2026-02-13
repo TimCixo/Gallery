@@ -1121,6 +1121,41 @@
   overflow: hidden;
 }
 
+.media-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2.4rem;
+  height: 2.4rem;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #e2e8f0;
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.media-nav-btn:hover:not(:disabled) {
+  background: rgba(30, 41, 59, 0.85);
+}
+
+.media-nav-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.media-nav-btn-prev {
+  left: 0.65rem;
+}
+
+.media-nav-btn-next {
+  right: 0.65rem;
+}
+
 .media-modal-content img,
 .media-modal-content video {
   width: 100%;
