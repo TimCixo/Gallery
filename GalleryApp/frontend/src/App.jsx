@@ -165,6 +165,7 @@ function App() {
   const [searchCaretPosition, setSearchCaretPosition] = useState(0);
   const [isSearchInputFocused, setIsSearchInputFocused] = useState(false);
   const [activeSearchSuggestionIndex, setActiveSearchSuggestionIndex] = useState(0);
+  const [isSearchSuggestionExplicitlyActive, setIsSearchSuggestionExplicitlyActive] = useState(false);
   const searchTagTypeOptions = (() => {
     const map = new Map();
 
@@ -285,10 +286,12 @@ function App() {
     const caretPosition = event.target.selectionStart ?? event.target.value.length;
     setSearchCaretPosition(caretPosition);
     setActiveSearchSuggestionIndex(0);
+    setIsSearchSuggestionExplicitlyActive(false);
   };
   const updateSearchCaretPosition = (event) => {
     const caretPosition = event.target.selectionStart ?? event.target.value.length;
     setSearchCaretPosition(caretPosition);
+    setIsSearchSuggestionExplicitlyActive(false);
   };
   const getSearchTokenRange = (text, caret) => {
     const normalizedText = String(text || "");
@@ -324,9 +327,9 @@ function App() {
         return [];
       }
 
-      const typedTagPrefix = tokenBeforeCaretWithoutAtPrefix.trim().toLowerCase();
-      return searchTagOptions
-        .filter((tagName) => tagName.startsWith(typedTagPrefix))
+      const typedFragment = tokenBeforeCaretWithoutAtPrefix.trim().toLowerCase();
+      const byTagNames = searchTagOptions
+        .filter((tagName) => tagName.startsWith(typedFragment))
         .slice(0, 40)
         .map((tagName) => ({
           kind: "tagName",
@@ -335,6 +338,41 @@ function App() {
           label: `${tagName}:`,
           color: searchTagTypeMap.get(tagName)?.color || ""
         }));
+
+      const byTagPairs = [];
+      const seenPairs = new Set();
+      mediaTagCatalog.forEach((tag) => {
+        const candidateTypeName = String(tag?.tagTypeName || "").trim();
+        const candidateType = candidateTypeName.toLowerCase();
+        const candidateValueName = String(tag?.name || "").trim();
+        const candidateValue = candidateValueName.toLowerCase();
+        if (!candidateType || !candidateValueName) {
+          return;
+        }
+
+        if (typedFragment && !candidateType.includes(typedFragment) && !candidateValue.includes(typedFragment)) {
+          return;
+        }
+
+        const normalizedPair = `${candidateType}:${candidateValue}`;
+        if (seenPairs.has(normalizedPair)) {
+          return;
+        }
+
+        seenPairs.add(normalizedPair);
+        byTagPairs.push({
+          kind: "tagValue",
+          key: `pair-${normalizedPair}`,
+          tagName: candidateType,
+          tagValue: candidateValueName,
+          label: `${candidateType}:${candidateValueName}`,
+          color: searchTagTypeMap.get(candidateType)?.color || ""
+        });
+      });
+
+      byTagPairs.sort((left, right) => left.label.localeCompare(right.label));
+
+      return [...byTagNames, ...byTagPairs].slice(0, 40);
     }
 
     if (!tokenBeforeCaretWithoutAtPrefix.includes(":")) {
@@ -387,7 +425,7 @@ function App() {
       color: searchTagTypeMap.get(tagName)?.color || ""
     }));
   })();
-  const hasSearchSuggestions = activePage !== "collections" && isSearchInputFocused && searchSuggestions.length > 0;
+  const hasSearchSuggestions = isSearchInputFocused && searchSuggestions.length > 0;
   const formatSearchTagValue = (value) => (/\s/.test(value) ? `"${value.replace(/"/g, "")}"` : value);
   const applySearchSuggestion = (suggestion) => {
     const prefix = inputValue.slice(0, searchTokenRange.start);
@@ -410,6 +448,7 @@ function App() {
     setInputValue(nextValue);
     setSearchCaretPosition(nextCaret);
     setActiveSearchSuggestionIndex(0);
+    setIsSearchSuggestionExplicitlyActive(false);
 
     requestAnimationFrame(() => {
       if (!searchInputRef.current) {
@@ -422,29 +461,40 @@ function App() {
     });
   };
   const handleSearchInputKeyDown = (event) => {
-    if (activePage === "collections") {
-      return;
-    }
-
     if (!hasSearchSuggestions) {
       return;
     }
 
     if (event.key === "ArrowDown") {
       event.preventDefault();
+      setIsSearchSuggestionExplicitlyActive(true);
       setActiveSearchSuggestionIndex((current) => (current + 1) % searchSuggestions.length);
       return;
     }
 
     if (event.key === "ArrowUp") {
       event.preventDefault();
+      setIsSearchSuggestionExplicitlyActive(true);
       setActiveSearchSuggestionIndex((current) => (
         (current - 1 + searchSuggestions.length) % searchSuggestions.length
       ));
       return;
     }
 
-    if (event.key === "Enter" || event.key === "Tab") {
+    if (event.key === "Tab") {
+      event.preventDefault();
+      const selectedSuggestion = searchSuggestions[Math.max(0, Math.min(activeSearchSuggestionIndex, searchSuggestions.length - 1))];
+      if (selectedSuggestion) {
+        applySearchSuggestion(selectedSuggestion);
+      }
+      return;
+    }
+
+    if (event.key === "Enter") {
+      if (!isSearchSuggestionExplicitlyActive) {
+        return;
+      }
+
       event.preventDefault();
       const selectedSuggestion = searchSuggestions[Math.max(0, Math.min(activeSearchSuggestionIndex, searchSuggestions.length - 1))];
       if (selectedSuggestion) {
@@ -455,6 +505,7 @@ function App() {
 
     if (event.key === "Escape") {
       setIsSearchInputFocused(false);
+      setIsSearchSuggestionExplicitlyActive(false);
     }
   };
   useEffect(() => {
@@ -466,6 +517,7 @@ function App() {
     }
 
     setActiveSearchSuggestionIndex(0);
+    setIsSearchSuggestionExplicitlyActive(false);
   }, [searchSuggestions.length, activeSearchSuggestionIndex]);
   const getExtensionFromPath = (value) => {
     if (!value) {
@@ -1738,18 +1790,7 @@ function App() {
     event.preventDefault();
     const nextSubmittedText = inputValue.trim();
     setSubmittedText(nextSubmittedText);
-    if (activePage === "collections") {
-      setCollectionsSearchQuery(nextSubmittedText);
-      setSelectedCollection(null);
-      setCollectionFiles([]);
-      setCollectionFilesError("");
-      setCollectionFilesPage(1);
-      setCollectionFilesTotalPages(0);
-      setCollectionFilesTotalCount(0);
-      loadCollections(nextSubmittedText);
-      return;
-    }
-
+    setActivePage("gallery");
     loadMedia(1, nextSubmittedText);
   };
 
@@ -3473,13 +3514,11 @@ function App() {
   };
   const openGalleryPage = (event) => {
     event.preventDefault();
-    setInputValue("");
-    setSubmittedText("");
     setActivePage("gallery");
     setSelectedMedia(null);
     setSelectedCollection(null);
     setIsSlideMenuOpen(false);
-    loadMedia(1, "");
+    loadMedia(1, submittedText);
   };
   const openFavoritesPage = () => {
     setActivePage("favorites");
@@ -3497,8 +3536,6 @@ function App() {
     setActivePage("collections");
     setIsSlideMenuOpen(false);
     setSelectedMedia(null);
-    setInputValue(collectionsSearchQuery);
-    setSubmittedText(collectionsSearchQuery);
   };
   const handleCreateTagType = async (event) => {
     event.preventDefault();
