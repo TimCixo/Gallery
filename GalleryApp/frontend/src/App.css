@@ -2022,3 +2022,66 @@
     opacity: 1;
   }
 }
+
+.upload-queue-step {
+  grid-column: 1;
+  grid-row: 2;
+  padding: 0.9rem 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.upload-queue-dropzone {
+  border: 1px dashed #94a3b8;
+  background: #f8fafc;
+  border-radius: 0.55rem;
+  padding: 1rem;
+  color: #334155;
+  text-align: center;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.upload-queue-dropzone.is-dragover {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.upload-queue-empty {
+  margin: 0.7rem 0 0;
+  color: #64748b;
+  font-size: 0.84rem;
+}
+
+.upload-queue-list {
+  list-style: none;
+  margin: 0.7rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+  overflow-y: auto;
+}
+
+.upload-queue-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  padding: 0.5rem 0.6rem;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.upload-queue-file-name {
+  font-size: 0.84rem;
+  color: #0f172a;
+  word-break: break-word;
+}
+
+.upload-queue-item-actions {
+  display: inline-flex;
+  gap: 0.35rem;
+}

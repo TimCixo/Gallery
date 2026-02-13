@@ -48,6 +48,7 @@ function App() {
   const [tagTypeCalloutOpenById, setTagTypeCalloutOpenById] = useState({});
   const [collapsedTagTypeCallouts, setCollapsedTagTypeCallouts] = useState(null);
   const [uploadItems, setUploadItems] = useState([]);
+  const [uploadStep, setUploadStep] = useState("queue");
   const [uploadState, setUploadState] = useState({ type: "", message: "" });
   const [isGroupUploadEnabled, setIsGroupUploadEnabled] = useState(false);
   const [uploadCollectionIds, setUploadCollectionIds] = useState([]);
@@ -55,6 +56,7 @@ function App() {
   const [isUploadCollectionsLoading, setIsUploadCollectionsLoading] = useState(false);
   const [uploadCollectionsError, setUploadCollectionsError] = useState("");
   const [isUploadCollectionPickerOpen, setIsUploadCollectionPickerOpen] = useState(false);
+  const [isUploadQueueDragOver, setIsUploadQueueDragOver] = useState(false);
   const [isDragOverPage, setIsDragOverPage] = useState(false);
   const [backgroundUploadState, setBackgroundUploadState] = useState({
     total: 0,
@@ -1704,6 +1706,8 @@ function App() {
     setUploadCollectionIds([]);
     setUploadCollectionsError("");
     setIsUploadCollectionPickerOpen(false);
+    setUploadStep("queue");
+    setIsUploadQueueDragOver(false);
   };
 
   const loadUploadCollections = async () => {
@@ -1728,7 +1732,7 @@ function App() {
     }
   };
 
-  const prepareUploadItems = (files) => {
+  const appendUploadItems = (files) => {
     const nextFiles = Array.from(files || []);
     if (nextFiles.length === 0) {
       return;
@@ -1748,21 +1752,89 @@ function App() {
     });
 
     setUploadItems((current) => {
-      current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
-      return nextItems;
+      const existingKeys = new Set(current.map((item) => item.key));
+      const appendItems = [];
+
+      nextItems.forEach((item) => {
+        if (existingKeys.has(item.key)) {
+          URL.revokeObjectURL(item.previewUrl);
+          return;
+        }
+
+        existingKeys.add(item.key);
+        appendItems.push(item);
+      });
+
+      return [...current, ...appendItems];
     });
     setUploadState({ type: "", message: "" });
-    setIsGroupUploadEnabled(false);
-    setUploadCollectionIds([]);
-    setUploadCollectionsError("");
+    setUploadStep("queue");
     setIsUploadOpen(true);
-    void loadUploadCollections();
+    if (uploadCollections.length === 0 && !isUploadCollectionsLoading) {
+      void loadUploadCollections();
+    }
   };
 
   const handleUploadPickerChange = (event) => {
     const nextFiles = Array.from(event.target.files || []);
     event.target.value = "";
-    prepareUploadItems(nextFiles);
+    appendUploadItems(nextFiles);
+  };
+
+  const handleUploadQueueDrop = (event) => {
+    if (!isFileDragEvent(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    setIsUploadQueueDragOver(false);
+    appendUploadItems(event.dataTransfer.files);
+  };
+  const handleUploadQueuePaste = (event) => {
+    const clipboardItems = Array.from(event.clipboardData?.items || []);
+    const pastedFiles = clipboardItems
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((item) => item instanceof File);
+
+    if (pastedFiles.length === 0) {
+      return;
+    }
+
+    event.preventDefault();
+    appendUploadItems(pastedFiles);
+  };
+
+
+  const handleRemoveUploadItem = (itemKey) => {
+    setUploadItems((current) => {
+      const next = current.filter((item) => item.key !== itemKey);
+      const removed = current.find((item) => item.key === itemKey);
+      if (removed) {
+        URL.revokeObjectURL(removed.previewUrl);
+      }
+      return next;
+    });
+  };
+
+  const moveUploadItem = (itemKey, direction) => {
+    setUploadItems((current) => {
+      const index = current.findIndex((item) => item.key === itemKey);
+      if (index < 0) {
+        return current;
+      }
+
+      const targetIndex = direction === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= current.length) {
+        return current;
+      }
+
+      const next = [...current];
+      const [moved] = next.splice(index, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
   };
 
   const updateActiveUploadDraft = (patch) => {
@@ -3152,7 +3224,7 @@ function App() {
     event.stopPropagation();
     pageDragCounterRef.current = 0;
     setIsDragOverPage(false);
-    prepareUploadItems(event.dataTransfer.files);
+    appendUploadItems(event.dataTransfer.files);
   };
   const isSelectedMediaFavorite = Boolean(selectedMedia?.isFavorite);
   const toggleSelectedMediaFavorite = async () => {
@@ -4673,12 +4745,15 @@ function App() {
           onClick={closeUploadModal}
         >
           <div
-            className="media-modal"
+            className={`media-modal${uploadStep === "queue" ? " media-modal-editing" : ""}`}
             onClick={(event) => event.stopPropagation()}
+            onPaste={uploadStep === "queue" ? handleUploadQueuePaste : undefined}
           >
             <div className="media-modal-header">
               <h2 className="upload-modal-title">
-                {uploadItems.length === 0 ? "No files remaining" : `Remaining files: ${uploadItems.length}`}
+                {uploadStep === "queue"
+                  ? `Queue (${uploadItems.length})`
+                  : (uploadItems.length === 0 ? "No files remaining" : `Editing: ${activeUploadItem?.file.name || "-"}`)}
               </h2>
               <button
                 type="button"
@@ -4689,97 +4764,191 @@ function App() {
               </button>
             </div>
 
-            <div className="media-modal-content">
-              {activeUploadFile ? (
-                isVideoFile(activeUploadFile) ? (
-                  <video
-                    src={activeUploadFile.originalUrl}
-                    controls
-                    autoPlay
-                  />
-                ) : (
-                  <img
-                    src={activeUploadFile.originalUrl}
-                    alt={getDisplayName(activeUploadFile.name)}
-                  />
-                )
-              ) : (
-                <div className="media-fallback">No file selected</div>
-              )}
-            </div>
+            {uploadStep === "queue" ? (
+              <div className="upload-queue-step" onPaste={handleUploadQueuePaste}>
+                <button
+                  type="button"
+                  className={`upload-queue-dropzone${isUploadQueueDragOver ? " is-dragover" : ""}`}
+                  onClick={openUploadPicker}
+                  onDragEnter={(event) => {
+                    if (!isFileDragEvent(event)) {
+                      return;
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setIsUploadQueueDragOver(true);
+                  }}
+                  onDragOver={(event) => {
+                    if (!isFileDragEvent(event)) {
+                      return;
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    event.dataTransfer.dropEffect = "copy";
+                    setIsUploadQueueDragOver(true);
+                  }}
+                  onDragLeave={(event) => {
+                    if (!isFileDragEvent(event)) {
+                      return;
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setIsUploadQueueDragOver(false);
+                  }}
+                  onDrop={handleUploadQueueDrop}
+                >
+                  Click, drop, or paste files here
+                </button>
 
-            <div className="media-modal-meta">
-              {renderMediaMetaTable({
-                file: activeUploadFile,
-                draft: activeUploadItem?.draft || createMediaDraft(null),
-                editable: true,
-                onDraftChange: updateActiveUploadDraft,
-                showTagsRow: true,
-                extraRows: (
-                  <>
-                    <tr>
-                      <th scope="row">File</th>
-                      <td>{activeUploadItem?.file.name || "-"}</td>
-                    </tr>
-                    <tr>
-                      <th scope="row">Collection</th>
-                      <td>
-                        <div className="media-action-row media-action-row-upload-collection">
+                {uploadItems.length === 0 ? (
+                  <p className="upload-queue-empty">No files selected yet.</p>
+                ) : (
+                  <ul className="upload-queue-list">
+                    {uploadItems.map((item, index) => (
+                      <li key={item.key} className="upload-queue-item">
+                        <span className="upload-queue-file-name">{item.file.name}</span>
+                        <div className="upload-queue-item-actions">
                           <button
                             type="button"
                             className="media-action-btn"
-                            onClick={() => {
-                              void openUploadCollectionPicker();
-                            }}
-                            disabled={isUploadCollectionsLoading}
+                            onClick={() => moveUploadItem(item.key, "up")}
+                            disabled={index === 0}
                           >
-                            {isUploadCollectionsLoading ? "Loading..." : "Select"}
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            className="media-action-btn"
+                            onClick={() => moveUploadItem(item.key, "down")}
+                            disabled={index === uploadItems.length - 1}
+                          >
+                            ↓
+                          </button>
+                          <button
+                            type="button"
+                            className="media-action-btn media-action-danger"
+                            onClick={() => handleRemoveUploadItem(item.key)}
+                          >
+                            Remove
                           </button>
                         </div>
-                      </td>
-                    </tr>
-                  </>
-                )
-              })}
+                      </li>
+                    ))}
+                  </ul>
+                )}
 
-              {uploadCollectionsError ? (
-                <p className="media-action-error">{uploadCollectionsError}</p>
-              ) : null}
+                {uploadState.message ? (
+                  <p className={uploadState.type === "error" ? "media-action-error" : "media-action-success"}>
+                    {uploadState.message}
+                  </p>
+                ) : null}
 
-              {uploadState.message ? (
-                <p className={uploadState.type === "error" ? "media-action-error" : "media-action-success"}>
-                  {uploadState.message}
-                </p>
-              ) : null}
-
-              <div className="media-action-row media-action-row-spaced">
-                <label className="media-upload-group-toggle">
-                  <input
-                    type="checkbox"
-                    checked={isGroupUploadEnabled}
-                    onChange={(event) => {
-                      setIsGroupUploadEnabled(event.target.checked);
-                    }}
-                  />
-                  group
-                </label>
-                <button
-                  type="button"
-                  className="media-action-btn"
-                  onClick={closeUploadModal}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="media-action-btn media-action-primary"
-                  onClick={handleUpload}
-                  disabled={uploadItems.length === 0}
-                >
-                  Okay
-                </button>
+                <div className="media-action-row media-action-row-spaced">
+                  <button
+                    type="button"
+                    className="media-action-btn media-action-primary"
+                    onClick={() => setUploadStep("editor")}
+                    disabled={uploadItems.length === 0}
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="media-modal-content">
+                  {activeUploadFile ? (
+                    isVideoFile(activeUploadFile) ? (
+                      <video
+                        src={activeUploadFile.originalUrl}
+                        controls
+                        autoPlay
+                      />
+                    ) : (
+                      <img
+                        src={activeUploadFile.originalUrl}
+                        alt={getDisplayName(activeUploadFile.name)}
+                      />
+                    )
+                  ) : (
+                    <div className="media-fallback">No file selected</div>
+                  )}
+                </div>
+
+                <div className="media-modal-meta">
+                  {renderMediaMetaTable({
+                    file: activeUploadFile,
+                    draft: activeUploadItem?.draft || createMediaDraft(null),
+                    editable: true,
+                    onDraftChange: updateActiveUploadDraft,
+                    showTagsRow: true,
+                    extraRows: (
+                      <>
+                        <tr>
+                          <th scope="row">File</th>
+                          <td>{activeUploadItem?.file.name || "-"}</td>
+                        </tr>
+                        <tr>
+                          <th scope="row">Collection</th>
+                          <td>
+                            <div className="media-action-row media-action-row-upload-collection">
+                              <button
+                                type="button"
+                                className="media-action-btn"
+                                onClick={() => {
+                                  void openUploadCollectionPicker();
+                                }}
+                                disabled={isUploadCollectionsLoading}
+                              >
+                                {isUploadCollectionsLoading ? "Loading..." : "Select"}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      </>
+                    )
+                  })}
+
+                  {uploadCollectionsError ? (
+                    <p className="media-action-error">{uploadCollectionsError}</p>
+                  ) : null}
+
+                  {uploadState.message ? (
+                    <p className={uploadState.type === "error" ? "media-action-error" : "media-action-success"}>
+                      {uploadState.message}
+                    </p>
+                  ) : null}
+
+                  <div className="media-action-row media-action-row-spaced">
+                    <label className="media-upload-group-toggle">
+                      <input
+                        type="checkbox"
+                        checked={isGroupUploadEnabled}
+                        onChange={(event) => {
+                          setIsGroupUploadEnabled(event.target.checked);
+                        }}
+                      />
+                      group
+                    </label>
+                    <button
+                      type="button"
+                      className="media-action-btn"
+                      onClick={() => setUploadStep("queue")}
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      className="media-action-btn media-action-primary"
+                      onClick={handleUpload}
+                      disabled={uploadItems.length === 0}
+                    >
+                      Upload
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       ) : null}
