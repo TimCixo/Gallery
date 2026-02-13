@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
 function App() {
@@ -47,7 +47,6 @@ function App() {
   const [draggedTag, setDraggedTag] = useState(null);
   const [dragTargetTagTypeId, setDragTargetTagTypeId] = useState(null);
   const [tagTypeCalloutOpenById, setTagTypeCalloutOpenById] = useState({});
-  const [collapsedTagTypeCallouts, setCollapsedTagTypeCallouts] = useState(null);
   const [uploadItems, setUploadItems] = useState([]);
   const [uploadStep, setUploadStep] = useState("queue");
   const [activeUploadIndex, setActiveUploadIndex] = useState(0);
@@ -135,6 +134,7 @@ function App() {
   });
   const [isMediaRelationPickerOpen, setIsMediaRelationPickerOpen] = useState(false);
   const [mediaRelationPickerMode, setMediaRelationPickerMode] = useState("parent");
+  const [mediaRelationPickerContext, setMediaRelationPickerContext] = useState("media");
   const [mediaRelationPickerQuery, setMediaRelationPickerQuery] = useState("");
   const [mediaRelationPickerPage, setMediaRelationPickerPage] = useState(1);
   const [mediaRelationPickerItems, setMediaRelationPickerItems] = useState([]);
@@ -602,6 +602,21 @@ function App() {
     }
   };
   const resolveOriginalMediaUrl = (file) => file?.originalUrl || file?.url || file?._tileUrl || "";
+  const resolvePreviewMediaUrl = (file) => {
+    if (!file) {
+      return "";
+    }
+
+    if (file.previewUrl) {
+      return file.previewUrl;
+    }
+
+    if (file._tileUrl) {
+      return file._tileUrl;
+    }
+
+    return resolveTileUrl(file) || resolveOriginalMediaUrl(file);
+  };
   const isVideoFile = (file) => {
     if (!file) {
       return false;
@@ -845,6 +860,7 @@ function App() {
     draft,
     editable,
     onDraftChange,
+    relationPickerContext = "media",
     linkedMediaCandidates = [],
     extraRows = null,
     showTagsRow = false
@@ -937,60 +953,61 @@ function App() {
       );
     };
     const renderLinkedMediaPicker = (fieldKey, label) => {
-      const currentValue = String(draft?.[fieldKey] || "");
-      const normalizedQuery = currentValue.trim().toLowerCase();
-      const filteredCandidates = Array.isArray(linkedMediaCandidates)
-        ? linkedMediaCandidates
-          .filter((candidate) => {
-            if (candidate?.id == null && !candidate?.isQueued) {
-              return false;
-            }
-
-            if (!normalizedQuery) {
-              return true;
-            }
-
-            const idValue = candidate?.id == null ? "" : String(candidate.id);
-            const nameValue = String(candidate?.displayName || "").toLowerCase();
-            return idValue.includes(normalizedQuery) || nameValue.includes(normalizedQuery);
-          })
-          .slice(0, 8)
-        : [];
+      const mode = fieldKey === "child" ? "child" : "parent";
+      const draftValue = String(draft?.[fieldKey] || "");
+      const relationId = resolveDraftLinkedId(draftValue);
+      const previewState = mediaRelationPreviewByMode[mode] || { item: null, isLoading: false, error: "" };
+      const relationItem = previewState.item;
+      const previewUrl = relationItem ? resolveTileUrl(relationItem) : "";
+      const hasSelection = Boolean(draftValue.trim());
 
       return (
-        <div className="media-linked-picker">
-          <input
-            type="number"
-            min="1"
-            step="1"
-            className="media-edit-input"
-            value={currentValue}
-            onChange={(event) => onDraftChange({ [fieldKey]: event.target.value })}
-          />
-          {filteredCandidates.length > 0 ? (
-            <ul className="media-linked-picker-list">
-              {filteredCandidates.map((candidate) => {
-                const candidateKey = candidate?.key || `${fieldKey}-${candidate?.id ?? "queued"}`;
-                const isQueued = Boolean(candidate?.isQueued);
-                const candidateId = candidate?.id == null ? "" : String(candidate.id);
-                const name = String(candidate?.displayName || "Untitled");
+        <div className="media-linked-editor">
+          <div className="media-linked-editor-controls">
+            <button
+              type="button"
+              className="media-action-btn"
+              onClick={() => openMediaRelationPicker(mode, relationPickerContext)}
+            >
+              {hasSelection ? "Change" : "Select"}
+            </button>
+            <button
+              type="button"
+              className="media-action-btn"
+              onClick={() => onDraftChange({ [fieldKey]: "" })}
+              disabled={!hasSelection}
+            >
+              Clear
+            </button>
+          </div>
 
-                return (
-                  <li key={candidateKey}>
-                    <button
-                      type="button"
-                      className={`media-linked-picker-item${isQueued ? " is-queued" : ""}`}
-                      onClick={() => onDraftChange({ [fieldKey]: candidateId })}
-                      disabled={isQueued || !candidateId}
-                      title={isQueued ? `${label} is queued and has no id yet` : `Select ${candidateId}`}
-                    >
-                      <span>#{candidateId || "—"} {name}</span>
-                      {isQueued ? <em>queued</em> : null}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+          {hasSelection ? (
+            <div className="media-linked-editor-preview">
+              {relationItem ? (
+                <div className="media-relation-picker-item media-linked-editor-preview-item">
+                  {previewUrl ? (
+                    <span className="media-relation-picker-thumb-wrap" aria-hidden="true">
+                      <img
+                        src={previewUrl}
+                        alt=""
+                        className="media-relation-picker-thumb"
+                        loading="lazy"
+                      />
+                    </span>
+                  ) : null}
+                  <span className="media-relation-picker-main">
+                    {relationId ? renderLinkedMediaId(relationId, label) : <span>{draftValue}</span>}
+                    <small>{relationItem.title || relationItem.relativePath || "Untitled media"}</small>
+                  </span>
+                </div>
+              ) : previewState.isLoading ? (
+                <small>Resolving...</small>
+              ) : previewState.error ? (
+                <small className="media-action-error">{previewState.error}</small>
+              ) : (
+                <small>Media not found.</small>
+              )}
+            </div>
           ) : null}
         </div>
       );
@@ -1231,7 +1248,7 @@ function App() {
         ) : null}
         {editable || hasParent ? (
           <tr>
-              <th scope="row">Parent Id</th>
+              <th scope="row">Parent</th>
               <td>
                 {editable ? (
                   renderLinkedMediaPicker("parent", "Parent")
@@ -1241,7 +1258,7 @@ function App() {
         ) : null}
         {editable || hasChild ? (
           <tr>
-              <th scope="row">Child Id</th>
+              <th scope="row">Child</th>
               <td>
                 {editable ? (
                   renderLinkedMediaPicker("child", "Child")
@@ -1796,6 +1813,14 @@ function App() {
 
   const openUploadPicker = () => {
     uploadPickerRef.current?.click();
+  };
+  const openUploadModal = () => {
+    setIsUploadOpen(true);
+    setUploadStep("queue");
+    setUploadState({ type: "", message: "" });
+    if (uploadCollections.length === 0 && !isUploadCollectionsLoading) {
+      void loadUploadCollections();
+    }
   };
 
   const closeUploadModal = () => {
@@ -2828,8 +2853,9 @@ function App() {
     setIsMediaRelationPickerOpen(false);
     setMediaRelationPickerError("");
   };
-  const openMediaRelationPicker = (mode) => {
+  const openMediaRelationPicker = (mode, context = "media") => {
     setMediaRelationPickerMode(mode === "child" ? "child" : "parent");
+    setMediaRelationPickerContext(context === "upload" ? "upload" : "media");
     setMediaRelationPickerPage(1);
     setMediaRelationPickerQuery("");
     setMediaRelationPickerError("");
@@ -2841,10 +2867,14 @@ function App() {
       return;
     }
 
-    setMediaDraft((current) => ({
-      ...current,
-      [mediaRelationPickerMode]: String(relationId)
-    }));
+    if (mediaRelationPickerContext === "upload") {
+      updateActiveUploadDraft({ [mediaRelationPickerMode]: String(relationId) });
+    } else {
+      setMediaDraft((current) => ({
+        ...current,
+        [mediaRelationPickerMode]: String(relationId)
+      }));
+    }
     closeMediaRelationPicker();
   };
   const loadMediaRelationPicker = async () => {
@@ -3629,29 +3659,11 @@ function App() {
     setTagSearchQueryByTagTypeId({ [tagTypeId]: "" });
     void loadTagsForTagType(tagTypeId);
   };
-  const restoreTagCalloutStates = () => {
-    if (!collapsedTagTypeCallouts) {
-      return;
-    }
-
-    setTagTypeCalloutOpenById(collapsedTagTypeCallouts);
-    setCollapsedTagTypeCallouts(null);
-  };
   const handleTagDragStart = (event, sourceTagTypeId, tagItem) => {
     if (!tagItem?.id || isTagMoveInProgress) {
       event.preventDefault();
       return;
     }
-
-    const previousOpenState = { ...tagTypeCalloutOpenById };
-    setCollapsedTagTypeCallouts(previousOpenState);
-    setTagTypeCalloutOpenById((current) => {
-      const next = { ...current };
-      tagTypes.forEach((tagType) => {
-        next[tagType.id] = false;
-      });
-      return next;
-    });
 
     setDraggedTag({
       id: tagItem.id,
@@ -3663,7 +3675,6 @@ function App() {
     event.dataTransfer.setData("text/plain", String(tagItem.id));
   };
   const handleTagDragEnd = () => {
-    restoreTagCalloutStates();
     setDraggedTag(null);
     setDragTargetTagTypeId(null);
   };
@@ -3715,7 +3726,6 @@ function App() {
       setIsTagMoveInProgress(false);
       setDragTargetTagTypeId(null);
       setDraggedTag(null);
-      restoreTagCalloutStates();
     }
   };
   const handleNewTagDraftChange = (tagTypeId, patch) => {
@@ -4175,7 +4185,7 @@ function App() {
           <button
             className="top-upload"
             type="button"
-            onClick={openUploadPicker}
+            onClick={openUploadModal}
             style={{
               fontSize: "0.8rem",
               padding: "0.4rem 0.65rem",
@@ -4495,7 +4505,7 @@ function App() {
                         {isEditing ? (
                           <div
                             className="tag-type-edit-row"
-                            onClick={(event) => event.preventDefault()}
+                            onClick={(event) => event.stopPropagation()}
                           >
                             <input
                               type="color"
@@ -4777,135 +4787,137 @@ function App() {
                 {"\u274C"}
               </button>
             </div>
-            <table className="tag-table">
-              <tbody>
-                <tr>
-                  <td>
-                    <input
-                      type="text"
-                      className="tag-table-input"
-                      value={newTagDraftByTagTypeId[activeTagManagerTagTypeId]?.name ?? ""}
-                      onChange={(event) => handleNewTagDraftChange(activeTagManagerTagTypeId, { name: event.target.value })}
-                      placeholder="New tag name"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="text"
-                      className="tag-table-input"
-                      value={newTagDraftByTagTypeId[activeTagManagerTagTypeId]?.description ?? ""}
-                      onChange={(event) => handleNewTagDraftChange(activeTagManagerTagTypeId, { description: event.target.value })}
-                      placeholder="Description"
-                    />
-                  </td>
-                  <td>
-                    <div className="tag-table-actions">
-                      <button
-                        type="button"
-                        className="tags-action-btn tags-action-create"
-                        onClick={() => void handleCreateTag(activeTagManagerTagTypeId)}
-                        disabled={!String(newTagDraftByTagTypeId[activeTagManagerTagTypeId]?.name || "").trim() || !!savingTagByTagTypeId[activeTagManagerTagTypeId]}
-                        title="Create tag"
-                      >
-                        {"\u2714"}
-                      </button>
-                      <button
-                        type="button"
-                        className="tags-action-btn tags-action-clear"
-                        onClick={() => handleClearNewTagDraft(activeTagManagerTagTypeId)}
-                        disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]}
-                        title="Clear new tag"
-                      >
-                        {"\u274C"}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-                {(tagsByTagTypeId[activeTagManagerTagTypeId] ?? []).map((tagItem) => {
-                  const isEditingTag = editingTagByTagTypeId[activeTagManagerTagTypeId] === tagItem.id;
-                  const editingDraft = editingTagDraftById[tagItem.id] ?? {
-                    name: String(tagItem.name || ""),
-                    description: String(tagItem.description || "")
-                  };
+            <div className="tag-manager-table-wrap">
+              <table className="tag-table">
+                <tbody>
+                  <tr>
+                    <td>
+                      <input
+                        type="text"
+                        className="tag-table-input"
+                        value={newTagDraftByTagTypeId[activeTagManagerTagTypeId]?.name ?? ""}
+                        onChange={(event) => handleNewTagDraftChange(activeTagManagerTagTypeId, { name: event.target.value })}
+                        placeholder="New tag name"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="tag-table-input"
+                        value={newTagDraftByTagTypeId[activeTagManagerTagTypeId]?.description ?? ""}
+                        onChange={(event) => handleNewTagDraftChange(activeTagManagerTagTypeId, { description: event.target.value })}
+                        placeholder="Description"
+                      />
+                    </td>
+                    <td>
+                      <div className="tag-table-actions">
+                        <button
+                          type="button"
+                          className="tags-action-btn tags-action-create"
+                          onClick={() => void handleCreateTag(activeTagManagerTagTypeId)}
+                          disabled={!String(newTagDraftByTagTypeId[activeTagManagerTagTypeId]?.name || "").trim() || !!savingTagByTagTypeId[activeTagManagerTagTypeId]}
+                          title="Create tag"
+                        >
+                          {"\u2714"}
+                        </button>
+                        <button
+                          type="button"
+                          className="tags-action-btn tags-action-clear"
+                          onClick={() => handleClearNewTagDraft(activeTagManagerTagTypeId)}
+                          disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]}
+                          title="Clear new tag"
+                        >
+                          {"\u274C"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  {(tagsByTagTypeId[activeTagManagerTagTypeId] ?? []).map((tagItem) => {
+                    const isEditingTag = editingTagByTagTypeId[activeTagManagerTagTypeId] === tagItem.id;
+                    const editingDraft = editingTagDraftById[tagItem.id] ?? {
+                      name: String(tagItem.name || ""),
+                      description: String(tagItem.description || "")
+                    };
 
-                  return (
-                    <tr key={tagItem.id}>
-                      <td>
-                        {isEditingTag ? (
-                          <input
-                            type="text"
-                            className="tag-table-input"
-                            value={editingDraft.name}
-                            onChange={(event) => handleEditTagDraftChange(tagItem.id, { name: event.target.value })}
-                          />
-                        ) : (tagItem.name)}
-                      </td>
-                      <td>
-                        {isEditingTag ? (
-                          <input
-                            type="text"
-                            className="tag-table-input"
-                            value={editingDraft.description}
-                            onChange={(event) => handleEditTagDraftChange(tagItem.id, { description: event.target.value })}
-                          />
-                        ) : (tagItem.description || "-")}
-                      </td>
-                      <td>
-                        <div className="tag-table-actions">
+                    return (
+                      <tr key={tagItem.id}>
+                        <td>
                           {isEditingTag ? (
-                            <>
-                              <button
-                                type="button"
-                                className="tags-action-btn tags-action-create"
-                                onClick={() => void handleSaveTag(activeTagManagerTagTypeId, tagItem.id)}
-                                disabled={!String(editingDraft.name || "").trim() || !!savingTagByTagTypeId[activeTagManagerTagTypeId]}
-                                title="Save tag"
-                              >
-                                {"\u2714"}
-                              </button>
-                              <button
-                                type="button"
-                                className="tags-action-btn tags-action-clear"
-                                onClick={() => handleCancelEditTag(activeTagManagerTagTypeId)}
-                                disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]}
-                                title="Cancel edit"
-                              >
-                                {"\u274C"}
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                className="tags-action-btn tag-table-edit-btn"
-                                onClick={() => handleStartEditTag(activeTagManagerTagTypeId, tagItem)}
-                                title="Edit tag"
-                              >
-                                {"\u2699"}
-                              </button>
-                              <button
-                                type="button"
-                                className="tags-action-btn tags-action-delete"
-                                onClick={() => openTagDeleteConfirm({
-                                  kind: "tag",
-                                  id: tagItem.id,
-                                  tagTypeId: activeTagManagerTagTypeId,
-                                  name: tagItem.name
-                                })}
-                                disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]}
-                                title="Delete tag"
-                              >
-                                {"\uD83D\uDDD1"}
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                            <input
+                              type="text"
+                              className="tag-table-input"
+                              value={editingDraft.name}
+                              onChange={(event) => handleEditTagDraftChange(tagItem.id, { name: event.target.value })}
+                            />
+                          ) : (tagItem.name)}
+                        </td>
+                        <td>
+                          {isEditingTag ? (
+                            <input
+                              type="text"
+                              className="tag-table-input"
+                              value={editingDraft.description}
+                              onChange={(event) => handleEditTagDraftChange(tagItem.id, { description: event.target.value })}
+                            />
+                          ) : (tagItem.description || "-")}
+                        </td>
+                        <td>
+                          <div className="tag-table-actions">
+                            {isEditingTag ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="tags-action-btn tags-action-create"
+                                  onClick={() => void handleSaveTag(activeTagManagerTagTypeId, tagItem.id)}
+                                  disabled={!String(editingDraft.name || "").trim() || !!savingTagByTagTypeId[activeTagManagerTagTypeId]}
+                                  title="Save tag"
+                                >
+                                  {"\u2714"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="tags-action-btn tags-action-clear"
+                                  onClick={() => handleCancelEditTag(activeTagManagerTagTypeId)}
+                                  disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]}
+                                  title="Cancel edit"
+                                >
+                                  {"\u274C"}
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  className="tags-action-btn tag-table-edit-btn"
+                                  onClick={() => handleStartEditTag(activeTagManagerTagTypeId, tagItem)}
+                                  title="Edit tag"
+                                >
+                                  {"\u2699"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="tags-action-btn tags-action-delete"
+                                  onClick={() => openTagDeleteConfirm({
+                                    kind: "tag",
+                                    id: tagItem.id,
+                                    tagTypeId: activeTagManagerTagTypeId,
+                                    name: tagItem.name
+                                  })}
+                                  disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]}
+                                  title="Delete tag"
+                                >
+                                  {"\uD83D\uDDD1"}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
             {tagTableStateByTagTypeId[activeTagManagerTagTypeId]?.loading ? (
               <p className="tag-table-state">Loading tags...</p>
             ) : null}
@@ -4931,7 +4943,7 @@ function App() {
           onClick={closeUploadModal}
         >
           <div
-            className={`media-modal${uploadStep === "queue" ? " media-modal-editing" : ""}`}
+            className={`media-modal${uploadStep === "queue" ? " media-modal-upload-queue" : " media-modal-editing"}`}
             onClick={(event) => event.stopPropagation()}
             onPaste={uploadStep === "queue" ? handleUploadQueuePaste : undefined}
           >
@@ -4941,24 +4953,38 @@ function App() {
                   ? `Queue (${uploadItems.length})`
                   : (uploadItems.length === 0 ? "No files remaining" : `Editing: ${activeUploadItem?.file.name || "-"}`)}
               </h2>
-              <div className="media-upload-nav">
+              {uploadStep !== "queue" ? (
+                <div className="media-upload-nav">
+                  <button
+                    type="button"
+                    className="media-action-btn"
+                    onClick={() => setActiveUploadIndex((current) => Math.max(current - 1, 0))}
+                    disabled={uploadItems.length === 0 || activeUploadIndex === 0}
+                    aria-label="Previous upload item"
+                  >
+                    {"<"}
+                  </button>
+                  <button
+                    type="button"
+                    className="media-action-btn"
+                    onClick={() => setActiveUploadIndex((current) => Math.min(current + 1, uploadItems.length - 1))}
+                    disabled={uploadItems.length === 0 || activeUploadIndex >= uploadItems.length - 1}
+                    aria-label="Next upload item"
+                  >
+                    {">"}
+                  </button>
+                </div>
+              ) : null}
+              {uploadStep === "queue" ? (
                 <button
                   type="button"
-                  className="media-action-btn"
-                  onClick={() => setActiveUploadIndex((current) => Math.max(current - 1, 0))}
-                  disabled={uploadItems.length === 0 || activeUploadIndex === 0}
+                  className="media-action-btn media-action-primary upload-continue-btn"
+                  onClick={() => setUploadStep("editor")}
+                  disabled={uploadItems.length === 0}
                 >
-                  ← Prev
+                  Next
                 </button>
-                <button
-                  type="button"
-                  className="media-action-btn"
-                  onClick={() => setActiveUploadIndex((current) => Math.min(current + 1, uploadItems.length - 1))}
-                  disabled={uploadItems.length === 0 || activeUploadIndex >= uploadItems.length - 1}
-                >
-                  Next →
-                </button>
-              </div>
+              ) : null}
               <button
                 type="button"
                 className="media-action-btn"
@@ -5018,7 +5044,7 @@ function App() {
                             onClick={() => moveUploadItem(item.key, "up")}
                             disabled={index === 0}
                           >
-                            ↑
+                            Up
                           </button>
                           <button
                             type="button"
@@ -5026,7 +5052,7 @@ function App() {
                             onClick={() => moveUploadItem(item.key, "down")}
                             disabled={index === uploadItems.length - 1}
                           >
-                            ↓
+                            Down
                           </button>
                           <button
                             type="button"
@@ -5047,71 +5073,63 @@ function App() {
                   </p>
                 ) : null}
 
-                <div className="media-action-row media-action-row-spaced">
-                  <button
-                    type="button"
-                    className="media-action-btn media-action-primary"
-                    onClick={() => setUploadStep("editor")}
-                    disabled={uploadItems.length === 0}
-                  >
-                    Next
-                  </button>
-                </div>
               </div>
             ) : (
               <>
-                <div className="media-modal-content">
-                  {activeUploadFile ? (
-                    isVideoFile(activeUploadFile) ? (
-                      <video
-                        src={activeUploadFile.originalUrl}
-                        controls
-                        autoPlay
-                      />
-                    ) : (
-                      <img
-                        src={activeUploadFile.originalUrl}
-                        alt={getDisplayName(activeUploadFile.name)}
-                      />
-                    )
-                  ) : (
-                    <div className="media-fallback">No file selected</div>
-                  )}
-                </div>
-
                 <div className="media-modal-meta">
-                  {renderMediaMetaTable({
-                    file: activeUploadFile,
-                    draft: activeUploadItem?.draft || createMediaDraft(null),
-                    editable: true,
-                    onDraftChange: updateActiveUploadDraft,
-                    showTagsRow: true,
-                    extraRows: (
-                      <>
-                        <tr>
-                          <th scope="row">File</th>
-                          <td>{activeUploadItem?.file.name || "-"}</td>
-                        </tr>
-                        <tr>
-                          <th scope="row">Collection</th>
-                          <td>
-                            <div className="media-action-row media-action-row-upload-collection">
-                              <button
-                                type="button"
-                                className="media-action-btn"
-                                onClick={() => {
-                                  void openUploadCollectionPicker();
-                                }}
-                                disabled={isUploadCollectionsLoading}
-                              >
-                                {isUploadCollectionsLoading ? "Loading..." : "Select"}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      </>
-                    )
-                  })}
+                  <div className="media-meta-primary is-editing">
+                    {renderMediaMetaTable({
+                      file: activeUploadFile,
+                      draft: activeUploadItem?.draft || createMediaDraft(null),
+                      editable: true,
+                      onDraftChange: updateActiveUploadDraft,
+                      relationPickerContext: "upload",
+                      showTagsRow: true,
+                      extraRows: (
+                        <>
+                          <tr>
+                            <th scope="row">File</th>
+                            <td>{activeUploadItem?.file.name || "-"}</td>
+                          </tr>
+                          <tr>
+                            <th scope="row">Collection</th>
+                            <td>
+                              <div className="media-action-row media-action-row-upload-collection">
+                                <button
+                                  type="button"
+                                  className="media-action-btn"
+                                  onClick={() => {
+                                    void openUploadCollectionPicker();
+                                  }}
+                                  disabled={isUploadCollectionsLoading}
+                                >
+                                  {isUploadCollectionsLoading ? "Loading..." : "Select"}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        </>
+                      )
+                    })}
+                    {activeUploadFile ? (
+                      <div className="upload-edit-thumbnail" aria-label="Upload media thumbnail">
+                        {isVideoFile(activeUploadFile) ? (
+                          <video
+                            src={activeUploadFile.originalUrl}
+                            preload="metadata"
+                            playsInline
+                            muted
+                          />
+                        ) : (
+                          <img
+                            src={activeUploadFile.originalUrl}
+                            alt={getDisplayName(activeUploadFile.name)}
+                            loading="lazy"
+                          />
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
 
                   {uploadCollectionsError ? (
                     <p className="media-action-error">{uploadCollectionsError}</p>
@@ -5410,42 +5428,44 @@ function App() {
           >
             <div className="media-modal-header media-modal-header-empty" />
 
-            <div className="media-modal-content">
-              <button
-                type="button"
-                className="media-nav-btn media-nav-btn-prev"
-                onClick={() => handleNavigateSelectedMedia(-1)}
-                disabled={!canNavigateSelectedMedia}
-                aria-label="Previous media"
-                title="Previous media"
-              >
-                {"<"}
-              </button>
-              {isVideoFile(selectedMedia) ? (
-                <video
-                  src={resolveOriginalMediaUrl(selectedMedia)}
-                  controls
-                  autoPlay={!isEditingMedia}
-                  poster={resolvePreviewMediaUrl(selectedMedia)}
-                  preload="metadata"
-                />
-              ) : (
-                <img
-                  src={resolveOriginalMediaUrl(selectedMedia)}
-                  alt={getDisplayName(selectedMedia.name)}
-                />
-              )}
-              <button
-                type="button"
-                className="media-nav-btn media-nav-btn-next"
-                onClick={() => handleNavigateSelectedMedia(1)}
-                disabled={!canNavigateSelectedMedia}
-                aria-label="Next media"
-                title="Next media"
-              >
-                {">"}
-              </button>
-            </div>
+            {!isEditingMedia ? (
+              <div className="media-modal-content">
+                <button
+                  type="button"
+                  className="media-nav-btn media-nav-btn-prev"
+                  onClick={() => handleNavigateSelectedMedia(-1)}
+                  disabled={!canNavigateSelectedMedia}
+                  aria-label="Previous media"
+                  title="Previous media"
+                >
+                  {"<"}
+                </button>
+                {isVideoFile(selectedMedia) ? (
+                  <video
+                    src={resolveOriginalMediaUrl(selectedMedia)}
+                    controls
+                    autoPlay
+                    poster={resolvePreviewMediaUrl(selectedMedia)}
+                    preload="metadata"
+                  />
+                ) : (
+                  <img
+                    src={resolveOriginalMediaUrl(selectedMedia)}
+                    alt={getDisplayName(selectedMedia.name)}
+                  />
+                )}
+                <button
+                  type="button"
+                  className="media-nav-btn media-nav-btn-next"
+                  onClick={() => handleNavigateSelectedMedia(1)}
+                  disabled={!canNavigateSelectedMedia}
+                  aria-label="Next media"
+                  title="Next media"
+                >
+                  {">"}
+                </button>
+              </div>
+            ) : null}
 
             <div className="media-modal-meta">
               <div className="media-favorite-row">
@@ -5663,97 +5683,112 @@ function App() {
               </div>
             </div>
           ) : null}
-          {isMediaRelationPickerOpen && isEditingMedia ? (
-            <div
-              className="media-confirm-overlay"
-              onClick={closeMediaRelationPicker}
-            >
-              <div
-                className="collection-picker-dialog media-relation-picker-dialog"
-                onClick={(event) => event.stopPropagation()}
+        </div>
+      ) : null}
+      {isMediaRelationPickerOpen ? (
+        <div
+          className="media-confirm-overlay"
+          onClick={closeMediaRelationPicker}
+        >
+          <div
+            className="collection-picker-dialog media-relation-picker-dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="collection-picker-title">
+              Select {mediaRelationPickerMode === "child" ? "child" : "parent"} media
+            </p>
+            <div className="media-relation-picker-controls">
+              <input
+                type="search"
+                className="media-edit-input"
+                value={mediaRelationPickerQuery}
+                onChange={(event) => {
+                  setMediaRelationPickerQuery(event.target.value);
+                  setMediaRelationPickerPage(1);
+                }}
+                placeholder="Search by id, title, path..."
+              />
+              <button
+                type="button"
+                className="media-action-btn"
+                onClick={() => {
+                  setMediaRelationPickerQuery("");
+                  setMediaRelationPickerPage(1);
+                }}
+                disabled={!mediaRelationPickerQuery}
               >
-                <p className="collection-picker-title">
-                  Select {mediaRelationPickerMode === "child" ? "child" : "parent"} media
-                </p>
-                <div className="media-relation-picker-controls">
-                  <input
-                    type="search"
-                    className="media-edit-input"
-                    value={mediaRelationPickerQuery}
-                    onChange={(event) => {
-                      setMediaRelationPickerQuery(event.target.value);
-                      setMediaRelationPickerPage(1);
-                    }}
-                    placeholder="Search by id, title, path..."
-                  />
-                  <button
-                    type="button"
-                    className="media-action-btn"
-                    onClick={() => {
-                      setMediaRelationPickerQuery("");
-                      setMediaRelationPickerPage(1);
-                    }}
-                    disabled={!mediaRelationPickerQuery}
-                  >
-                    Reset
-                  </button>
-                </div>
-                {mediaRelationPickerError ? <p className="media-action-error">{mediaRelationPickerError}</p> : null}
-                {isMediaRelationPickerLoading ? (
-                  <p className="collections-state">Loading media...</p>
-                ) : mediaRelationPickerItems.length === 0 ? (
-                  <p className="collections-state">No media found.</p>
-                ) : (
-                  <ul className="collection-picker-list media-relation-picker-list">
-                    {mediaRelationPickerItems.map((item) => (
-                      <li key={`relation-picker-${item.id}`}>
-                        <button
-                          type="button"
-                          className="collection-picker-item"
-                          onClick={() => handleSelectMediaRelationFromPicker(item)}
-                        >
-                          <span>#{item.id} · {item.title || item.relativePath || "Untitled media"}</span>
+                Reset
+              </button>
+            </div>
+            {mediaRelationPickerError ? <p className="media-action-error">{mediaRelationPickerError}</p> : null}
+            {isMediaRelationPickerLoading ? (
+              <p className="collections-state">Loading media...</p>
+            ) : mediaRelationPickerItems.length === 0 ? (
+              <p className="collections-state">No media found.</p>
+            ) : (
+              <ul className="collection-picker-list media-relation-picker-list">
+                {mediaRelationPickerItems.map((item) => {
+                  const previewUrl = resolveTileUrl(item);
+                  return (
+                    <li key={`relation-picker-${item.id}`}>
+                      <button
+                        type="button"
+                        className="collection-picker-item media-relation-picker-item"
+                        onClick={() => handleSelectMediaRelationFromPicker(item)}
+                      >
+                        {previewUrl ? (
+                          <span className="media-relation-picker-thumb-wrap" aria-hidden="true">
+                            <img
+                              src={previewUrl}
+                              alt=""
+                              className="media-relation-picker-thumb"
+                              loading="lazy"
+                            />
+                          </span>
+                        ) : null}
+                        <span className="media-relation-picker-main">
+                          <span>#{item.id} - {item.title || item.relativePath || "Untitled media"}</span>
                           <small>{item.relativePath || "No path"}</small>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <div className="media-action-row media-action-row-spaced">
-                  <small>
-                    Page {mediaRelationPickerPage}
-                    {mediaRelationPickerTotalPages > 0 ? ` / ${mediaRelationPickerTotalPages}` : ""}
-                    {mediaRelationPickerTotalCount > 0 ? ` · ${mediaRelationPickerTotalCount} total` : ""}
-                  </small>
-                  <div className="media-action-row">
-                    <button
-                      type="button"
-                      className="media-action-btn"
-                      onClick={() => setMediaRelationPickerPage((current) => Math.max(1, current - 1))}
-                      disabled={isMediaRelationPickerLoading || mediaRelationPickerPage <= 1}
-                    >
-                      Prev
-                    </button>
-                    <button
-                      type="button"
-                      className="media-action-btn"
-                      onClick={() => setMediaRelationPickerPage((current) => current + 1)}
-                      disabled={isMediaRelationPickerLoading || (mediaRelationPickerTotalPages > 0 && mediaRelationPickerPage >= mediaRelationPickerTotalPages)}
-                    >
-                      Next
-                    </button>
-                    <button
-                      type="button"
-                      className="media-action-btn"
-                      onClick={closeMediaRelationPicker}
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <div className="media-action-row media-action-row-spaced">
+              <small>
+                Page {mediaRelationPickerPage}
+                {mediaRelationPickerTotalPages > 0 ? ` / ${mediaRelationPickerTotalPages}` : ""}
+                {mediaRelationPickerTotalCount > 0 ? ` - ${mediaRelationPickerTotalCount} total` : ""}
+              </small>
+              <div className="media-action-row">
+                <button
+                  type="button"
+                  className="media-action-btn"
+                  onClick={() => setMediaRelationPickerPage((current) => Math.max(1, current - 1))}
+                  disabled={isMediaRelationPickerLoading || mediaRelationPickerPage <= 1}
+                >
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  className="media-action-btn"
+                  onClick={() => setMediaRelationPickerPage((current) => current + 1)}
+                  disabled={isMediaRelationPickerLoading || (mediaRelationPickerTotalPages > 0 && mediaRelationPickerPage >= mediaRelationPickerTotalPages)}
+                >
+                  Next
+                </button>
+                <button
+                  type="button"
+                  className="media-action-btn"
+                  onClick={closeMediaRelationPicker}
+                >
+                  Close
+                </button>
               </div>
             </div>
-          ) : null}
+          </div>
         </div>
       ) : null}
       {pendingTagDelete ? (
@@ -5827,3 +5862,8 @@ function App() {
 }
 
 export default App;
+
+
+
+
+
