@@ -35,6 +35,7 @@ function App() {
   const [editingTagTypeColor, setEditingTagTypeColor] = useState("#2563EB");
   const [isTagTypeUpdating, setIsTagTypeUpdating] = useState(false);
   const [tagsByTagTypeId, setTagsByTagTypeId] = useState({});
+  const [tagSearchQueryByTagTypeId, setTagSearchQueryByTagTypeId] = useState({});
   const [tagTableStateByTagTypeId, setTagTableStateByTagTypeId] = useState({});
   const [newTagDraftByTagTypeId, setNewTagDraftByTagTypeId] = useState({});
   const [editingTagByTagTypeId, setEditingTagByTagTypeId] = useState({});
@@ -3045,10 +3046,21 @@ function App() {
   };
   const handleTagTypeCalloutToggle = (tagTypeId, isOpen) => {
     if (!isOpen) {
+      setTagSearchQueryByTagTypeId((current) => {
+        if (!current[tagTypeId]) {
+          return current;
+        }
+
+        return {
+          ...current,
+          [tagTypeId]: ""
+        };
+      });
       return;
     }
 
     ensureNewTagDraft(tagTypeId);
+    setTagSearchQueryByTagTypeId({ [tagTypeId]: "" });
     void loadTagsForTagType(tagTypeId);
   };
   const handleNewTagDraftChange = (tagTypeId, patch) => {
@@ -3770,14 +3782,27 @@ function App() {
                   borderTopColor: hexToRgba(color, 0.24),
                   backgroundColor: hexToRgba(color, 0.08)
                 };
+                const rawTagSearchQuery = String(tagSearchQueryByTagTypeId[item.id] || "");
+                const normalizedTagSearchQuery = rawTagSearchQuery.trim().toLowerCase();
+                const filteredTags = (tagsByTagTypeId[item.id] ?? []).filter((tagItem) => {
+                  if (!normalizedTagSearchQuery) {
+                    return true;
+                  }
+
+                  const name = String(tagItem?.name || "").toLowerCase();
+                  const description = String(tagItem?.description || "").toLowerCase();
+                  return name.includes(normalizedTagSearchQuery) || description.includes(normalizedTagSearchQuery);
+                });
 
                 return (
                   <li key={item.id} className="tag-type-item">
-                    <details className="tag-type-callout">
+                    <details
+                      className="tag-type-callout"
+                      onToggle={(event) => handleTagTypeCalloutToggle(item.id, event.currentTarget.open)}
+                    >
                       <summary
                         className="tag-type-summary"
                         style={summaryStyle}
-                        onClick={() => handleTagTypeCalloutToggle(item.id, true)}
                       >
                         {isEditing ? (
                           <div
@@ -3872,6 +3897,16 @@ function App() {
                         </div>
                       </summary>
                       <div className="tag-type-body" style={bodyStyle}>
+                        <input
+                          type="text"
+                          className="tag-callout-search-input"
+                          value={rawTagSearchQuery}
+                          onChange={(event) => setTagSearchQueryByTagTypeId((current) => ({
+                            ...current,
+                            [item.id]: event.target.value
+                          }))}
+                          placeholder="Search tags by name or description"
+                        />
                         <table className="tag-table">
                           <tbody>
                             <tr>
@@ -3916,7 +3951,7 @@ function App() {
                                 </div>
                               </td>
                             </tr>
-                            {(tagsByTagTypeId[item.id] ?? []).map((tagItem) => {
+                            {filteredTags.map((tagItem) => {
                               const isEditingTag = editingTagByTagTypeId[item.id] === tagItem.id;
                               const editingDraft = editingTagDraftById[tagItem.id] ?? {
                                 name: String(tagItem.name || ""),
@@ -4681,6 +4716,5 @@ function App() {
 }
 
 export default App;
-
 
 

@@ -779,6 +779,26 @@
   margin-top: 0.35rem;
 }
 
+
+.tag-callout-search-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid #c6ccd2;
+  border-radius: 0.4rem;
+  background-color: #ffffff;
+  color: #0f172a;
+  padding: 0.38rem 0.5rem;
+  margin-bottom: 0.55rem;
+  font-size: 0.83rem;
+}
+
+.tag-callout-search-input:focus {
+  outline: none;
+  border-color: #0f172a;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+
 .tag-table {
   width: 100%;
   border-collapse: collapse;
@@ -1833,7 +1853,8 @@
 
   .tag-type-edit-name,
   .tag-table-input,
-  .tags-name-input {
+  .tags-name-input,
+  .tag-callout-search-input {
     font-size: 0.8rem;
   }
 
