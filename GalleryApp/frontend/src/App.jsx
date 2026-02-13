@@ -2484,7 +2484,13 @@ function App() {
     const taskId = uploadTaskSequenceRef.current;
     uploadTaskSequenceRef.current += 1;
 
-    backgroundUploadQueueRef.current.push({ ...task, taskId });
+    const uploadTaskPayload = {
+      file: task.file,
+      draft: task.draft,
+      collectionIds: Array.isArray(task.collectionIds) ? [...task.collectionIds] : []
+    };
+
+    backgroundUploadQueueRef.current.push({ ...uploadTaskPayload, taskId });
     setBackgroundUploadState((current) => ({
       ...current,
       total: current.total + 1,
@@ -2495,10 +2501,11 @@ function App() {
         {
           id: taskId,
           fileName: task.file.name,
-          status: "uploading",
+          status: "queued",
           percent: 0,
           error: "",
-          uploadedMedia: null
+          uploadedMedia: null,
+          retryTask: uploadTaskPayload
         },
         ...current
       ];
@@ -2538,57 +2545,48 @@ function App() {
     )));
   };
 
-  const handleOpenUploadedTask = (taskId) => {
+  const handleOpenUploadedTask = async (taskId) => {
     const task = uploadTaskStatuses.find((item) => item.id === taskId);
     if (!task?.uploadedMedia) {
       return;
     }
 
+    const mediaId = Number(task.uploadedMedia.id);
+    if (Number.isSafeInteger(mediaId) && mediaId > 0) {
+      const freshMedia = await fetchMediaById(mediaId);
+      if (freshMedia) {
+        setSelectedMedia(freshMedia);
+        return;
+      }
+
+      setUploadState({
+        type: "warning",
+        message: "Warning: media API unavailable. Opened cached upload data."
+      });
+    }
+
     setSelectedMedia(task.uploadedMedia);
   };
 
-  const copyTextToClipboard = async (text) => {
-    const value = String(text || "");
-    if (!value) {
-      return false;
-    }
-
-    try {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(value);
-        return true;
-      }
-    } catch {
-    }
-
-    try {
-      const textarea = document.createElement("textarea");
-      textarea.value = value;
-      textarea.setAttribute("readonly", "");
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      const copied = document.execCommand("copy");
-      document.body.removeChild(textarea);
-      return copied;
-    } catch {
-      return false;
-    }
-  };
-
-  const handleCopyUploadError = async (taskId) => {
+  const handleRetryUploadTask = (taskId) => {
     const task = uploadTaskStatuses.find((item) => item.id === taskId);
-    if (!task?.error) {
+    if (!task?.retryTask) {
       return;
     }
 
-    const copied = await copyTextToClipboard(task.error);
-    if (copied) {
-      setUploadState({ type: "success", message: "Error copied to clipboard." });
-    } else {
-      setUploadState({ type: "error", message: "Failed to copy error to clipboard." });
-    }
+    backgroundUploadQueueRef.current.push({ ...task.retryTask, taskId: task.id });
+    setBackgroundUploadState((current) => ({
+      ...current,
+      queued: current.queued + 1,
+      failed: Math.max(current.failed - 1, 0)
+    }));
+    setUploadTaskStatuses((current) => current.map((item) => (
+      item.id === taskId
+        ? { ...item, status: "queued", percent: 0, error: "" }
+        : item
+    )));
+    setUploadState({ type: "", message: "" });
+    void runBackgroundUploadQueue();
   };
 
   const handleUpload = async () => {
@@ -3316,8 +3314,12 @@ function App() {
       return "Uploaded";
     }
 
+    if (status === "queued") {
+      return "Queued";
+    }
+
     if (status === "error") {
-      return "Error";
+      return "Retry";
     }
 
     return "Uploading";
@@ -4157,8 +4159,8 @@ function App() {
                         <button
                           type="button"
                           className="top-upload-action top-upload-action-error"
-                          onClick={() => handleCopyUploadError(task.id)}
-                          title={task.error || "Click to copy error text"}
+                          onClick={() => handleRetryUploadTask(task.id)}
+                          title={task.error || "Click to retry upload"}
                         >
                           {getUploadTaskStatusLabel(task.status)}
                         </button>
