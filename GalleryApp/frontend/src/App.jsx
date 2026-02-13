@@ -8,6 +8,7 @@ function App() {
   const allowedExtensions = new Set([
     ".jpg",
     ".jpeg",
+    ".jfif",
     ".png",
     ".gif",
     ".webp",
@@ -146,7 +147,7 @@ function App() {
   });
   const [activeTagTypeDropdownId, setActiveTagTypeDropdownId] = useState(null);
   const [tagTypeQueryById, setTagTypeQueryById] = useState({});
-  const imageExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".bmp"]);
+  const imageExtensions = new Set([".jpg", ".jpeg", ".jfif", ".png", ".webp", ".bmp"]);
   const videoExtensions = new Set([".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v"]);
   const backgroundUploadQueueRef = useRef([]);
   const isBackgroundUploadWorkerRunningRef = useRef(false);
@@ -4006,7 +4007,7 @@ function App() {
           ref={uploadPickerRef}
           type="file"
           multiple
-          accept="image/*,video/*,.gif"
+          accept="image/*,video/*,.gif,.jfif"
           onChange={handleUploadPickerChange}
           style={{ display: "none" }}
         />

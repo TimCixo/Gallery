@@ -16,6 +16,7 @@ public static readonly HashSet<string> AllowedExtensions = new(StringComparer.Or
 {
     ".jpg",
     ".jpeg",
+    ".jfif",
     ".png",
     ".gif",
     ".webp",
@@ -31,6 +32,7 @@ public static readonly HashSet<string> ImageExtensions = new(StringComparer.Ordi
 {
     ".jpg",
     ".jpeg",
+    ".jfif",
     ".png",
     ".gif",
     ".webp",
