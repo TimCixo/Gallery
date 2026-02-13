@@ -1398,6 +1398,39 @@
   font-family: inherit;
 }
 
+.media-linked-editor {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.media-linked-editor-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.media-linked-editor-preview {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.78rem;
+  color: #475569;
+}
+
+.media-relation-picker-dialog {
+  width: min(560px, 100%);
+}
+
+.media-relation-picker-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.4rem;
+}
+
+.media-relation-picker-list .collection-picker-item span {
+  font-weight: 600;
+}
+
 .media-tagtype-edit-wrap {
   position: relative;
 }
