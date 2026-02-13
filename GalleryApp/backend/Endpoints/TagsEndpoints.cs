@@ -235,14 +235,16 @@ app.MapPost("/api/tag-types/{id:long}/tags", (long id, TagCreateRequest request)
         SELECT EXISTS (
             SELECT 1
             FROM Tags
-            WHERE Name = $name COLLATE NOCASE
+            WHERE TagTypeId = $tagTypeId
+              AND Name = $name COLLATE NOCASE
         );
         """;
+    duplicateCommand.Parameters.AddWithValue("$tagTypeId", id);
     duplicateCommand.Parameters.AddWithValue("$name", name);
     var hasDuplicate = Convert.ToInt64(duplicateCommand.ExecuteScalar()) == 1;
     if (hasDuplicate)
     {
-        return Results.Conflict(new { error = "Tag with this name already exists." });
+        return Results.Conflict(new { error = "Tag with this name already exists in this category." });
     }
 
     using var command = connection.CreateCommand();
@@ -289,7 +291,12 @@ app.MapPut("/api/tags/{id:long}", (long id, TagUpdateRequest request) =>
         SELECT EXISTS (
             SELECT 1
             FROM Tags
-            WHERE Name = $name COLLATE NOCASE
+            WHERE TagTypeId = (
+                    SELECT TagTypeId
+                    FROM Tags
+                    WHERE Id = $id
+                )
+              AND Name = $name COLLATE NOCASE
               AND Id <> $id
         );
         """;
@@ -298,7 +305,7 @@ app.MapPut("/api/tags/{id:long}", (long id, TagUpdateRequest request) =>
     var hasDuplicate = Convert.ToInt64(duplicateCommand.ExecuteScalar()) == 1;
     if (hasDuplicate)
     {
-        return Results.Conflict(new { error = "Tag with this name already exists." });
+        return Results.Conflict(new { error = "Tag with this name already exists in this category." });
     }
 
     using var command = connection.CreateCommand();

@@ -80,6 +80,10 @@ public static void EnsureDatabase(IServiceProvider services)
         CREATE INDEX IF NOT EXISTS IX_CollectionsMedia_CollectionId ON CollectionsMedia(CollectionId);
         CREATE INDEX IF NOT EXISTS IX_CollectionsMedia_MediaId ON CollectionsMedia(MediaId);
         CREATE INDEX IF NOT EXISTS IX_Tags_TagTypeId ON Tags(TagTypeId);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS UX_Tags_TagTypeId_Name_NoCase
+            ON Tags(TagTypeId, Name COLLATE NOCASE);
+
         CREATE INDEX IF NOT EXISTS IX_MediaTags_MediaId ON MediaTags(MediaId);
         CREATE INDEX IF NOT EXISTS IX_MediaTags_TagId ON MediaTags(TagId);
 
