@@ -859,6 +859,42 @@
   color: #b91c1c;
 }
 
+.media-tagtype-label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.media-tagtype-manage-btn {
+  margin-left: 0.45rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 999px;
+  border: 1px solid #94a3b8;
+  background: #ffffff;
+  color: #334155;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.media-tagtype-manage-btn:hover {
+  background: #f1f5f9;
+}
+
+.tag-manager-dialog {
+  width: min(760px, calc(100vw - 2rem));
+  max-height: calc(100vh - 4rem);
+  overflow: auto;
+}
+
+.tag-manager-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.6rem;
+}
+
 .slide-menu-overlay {
   position: fixed;
   inset: 0;

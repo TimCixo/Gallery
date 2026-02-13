@@ -114,6 +114,7 @@ function App() {
   const [mediaTagCatalog, setMediaTagCatalog] = useState([]);
   const [isMediaTagCatalogLoading, setIsMediaTagCatalogLoading] = useState(false);
   const [mediaTagCatalogError, setMediaTagCatalogError] = useState("");
+  const [activeTagManagerTagTypeId, setActiveTagManagerTagTypeId] = useState(null);
   const [mediaDraft, setMediaDraft] = useState({
     title: "",
     description: "",
@@ -134,6 +135,8 @@ function App() {
   const pageDragCounterRef = useRef(0);
   const searchInputRef = useRef(null);
   const searchHighlightRef = useRef(null);
+  const tagManagerCloseButtonRef = useRef(null);
+  const tagManagerTriggerButtonRef = useRef(null);
   const mediaLoadAbortRef = useRef(null);
   const mediaLoadRequestIdRef = useRef(0);
   const [searchCaretPosition, setSearchCaretPosition] = useState(0);
@@ -830,7 +833,20 @@ function App() {
 
               return (
                 <tr key={tagType.id} className="media-tagtype-row">
-                  <th scope="row" style={cellStyles.header}>{tagType.name}</th>
+                  <th scope="row" style={cellStyles.header}>
+                    <span className="media-tagtype-label">{tagType.name}</span>
+                    {editable ? (
+                      <button
+                        type="button"
+                        className="media-tagtype-manage-btn"
+                        aria-label={`Manage tags for ${tagType.name}`}
+                        title={`Manage tags for ${tagType.name}`}
+                        onClick={(event) => handleOpenTagManagerPopup(tagType.id, event.currentTarget)}
+                      >
+                        {"\u2026"}
+                      </button>
+                    ) : null}
+                  </th>
                   <td style={cellStyles.value}>
                     {editable ? (
                       <div className="media-tagtype-edit-wrap">
@@ -1195,6 +1211,32 @@ function App() {
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   }, [isSlideMenuOpen]);
+
+  useEffect(() => {
+    if (activeTagManagerTagTypeId === null) {
+      return undefined;
+    }
+
+    const closeButton = tagManagerCloseButtonRef.current;
+    if (closeButton instanceof HTMLButtonElement) {
+      closeButton.focus();
+    }
+
+    const handleEsc = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeTagManagerPopup();
+      }
+    };
+
+    window.addEventListener("keydown", handleEsc);
+    return () => {
+      window.removeEventListener("keydown", handleEsc);
+      if (tagManagerTriggerButtonRef.current instanceof HTMLButtonElement) {
+        tagManagerTriggerButtonRef.current.focus();
+      }
+    };
+  }, [activeTagManagerTagTypeId]);
 
   useEffect(() => {
     if (!selectedMedia) {
@@ -2094,14 +2136,16 @@ function App() {
       }
 
       const result = await response.json();
+      const items = Array.isArray(result.items) ? result.items : [];
       setTagsByTagTypeId((current) => ({
         ...current,
-        [tagTypeId]: Array.isArray(result.items) ? result.items : []
+        [tagTypeId]: items
       }));
       setTagTableStateByTagTypeId((current) => ({
         ...current,
         [tagTypeId]: { loading: false, error: "" }
       }));
+      return items;
     } catch (error) {
       setTagsByTagTypeId((current) => ({
         ...current,
@@ -2114,6 +2158,7 @@ function App() {
           error: error instanceof Error ? error.message : "Failed to fetch tags."
         }
       }));
+      return [];
     }
   };
 
@@ -3067,6 +3112,27 @@ function App() {
       [tagTypeId]: { name: "", description: "" }
     }));
   };
+  const refreshMediaTagCatalogForTagType = (tagTypeId, tags) => {
+    setMediaTagCatalog((current) => {
+      const nextTags = Array.isArray(tags) ? tags : [];
+      const withoutType = current.filter((tag) => getTagTypeId(tag?.tagTypeId) !== tagTypeId);
+      return [...withoutType, ...nextTags];
+    });
+  };
+  const closeTagManagerPopup = () => {
+    if (activeTagManagerTagTypeId !== null && savingTagByTagTypeId[activeTagManagerTagTypeId]) {
+      return;
+    }
+
+    setActiveTagManagerTagTypeId(null);
+  };
+  const handleOpenTagManagerPopup = (tagTypeId, triggerElement = null) => {
+    tagManagerTriggerButtonRef.current = triggerElement instanceof HTMLElement ? triggerElement : null;
+    ensureNewTagDraft(tagTypeId);
+    setTagTypesError("");
+    setActiveTagManagerTagTypeId(tagTypeId);
+    void loadTagsForTagType(tagTypeId);
+  };
   const handleCreateTag = async (tagTypeId) => {
     const draft = newTagDraftByTagTypeId[tagTypeId] ?? { name: "", description: "" };
     const normalizedName = String(draft.name || "").trim();
@@ -3096,7 +3162,8 @@ function App() {
       }
 
       handleClearNewTagDraft(tagTypeId);
-      await loadTagsForTagType(tagTypeId);
+      const refreshedTags = await loadTagsForTagType(tagTypeId);
+      refreshMediaTagCatalogForTagType(tagTypeId, refreshedTags);
     } catch (error) {
       setTagTypesError(error instanceof Error ? error.message : "Failed to create tag.");
     } finally {
@@ -3156,7 +3223,8 @@ function App() {
       }
 
       setEditingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: null }));
-      await loadTagsForTagType(tagTypeId);
+      const refreshedTags = await loadTagsForTagType(tagTypeId);
+      refreshMediaTagCatalogForTagType(tagTypeId, refreshedTags);
     } catch (error) {
       setTagTypesError(error instanceof Error ? error.message : "Failed to update tag.");
     } finally {
@@ -3185,6 +3253,7 @@ function App() {
       if (editingTagByTagTypeId[tagTypeId] === tagId) {
         setEditingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: null }));
       }
+      refreshMediaTagCatalogForTagType(tagTypeId, (tagsByTagTypeId[tagTypeId] ?? []).filter((item) => item.id !== tagId));
       return true;
     } catch (error) {
       setTagTypesError(error instanceof Error ? error.message : "Failed to delete tag.");
@@ -4017,6 +4086,176 @@ function App() {
         </section>
       )}
 
+      {activeTagManagerTagTypeId !== null ? (
+        <div
+          className="media-confirm-overlay"
+          onClick={() => {
+            if (!savingTagByTagTypeId[activeTagManagerTagTypeId]) {
+              closeTagManagerPopup();
+            }
+          }}
+        >
+          <div
+            className="media-confirm-dialog tag-manager-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Tag manager"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="tag-manager-header">
+              <strong>
+                Manage tags: {tagTypes.find((item) => item.id === activeTagManagerTagTypeId)?.name || `TagType ${activeTagManagerTagTypeId}`}
+              </strong>
+              <button
+                ref={tagManagerCloseButtonRef}
+                type="button"
+                className="media-action-btn"
+                onClick={closeTagManagerPopup}
+                disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]}
+                aria-label="Close tag manager"
+              >
+                {"\u274C"}
+              </button>
+            </div>
+            <table className="tag-table">
+              <tbody>
+                <tr>
+                  <td>
+                    <input
+                      type="text"
+                      className="tag-table-input"
+                      value={newTagDraftByTagTypeId[activeTagManagerTagTypeId]?.name ?? ""}
+                      onChange={(event) => handleNewTagDraftChange(activeTagManagerTagTypeId, { name: event.target.value })}
+                      placeholder="New tag name"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      className="tag-table-input"
+                      value={newTagDraftByTagTypeId[activeTagManagerTagTypeId]?.description ?? ""}
+                      onChange={(event) => handleNewTagDraftChange(activeTagManagerTagTypeId, { description: event.target.value })}
+                      placeholder="Description"
+                    />
+                  </td>
+                  <td>
+                    <div className="tag-table-actions">
+                      <button
+                        type="button"
+                        className="tags-action-btn tags-action-create"
+                        onClick={() => void handleCreateTag(activeTagManagerTagTypeId)}
+                        disabled={!String(newTagDraftByTagTypeId[activeTagManagerTagTypeId]?.name || "").trim() || !!savingTagByTagTypeId[activeTagManagerTagTypeId]}
+                        title="Create tag"
+                      >
+                        {"\u2714"}
+                      </button>
+                      <button
+                        type="button"
+                        className="tags-action-btn tags-action-clear"
+                        onClick={() => handleClearNewTagDraft(activeTagManagerTagTypeId)}
+                        disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]}
+                        title="Clear new tag"
+                      >
+                        {"\u274C"}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                {(tagsByTagTypeId[activeTagManagerTagTypeId] ?? []).map((tagItem) => {
+                  const isEditingTag = editingTagByTagTypeId[activeTagManagerTagTypeId] === tagItem.id;
+                  const editingDraft = editingTagDraftById[tagItem.id] ?? {
+                    name: String(tagItem.name || ""),
+                    description: String(tagItem.description || "")
+                  };
+
+                  return (
+                    <tr key={tagItem.id}>
+                      <td>
+                        {isEditingTag ? (
+                          <input
+                            type="text"
+                            className="tag-table-input"
+                            value={editingDraft.name}
+                            onChange={(event) => handleEditTagDraftChange(tagItem.id, { name: event.target.value })}
+                          />
+                        ) : (tagItem.name)}
+                      </td>
+                      <td>
+                        {isEditingTag ? (
+                          <input
+                            type="text"
+                            className="tag-table-input"
+                            value={editingDraft.description}
+                            onChange={(event) => handleEditTagDraftChange(tagItem.id, { description: event.target.value })}
+                          />
+                        ) : (tagItem.description || "-")}
+                      </td>
+                      <td>
+                        <div className="tag-table-actions">
+                          {isEditingTag ? (
+                            <>
+                              <button
+                                type="button"
+                                className="tags-action-btn tags-action-create"
+                                onClick={() => void handleSaveTag(activeTagManagerTagTypeId, tagItem.id)}
+                                disabled={!String(editingDraft.name || "").trim() || !!savingTagByTagTypeId[activeTagManagerTagTypeId]}
+                                title="Save tag"
+                              >
+                                {"\u2714"}
+                              </button>
+                              <button
+                                type="button"
+                                className="tags-action-btn tags-action-clear"
+                                onClick={() => handleCancelEditTag(activeTagManagerTagTypeId)}
+                                disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]}
+                                title="Cancel edit"
+                              >
+                                {"\u274C"}
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="tags-action-btn tag-table-edit-btn"
+                                onClick={() => handleStartEditTag(activeTagManagerTagTypeId, tagItem)}
+                                title="Edit tag"
+                              >
+                                {"\u2699"}
+                              </button>
+                              <button
+                                type="button"
+                                className="tags-action-btn tags-action-delete"
+                                onClick={() => openTagDeleteConfirm({
+                                  kind: "tag",
+                                  id: tagItem.id,
+                                  tagTypeId: activeTagManagerTagTypeId,
+                                  name: tagItem.name
+                                })}
+                                disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]}
+                                title="Delete tag"
+                              >
+                                {"\uD83D\uDDD1"}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {tagTableStateByTagTypeId[activeTagManagerTagTypeId]?.loading ? (
+              <p className="tag-table-state">Loading tags...</p>
+            ) : null}
+            {tagTableStateByTagTypeId[activeTagManagerTagTypeId]?.error ? (
+              <p className="tag-table-state tag-table-state-error">{tagTableStateByTagTypeId[activeTagManagerTagTypeId].error}</p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       <footer className="app-footer">
         <p>React frontend is running.</p>
         <p>Backend health: {health}</p>
@@ -4681,6 +4920,3 @@ function App() {
 }
 
 export default App;
-
-
-
