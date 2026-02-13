@@ -42,6 +42,11 @@ function App() {
   const [editingTagDraftById, setEditingTagDraftById] = useState({});
   const [savingTagByTagTypeId, setSavingTagByTagTypeId] = useState({});
   const [tagTypesError, setTagTypesError] = useState("");
+  const [isTagMoveInProgress, setIsTagMoveInProgress] = useState(false);
+  const [draggedTag, setDraggedTag] = useState(null);
+  const [dragTargetTagTypeId, setDragTargetTagTypeId] = useState(null);
+  const [tagTypeCalloutOpenById, setTagTypeCalloutOpenById] = useState({});
+  const [collapsedTagTypeCallouts, setCollapsedTagTypeCallouts] = useState(null);
   const [uploadItems, setUploadItems] = useState([]);
   const [uploadState, setUploadState] = useState({ type: "", message: "" });
   const [isGroupUploadEnabled, setIsGroupUploadEnabled] = useState(false);
@@ -3045,6 +3050,7 @@ function App() {
     ));
   };
   const handleTagTypeCalloutToggle = (tagTypeId, isOpen) => {
+    setTagTypeCalloutOpenById((current) => ({ ...current, [tagTypeId]: isOpen }));
     if (!isOpen) {
       setTagSearchQueryByTagTypeId((current) => {
         if (!current[tagTypeId]) {
@@ -3062,6 +3068,95 @@ function App() {
     ensureNewTagDraft(tagTypeId);
     setTagSearchQueryByTagTypeId({ [tagTypeId]: "" });
     void loadTagsForTagType(tagTypeId);
+  };
+  const restoreTagCalloutStates = () => {
+    if (!collapsedTagTypeCallouts) {
+      return;
+    }
+
+    setTagTypeCalloutOpenById(collapsedTagTypeCallouts);
+    setCollapsedTagTypeCallouts(null);
+  };
+  const handleTagDragStart = (event, sourceTagTypeId, tagItem) => {
+    if (!tagItem?.id || isTagMoveInProgress) {
+      event.preventDefault();
+      return;
+    }
+
+    const previousOpenState = { ...tagTypeCalloutOpenById };
+    setCollapsedTagTypeCallouts(previousOpenState);
+    setTagTypeCalloutOpenById((current) => {
+      const next = { ...current };
+      tagTypes.forEach((tagType) => {
+        next[tagType.id] = false;
+      });
+      return next;
+    });
+
+    setDraggedTag({
+      id: tagItem.id,
+      sourceTagTypeId,
+      name: String(tagItem.name || "")
+    });
+    setDragTargetTagTypeId(null);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", String(tagItem.id));
+  };
+  const handleTagDragEnd = () => {
+    restoreTagCalloutStates();
+    setDraggedTag(null);
+    setDragTargetTagTypeId(null);
+  };
+  const handleTagTypeDragOver = (event, targetTagTypeId) => {
+    if (!draggedTag || draggedTag.sourceTagTypeId === targetTagTypeId || isTagMoveInProgress) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    if (dragTargetTagTypeId !== targetTagTypeId) {
+      setDragTargetTagTypeId(targetTagTypeId);
+    }
+  };
+  const handleTagTypeDragLeave = (targetTagTypeId) => {
+    if (dragTargetTagTypeId === targetTagTypeId) {
+      setDragTargetTagTypeId(null);
+    }
+  };
+  const handleTagTypeDrop = async (event, targetTagTypeId) => {
+    if (!draggedTag || draggedTag.sourceTagTypeId === targetTagTypeId || isTagMoveInProgress) {
+      return;
+    }
+
+    event.preventDefault();
+    setIsTagMoveInProgress(true);
+    setTagTypesError("");
+    try {
+      const response = await fetch(`/api/tags/${draggedTag.id}/tag-type`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tagTypeId: targetTagTypeId })
+      });
+      const result = await readResponsePayload(response);
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("Tags API not found (404). Restart backend to apply latest changes.");
+        }
+        throw new Error(result?.error || "Failed to move tag.");
+      }
+
+      await Promise.all([
+        loadTagsForTagType(draggedTag.sourceTagTypeId),
+        loadTagsForTagType(targetTagTypeId)
+      ]);
+    } catch (error) {
+      setTagTypesError(error instanceof Error ? error.message : "Failed to move tag.");
+    } finally {
+      setIsTagMoveInProgress(false);
+      setDragTargetTagTypeId(null);
+      setDraggedTag(null);
+      restoreTagCalloutStates();
+    }
   };
   const handleNewTagDraftChange = (tagTypeId, patch) => {
     setNewTagDraftByTagTypeId((current) => ({
@@ -3265,6 +3360,11 @@ function App() {
 
       setTagTypes((current) => current.filter((item) => item.id !== itemId));
       setTagsByTagTypeId((current) => {
+        const next = { ...current };
+        delete next[itemId];
+        return next;
+      });
+      setTagTypeCalloutOpenById((current) => {
         const next = { ...current };
         delete next[itemId];
         return next;
@@ -3797,8 +3897,12 @@ function App() {
                 return (
                   <li key={item.id} className="tag-type-item">
                     <details
-                      className="tag-type-callout"
+                      className={`tag-type-callout${dragTargetTagTypeId === item.id ? " tag-type-callout-drop-target" : ""}`}
+                      open={!!tagTypeCalloutOpenById[item.id]}
                       onToggle={(event) => handleTagTypeCalloutToggle(item.id, event.currentTarget.open)}
+                      onDragOver={(event) => handleTagTypeDragOver(event, item.id)}
+                      onDragLeave={() => handleTagTypeDragLeave(item.id)}
+                      onDrop={(event) => void handleTagTypeDrop(event, item.id)}
                     >
                       <summary
                         className="tag-type-summary"
@@ -3959,7 +4063,13 @@ function App() {
                               };
 
                               return (
-                                <tr key={tagItem.id}>
+                                <tr
+                                  key={tagItem.id}
+                                  className={`tag-table-row${draggedTag?.id === tagItem.id ? " tag-table-row-dragging" : ""}`}
+                                  draggable={!isEditingTag && !isTagMoveInProgress}
+                                  onDragStart={(event) => handleTagDragStart(event, item.id, tagItem)}
+                                  onDragEnd={handleTagDragEnd}
+                                >
                                   <td>
                                     {isEditingTag ? (
                                       <input
