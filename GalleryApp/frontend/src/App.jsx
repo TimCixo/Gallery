@@ -42,6 +42,7 @@ function App() {
   const [savingTagByTagTypeId, setSavingTagByTagTypeId] = useState({});
   const [tagTypesError, setTagTypesError] = useState("");
   const [uploadItems, setUploadItems] = useState([]);
+  const [activeUploadIndex, setActiveUploadIndex] = useState(0);
   const [uploadState, setUploadState] = useState({ type: "", message: "" });
   const [isGroupUploadEnabled, setIsGroupUploadEnabled] = useState(false);
   const [uploadCollectionIds, setUploadCollectionIds] = useState([]);
@@ -724,6 +725,7 @@ function App() {
     draft,
     editable,
     onDraftChange,
+    linkedMediaCandidates = [],
     extraRows = null,
     showTagsRow = false
   }) => {
@@ -753,6 +755,65 @@ function App() {
         >
           {normalizedId}
         </button>
+      );
+    };
+    const renderLinkedMediaPicker = (fieldKey, label) => {
+      const currentValue = String(draft?.[fieldKey] || "");
+      const normalizedQuery = currentValue.trim().toLowerCase();
+      const filteredCandidates = Array.isArray(linkedMediaCandidates)
+        ? linkedMediaCandidates
+          .filter((candidate) => {
+            if (candidate?.id == null && !candidate?.isQueued) {
+              return false;
+            }
+
+            if (!normalizedQuery) {
+              return true;
+            }
+
+            const idValue = candidate?.id == null ? "" : String(candidate.id);
+            const nameValue = String(candidate?.displayName || "").toLowerCase();
+            return idValue.includes(normalizedQuery) || nameValue.includes(normalizedQuery);
+          })
+          .slice(0, 8)
+        : [];
+
+      return (
+        <div className="media-linked-picker">
+          <input
+            type="number"
+            min="1"
+            step="1"
+            className="media-edit-input"
+            value={currentValue}
+            onChange={(event) => onDraftChange({ [fieldKey]: event.target.value })}
+          />
+          {filteredCandidates.length > 0 ? (
+            <ul className="media-linked-picker-list">
+              {filteredCandidates.map((candidate) => {
+                const candidateKey = candidate?.key || `${fieldKey}-${candidate?.id ?? "queued"}`;
+                const isQueued = Boolean(candidate?.isQueued);
+                const candidateId = candidate?.id == null ? "" : String(candidate.id);
+                const name = String(candidate?.displayName || "Untitled");
+
+                return (
+                  <li key={candidateKey}>
+                    <button
+                      type="button"
+                      className={`media-linked-picker-item${isQueued ? " is-queued" : ""}`}
+                      onClick={() => onDraftChange({ [fieldKey]: candidateId })}
+                      disabled={isQueued || !candidateId}
+                      title={isQueued ? `${label} is queued and has no id yet` : `Select ${candidateId}`}
+                    >
+                      <span>#{candidateId || "—"} {name}</span>
+                      {isQueued ? <em>queued</em> : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+        </div>
       );
     };
 
@@ -981,14 +1042,7 @@ function App() {
             <th scope="row">Parent Id</th>
             <td>
               {editable ? (
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  className="media-edit-input"
-                  value={draft.parent}
-                  onChange={(event) => onDraftChange({ parent: event.target.value })}
-                />
+                renderLinkedMediaPicker("parent", "Parent")
               ) : renderLinkedMediaId(file?.parent, "Parent")}
             </td>
           </tr>
@@ -998,14 +1052,7 @@ function App() {
             <th scope="row">Child Id</th>
             <td>
               {editable ? (
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  className="media-edit-input"
-                  value={draft.child}
-                  onChange={(event) => onDraftChange({ child: event.target.value })}
-                />
+                renderLinkedMediaPicker("child", "Child")
               ) : renderLinkedMediaId(file?.child, "Child")}
             </td>
           </tr>
@@ -1525,6 +1572,7 @@ function App() {
     setUploadCollectionIds([]);
     setUploadCollectionsError("");
     setIsUploadCollectionPickerOpen(false);
+    setActiveUploadIndex(0);
   };
 
   const loadUploadCollections = async () => {
@@ -1576,6 +1624,7 @@ function App() {
     setIsGroupUploadEnabled(false);
     setUploadCollectionIds([]);
     setUploadCollectionsError("");
+    setActiveUploadIndex(0);
     setIsUploadOpen(true);
     void loadUploadCollections();
   };
@@ -1592,8 +1641,9 @@ function App() {
         return current;
       }
 
-      const [first, ...rest] = current;
-      return [{ ...first, draft: { ...first.draft, ...patch } }, ...rest];
+      return current.map((item, index) => (
+        index === activeUploadIndex ? { ...item, draft: { ...item.draft, ...patch } } : item
+      ));
     });
   };
 
@@ -2229,7 +2279,7 @@ function App() {
   };
 
   const handleUpload = async () => {
-    const activeItem = uploadItems[0];
+    const activeItem = uploadItems[activeUploadIndex];
     if (!activeItem) {
       setUploadState({ type: "error", message: "Select at least one file." });
       return;
@@ -2311,13 +2361,24 @@ function App() {
 
     const remaining = Math.max(uploadItems.length - 1, 0);
     setUploadItems((current) => {
-      if (current.length === 0) {
+      if (current.length === 0 || activeUploadIndex < 0 || activeUploadIndex >= current.length) {
         return current;
       }
 
-      const [first, ...rest] = current;
-      URL.revokeObjectURL(first.previewUrl);
-      return rest;
+      const next = [...current];
+      const [removedItem] = next.splice(activeUploadIndex, 1);
+      if (removedItem) {
+        URL.revokeObjectURL(removedItem.previewUrl);
+      }
+      return next;
+    });
+
+    setActiveUploadIndex((current) => {
+      if (remaining === 0) {
+        return 0;
+      }
+
+      return Math.min(current, remaining - 1);
     });
 
     if (remaining === 0) {
@@ -2763,7 +2824,7 @@ function App() {
     }
   };
 
-  const activeUploadItem = uploadItems[0] || null;
+  const activeUploadItem = uploadItems[activeUploadIndex] || null;
   const activeUploadFile = activeUploadItem
     ? {
       name: activeUploadItem.file.name,
@@ -2781,6 +2842,31 @@ function App() {
     .filter((item) => uploadCollectionIds.includes(Number(item.id)));
   const hasUploadHistory = uploadTaskStatuses.length > 0 || backgroundUploadState.total > 0;
   const backgroundRemaining = backgroundUploadState.queued + (backgroundUploadState.isProcessing ? 1 : 0);
+  const uploadItemsDraftMedia = uploadItems.map((item, index) => ({
+    key: item.key,
+    id: null,
+    displayName: item?.draft?.title?.trim() || getDisplayName(item?.file?.name) || "Untitled",
+    isQueued: true,
+    queueIndex: index
+  }));
+  const existingMediaById = new Map();
+  mediaFiles.forEach((item) => {
+    const mediaId = Number(item?.id);
+    if (!Number.isSafeInteger(mediaId) || mediaId <= 0 || existingMediaById.has(mediaId)) {
+      return;
+    }
+
+    existingMediaById.set(mediaId, {
+      key: `existing-${mediaId}`,
+      id: mediaId,
+      displayName: String(item?.title || getDisplayName(item?.name || item?.path || "") || `Media ${mediaId}`),
+      isQueued: false
+    });
+  });
+  const linkedMediaCandidates = [
+    ...uploadItemsDraftMedia,
+    ...Array.from(existingMediaById.values())
+  ];
   const uploadDropdownSummary = backgroundUploadState.total === 0
     ? "No uploads"
     : backgroundRemaining > 0
@@ -2800,6 +2886,49 @@ function App() {
   const isGalleryPage = activePage === "gallery";
   const isFavoritesPage = activePage === "favorites";
   const isCollectionsPage = activePage === "collections";
+  useEffect(() => {
+    if (!isUploadOpen) {
+      return;
+    }
+
+    setActiveUploadIndex((current) => {
+      if (uploadItems.length === 0) {
+        return 0;
+      }
+
+      return Math.min(Math.max(current, 0), uploadItems.length - 1);
+    });
+  }, [uploadItems.length, isUploadOpen]);
+
+  useEffect(() => {
+    if (!isUploadOpen) {
+      return undefined;
+    }
+
+    const handleUploadNavigation = (event) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement
+        && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setActiveUploadIndex((current) => Math.max(current - 1, 0));
+      }
+
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setActiveUploadIndex((current) => Math.min(current + 1, Math.max(uploadItems.length - 1, 0)));
+      }
+    };
+
+    window.addEventListener("keydown", handleUploadNavigation);
+    return () => window.removeEventListener("keydown", handleUploadNavigation);
+  }, [isUploadOpen, uploadItems.length]);
+
   const isFileDragEvent = (event) => Array.from(event.dataTransfer?.types || []).includes("Files");
   const handleRootDragEnter = (event) => {
     if (!isGalleryPage || !isFileDragEvent(event)) {
@@ -4036,9 +4165,29 @@ function App() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="media-modal-header">
-              <h2 className="upload-modal-title">
-                {uploadItems.length === 0 ? "No files remaining" : `Remaining files: ${uploadItems.length}`}
+                <h2 className="upload-modal-title">
+                {uploadItems.length === 0
+                  ? "No files remaining"
+                  : `File ${activeUploadIndex + 1}/${uploadItems.length}`}
               </h2>
+              <div className="media-upload-nav">
+                <button
+                  type="button"
+                  className="media-action-btn"
+                  onClick={() => setActiveUploadIndex((current) => Math.max(current - 1, 0))}
+                  disabled={uploadItems.length === 0 || activeUploadIndex === 0}
+                >
+                  ← Prev
+                </button>
+                <button
+                  type="button"
+                  className="media-action-btn"
+                  onClick={() => setActiveUploadIndex((current) => Math.min(current + 1, uploadItems.length - 1))}
+                  disabled={uploadItems.length === 0 || activeUploadIndex >= uploadItems.length - 1}
+                >
+                  Next →
+                </button>
+              </div>
               <button
                 type="button"
                 className="media-action-btn"
@@ -4073,6 +4222,7 @@ function App() {
                 draft: activeUploadItem?.draft || createMediaDraft(null),
                 editable: true,
                 onDraftChange: updateActiveUploadDraft,
+                linkedMediaCandidates,
                 showTagsRow: true,
                 extraRows: (
                   <>
@@ -4681,6 +4831,5 @@ function App() {
 }
 
 export default App;
-
 
 
