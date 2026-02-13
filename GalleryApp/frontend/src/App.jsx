@@ -129,6 +129,19 @@ function App() {
     parent: "",
     child: ""
   });
+  const [isMediaRelationPickerOpen, setIsMediaRelationPickerOpen] = useState(false);
+  const [mediaRelationPickerMode, setMediaRelationPickerMode] = useState("parent");
+  const [mediaRelationPickerQuery, setMediaRelationPickerQuery] = useState("");
+  const [mediaRelationPickerPage, setMediaRelationPickerPage] = useState(1);
+  const [mediaRelationPickerItems, setMediaRelationPickerItems] = useState([]);
+  const [mediaRelationPickerTotalPages, setMediaRelationPickerTotalPages] = useState(0);
+  const [mediaRelationPickerTotalCount, setMediaRelationPickerTotalCount] = useState(0);
+  const [isMediaRelationPickerLoading, setIsMediaRelationPickerLoading] = useState(false);
+  const [mediaRelationPickerError, setMediaRelationPickerError] = useState("");
+  const [mediaRelationPreviewByMode, setMediaRelationPreviewByMode] = useState({
+    parent: { item: null, isLoading: false, error: "" },
+    child: { item: null, isLoading: false, error: "" }
+  });
   const [activeTagTypeDropdownId, setActiveTagTypeDropdownId] = useState(null);
   const [tagTypeQueryById, setTagTypeQueryById] = useState({});
   const imageExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".bmp"]);
@@ -742,6 +755,65 @@ function App() {
     const hasSource = Boolean(String(file?.source || "").trim());
     const hasParent = file?.parent != null;
     const hasChild = file?.child != null;
+    const resolveDraftLinkedId = (value) => {
+      const normalizedValue = String(value || "").trim();
+      if (!normalizedValue) {
+        return null;
+      }
+
+      const parsed = Number.parseInt(normalizedValue, 10);
+      return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+    };
+    const renderRelationEditor = (mode, label) => {
+      const draftValue = mode === "parent" ? draft.parent : draft.child;
+      const relationId = resolveDraftLinkedId(draftValue);
+      const previewState = mediaRelationPreviewByMode[mode] || { item: null, isLoading: false, error: "" };
+      const relationItem = previewState.item;
+
+      return (
+        <div className="media-linked-editor">
+          <div className="media-linked-editor-controls">
+            <input
+              type="number"
+              min="1"
+              step="1"
+              className="media-edit-input"
+              value={draftValue}
+              onChange={(event) => onDraftChange({ [mode]: event.target.value })}
+            />
+            <button
+              type="button"
+              className="media-action-btn"
+              onClick={() => openMediaRelationPicker(mode)}
+            >
+              Select...
+            </button>
+            <button
+              type="button"
+              className="media-action-btn"
+              onClick={() => onDraftChange({ [mode]: "" })}
+              disabled={!String(draftValue || "").trim()}
+            >
+              Clear
+            </button>
+          </div>
+          {String(draftValue || "").trim() ? (
+            <div className="media-linked-editor-preview">
+              {relationId ? renderLinkedMediaId(relationId, label) : <span>{draftValue}</span>}
+              {previewState.isLoading ? (
+                <small>Resolving...</small>
+              ) : previewState.error ? (
+                <small className="media-action-error">{previewState.error}</small>
+              ) : relationItem ? (
+                <small>{relationItem.title || relationItem.relativePath || "Untitled media"}</small>
+              ) : (
+                <small>Media not found.</small>
+              )}
+            </div>
+          ) : null}
+        </div>
+      );
+    };
     const renderLinkedMediaId = (value, label) => {
       if (value == null) {
         return "-";
@@ -1003,14 +1075,7 @@ function App() {
             <th scope="row">Parent Id</th>
             <td>
               {editable ? (
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  className="media-edit-input"
-                  value={draft.parent}
-                  onChange={(event) => onDraftChange({ parent: event.target.value })}
-                />
+                renderRelationEditor("parent", "Parent")
               ) : renderLinkedMediaId(file?.parent, "Parent")}
             </td>
           </tr>
@@ -1020,14 +1085,7 @@ function App() {
             <th scope="row">Child Id</th>
             <td>
               {editable ? (
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  className="media-edit-input"
-                  value={draft.child}
-                  onChange={(event) => onDraftChange({ child: event.target.value })}
-                />
+                renderRelationEditor("child", "Child")
               ) : renderLinkedMediaId(file?.child, "Child")}
             </td>
           </tr>
@@ -2503,6 +2561,132 @@ function App() {
     const files = getPagedFiles(payload);
     return files.find((item) => item?.id === normalizedId) || null;
   };
+  const closeMediaRelationPicker = () => {
+    setIsMediaRelationPickerOpen(false);
+    setMediaRelationPickerError("");
+  };
+  const openMediaRelationPicker = (mode) => {
+    setMediaRelationPickerMode(mode === "child" ? "child" : "parent");
+    setMediaRelationPickerPage(1);
+    setMediaRelationPickerQuery("");
+    setMediaRelationPickerError("");
+    setIsMediaRelationPickerOpen(true);
+  };
+  const handleSelectMediaRelationFromPicker = (item) => {
+    const relationId = Number(item?.id);
+    if (!Number.isSafeInteger(relationId) || relationId <= 0) {
+      return;
+    }
+
+    setMediaDraft((current) => ({
+      ...current,
+      [mediaRelationPickerMode]: String(relationId)
+    }));
+    closeMediaRelationPicker();
+  };
+  const loadMediaRelationPicker = async () => {
+    setIsMediaRelationPickerLoading(true);
+    setMediaRelationPickerError("");
+    try {
+      const query = new URLSearchParams({
+        page: String(mediaRelationPickerPage),
+        pageSize: "12"
+      });
+      const normalizedSearch = String(mediaRelationPickerQuery || "").trim();
+      if (normalizedSearch) {
+        query.set("search", normalizedSearch);
+      }
+
+      const response = await fetch(`/api/media?${query.toString()}`);
+      if (!response.ok) {
+        throw new Error("Failed to load media picker data.");
+      }
+
+      const payload = await response.json();
+      setMediaRelationPickerItems(getPagedFiles(payload));
+      setMediaRelationPickerTotalPages(Math.max(0, Number(payload?.totalPages) || 0));
+      setMediaRelationPickerTotalCount(Math.max(0, Number(payload?.total) || 0));
+    } catch (error) {
+      setMediaRelationPickerItems([]);
+      setMediaRelationPickerTotalPages(0);
+      setMediaRelationPickerTotalCount(0);
+      setMediaRelationPickerError(error instanceof Error ? error.message : "Failed to load media picker data.");
+    } finally {
+      setIsMediaRelationPickerLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isMediaRelationPickerOpen) {
+      return;
+    }
+
+    void loadMediaRelationPicker();
+  }, [isMediaRelationPickerOpen, mediaRelationPickerPage, mediaRelationPickerQuery]);
+
+  useEffect(() => {
+    if (!isEditingMedia) {
+      setMediaRelationPreviewByMode({
+        parent: { item: null, isLoading: false, error: "" },
+        child: { item: null, isLoading: false, error: "" }
+      });
+      return;
+    }
+
+    const relationModes = ["parent", "child"];
+    const allCandidates = [selectedMedia, ...mediaFiles, ...favoritesFiles, ...collectionFiles];
+    relationModes.forEach((mode) => {
+      const rawValue = String(mode === "parent" ? mediaDraft.parent : mediaDraft.child || "").trim();
+      if (!rawValue) {
+        setMediaRelationPreviewByMode((current) => ({
+          ...current,
+          [mode]: { item: null, isLoading: false, error: "" }
+        }));
+        return;
+      }
+
+      const relationId = Number.parseInt(rawValue, 10);
+      if (!Number.isSafeInteger(relationId) || relationId <= 0) {
+        setMediaRelationPreviewByMode((current) => ({
+          ...current,
+          [mode]: { item: null, isLoading: false, error: "Invalid id." }
+        }));
+        return;
+      }
+
+      const localCandidate = allCandidates.find((item) => item?.id === relationId) || null;
+      if (localCandidate) {
+        setMediaRelationPreviewByMode((current) => ({
+          ...current,
+          [mode]: { item: localCandidate, isLoading: false, error: "" }
+        }));
+        return;
+      }
+
+      setMediaRelationPreviewByMode((current) => ({
+        ...current,
+        [mode]: { item: null, isLoading: true, error: "" }
+      }));
+
+      void fetchMediaById(relationId)
+        .then((item) => {
+          setMediaRelationPreviewByMode((current) => ({
+            ...current,
+            [mode]: {
+              item,
+              isLoading: false,
+              error: item ? "" : "Media not found."
+            }
+          }));
+        })
+        .catch(() => {
+          setMediaRelationPreviewByMode((current) => ({
+            ...current,
+            [mode]: { item: null, isLoading: false, error: "Failed to resolve media." }
+          }));
+        });
+    });
+  }, [isEditingMedia, mediaDraft.parent, mediaDraft.child, selectedMedia, mediaFiles, favoritesFiles, collectionFiles]);
 
   useEffect(() => {
     if (!isCollectionModalOpen) {
@@ -4988,6 +5172,97 @@ function App() {
                   >
                     Close
                   </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {isMediaRelationPickerOpen && isEditingMedia ? (
+            <div
+              className="media-confirm-overlay"
+              onClick={closeMediaRelationPicker}
+            >
+              <div
+                className="collection-picker-dialog media-relation-picker-dialog"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <p className="collection-picker-title">
+                  Select {mediaRelationPickerMode === "child" ? "child" : "parent"} media
+                </p>
+                <div className="media-relation-picker-controls">
+                  <input
+                    type="search"
+                    className="media-edit-input"
+                    value={mediaRelationPickerQuery}
+                    onChange={(event) => {
+                      setMediaRelationPickerQuery(event.target.value);
+                      setMediaRelationPickerPage(1);
+                    }}
+                    placeholder="Search by id, title, path..."
+                  />
+                  <button
+                    type="button"
+                    className="media-action-btn"
+                    onClick={() => {
+                      setMediaRelationPickerQuery("");
+                      setMediaRelationPickerPage(1);
+                    }}
+                    disabled={!mediaRelationPickerQuery}
+                  >
+                    Reset
+                  </button>
+                </div>
+                {mediaRelationPickerError ? <p className="media-action-error">{mediaRelationPickerError}</p> : null}
+                {isMediaRelationPickerLoading ? (
+                  <p className="collections-state">Loading media...</p>
+                ) : mediaRelationPickerItems.length === 0 ? (
+                  <p className="collections-state">No media found.</p>
+                ) : (
+                  <ul className="collection-picker-list media-relation-picker-list">
+                    {mediaRelationPickerItems.map((item) => (
+                      <li key={`relation-picker-${item.id}`}>
+                        <button
+                          type="button"
+                          className="collection-picker-item"
+                          onClick={() => handleSelectMediaRelationFromPicker(item)}
+                        >
+                          <span>#{item.id} · {item.title || item.relativePath || "Untitled media"}</span>
+                          <small>{item.relativePath || "No path"}</small>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="media-action-row media-action-row-spaced">
+                  <small>
+                    Page {mediaRelationPickerPage}
+                    {mediaRelationPickerTotalPages > 0 ? ` / ${mediaRelationPickerTotalPages}` : ""}
+                    {mediaRelationPickerTotalCount > 0 ? ` · ${mediaRelationPickerTotalCount} total` : ""}
+                  </small>
+                  <div className="media-action-row">
+                    <button
+                      type="button"
+                      className="media-action-btn"
+                      onClick={() => setMediaRelationPickerPage((current) => Math.max(1, current - 1))}
+                      disabled={isMediaRelationPickerLoading || mediaRelationPickerPage <= 1}
+                    >
+                      Prev
+                    </button>
+                    <button
+                      type="button"
+                      className="media-action-btn"
+                      onClick={() => setMediaRelationPickerPage((current) => current + 1)}
+                      disabled={isMediaRelationPickerLoading || (mediaRelationPickerTotalPages > 0 && mediaRelationPickerPage >= mediaRelationPickerTotalPages)}
+                    >
+                      Next
+                    </button>
+                    <button
+                      type="button"
+                      className="media-action-btn"
+                      onClick={closeMediaRelationPicker}
+                    >
+                      Close
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
