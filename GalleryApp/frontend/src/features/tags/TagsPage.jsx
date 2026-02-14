@@ -24,11 +24,14 @@ export default function TagsPage(props) {
     tagTypes,
     editingTagTypeId,
     dragTargetTagTypeId,
+    draggedTag,
     tagTypeCalloutOpenById,
     handleTagTypeCalloutToggle,
     handleTagTypeDragOver,
     handleTagTypeDragLeave,
     handleTagTypeDrop,
+    handleTagDragStart,
+    handleTagDragEnd,
     editingTagTypeColor,
     setEditingTagTypeColor,
     editingTagTypeName,
@@ -51,10 +54,6 @@ export default function TagsPage(props) {
     handleSaveTag,
     handleCancelEditTag,
     handleStartEditTag,
-    activeTagManagerTagTypeId,
-    setActiveTagManagerTagTypeId,
-    tagManagerCloseButtonRef,
-    tagManagerTriggerButtonRef,
     tagsByTagTypeId,
     tagTableStateByTagTypeId
   } = props;
@@ -147,8 +146,15 @@ export default function TagsPage(props) {
                           {filteredTags.map((tagItem) => {
                             const isEditingTag = editingTagByTagTypeId[item.id] === tagItem.id;
                             const editingDraft = editingTagDraftById[tagItem.id] ?? { name: String(tagItem.name || ""), description: String(tagItem.description || "") };
+                            const isDraggedTag = draggedTag?.id === tagItem.id && draggedTag?.sourceTagTypeId === item.id;
                             return (
-                              <tr key={tagItem.id} className="tag-table-row">
+                              <tr
+                                key={tagItem.id}
+                                className={`tag-table-row${isDraggedTag ? " tag-table-row-dragging" : ""}`}
+                                draggable={!isEditingTag}
+                                onDragStart={(event) => handleTagDragStart(event, item.id, tagItem)}
+                                onDragEnd={handleTagDragEnd}
+                              >
                                 <td>{isEditingTag ? <input type="text" className="tag-table-input" value={editingDraft.name} onChange={(event) => handleEditTagDraftChange(tagItem.id, { name: event.target.value })} /> : tagItem.name}</td>
                                 <td>{isEditingTag ? <input type="text" className="tag-table-input" value={editingDraft.description} onChange={(event) => handleEditTagDraftChange(tagItem.id, { description: event.target.value })} /> : (tagItem.description || "-")}</td>
                                 <td><div className="tag-table-actions">{isEditingTag ? (<><button type="button" className="tags-action-btn tags-action-create" onClick={() => void handleSaveTag(item.id, tagItem.id)} disabled={!String(editingDraft.name || "").trim() || !!savingTagByTagTypeId[item.id]} title="Save tag">{"\u2714"}</button><button type="button" className="tags-action-btn tags-action-clear" onClick={() => handleCancelEditTag(item.id)} disabled={!!savingTagByTagTypeId[item.id]} title="Cancel edit">{"\u274C"}</button></>) : (<><button type="button" className="tags-action-btn tag-table-edit-btn" onClick={() => handleStartEditTag(item.id, tagItem)} title="Edit tag">{"\u2699"}</button><button type="button" className="tags-action-btn tags-action-delete" onClick={() => openTagDeleteConfirm({ kind: "tag", id: tagItem.id, tagTypeId: item.id, name: tagItem.name })} disabled={!!savingTagByTagTypeId[item.id]} title="Delete tag">{"\uD83D\uDDD1"}</button></>)}</div></td>
@@ -166,37 +172,6 @@ export default function TagsPage(props) {
         ) : null}
       </section>
 
-      {activeTagManagerTagTypeId ? (
-        <div className="media-confirm-overlay" onClick={() => setActiveTagManagerTagTypeId(null)}>
-          <div className="tag-manager-dialog" onClick={(event) => event.stopPropagation()}>
-            <div className="tag-manager-header">
-              <h3>Manage tags</h3>
-              <button ref={tagManagerCloseButtonRef} type="button" className="media-action-btn" onClick={() => setActiveTagManagerTagTypeId(null)}>Close</button>
-            </div>
-            <table className="tag-table"><tbody>
-              <tr>
-                <td><input type="text" className="tag-table-input" value={newTagDraftByTagTypeId[activeTagManagerTagTypeId]?.name ?? ""} onChange={(event) => handleNewTagDraftChange(activeTagManagerTagTypeId, { name: event.target.value })} placeholder="New tag name" /></td>
-                <td><input type="text" className="tag-table-input" value={newTagDraftByTagTypeId[activeTagManagerTagTypeId]?.description ?? ""} onChange={(event) => handleNewTagDraftChange(activeTagManagerTagTypeId, { description: event.target.value })} placeholder="Description" /></td>
-                <td><div className="tag-table-actions"><button type="button" className="tags-action-btn tags-action-create" onClick={() => void handleCreateTag(activeTagManagerTagTypeId)} disabled={!String(newTagDraftByTagTypeId[activeTagManagerTagTypeId]?.name || "").trim() || !!savingTagByTagTypeId[activeTagManagerTagTypeId]} title="Create tag">{"\u2714"}</button><button type="button" className="tags-action-btn tags-action-clear" onClick={() => handleClearNewTagDraft(activeTagManagerTagTypeId)} disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]} title="Clear new tag">{"\u274C"}</button></div></td>
-              </tr>
-              {(tagsByTagTypeId[activeTagManagerTagTypeId] ?? []).map((tagItem) => {
-                const isEditingTag = editingTagByTagTypeId[activeTagManagerTagTypeId] === tagItem.id;
-                const editingDraft = editingTagDraftById[tagItem.id] ?? { name: String(tagItem.name || ""), description: String(tagItem.description || "") };
-                return (
-                  <tr key={tagItem.id}>
-                    <td>{isEditingTag ? <input type="text" className="tag-table-input" value={editingDraft.name} onChange={(event) => handleEditTagDraftChange(tagItem.id, { name: event.target.value })} /> : tagItem.name}</td>
-                    <td>{isEditingTag ? <input type="text" className="tag-table-input" value={editingDraft.description} onChange={(event) => handleEditTagDraftChange(tagItem.id, { description: event.target.value })} /> : (tagItem.description || "-")}</td>
-                    <td><div className="tag-table-actions">{isEditingTag ? (<><button type="button" className="tags-action-btn tags-action-create" onClick={() => void handleSaveTag(activeTagManagerTagTypeId, tagItem.id)} disabled={!String(editingDraft.name || "").trim() || !!savingTagByTagTypeId[activeTagManagerTagTypeId]} title="Save tag">{"\u2714"}</button><button type="button" className="tags-action-btn tags-action-clear" onClick={() => handleCancelEditTag(activeTagManagerTagTypeId)} disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]} title="Cancel edit">{"\u274C"}</button></>) : (<><button type="button" className="tags-action-btn tag-table-edit-btn" onClick={() => handleStartEditTag(activeTagManagerTagTypeId, tagItem)} title="Edit tag">{"\u2699"}</button><button type="button" className="tags-action-btn tags-action-delete" onClick={() => openTagDeleteConfirm({ kind: "tag", id: tagItem.id, tagTypeId: activeTagManagerTagTypeId, name: tagItem.name })} disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]} title="Delete tag">{"\uD83D\uDDD1"}</button></>)}</div></td>
-                  </tr>
-                );
-              })}
-            </tbody></table>
-            {tagTableStateByTagTypeId[activeTagManagerTagTypeId]?.loading ? <p className="tag-table-state">Loading tags...</p> : null}
-            {tagTableStateByTagTypeId[activeTagManagerTagTypeId]?.error ? <p className="tag-table-state tag-table-state-error">{tagTableStateByTagTypeId[activeTagManagerTagTypeId].error}</p> : null}
-            <button ref={tagManagerTriggerButtonRef} type="button" style={{ display: "none" }} aria-hidden="true" tabIndex={-1} />
-          </div>
-        </div>
-      ) : null}
     </>
   );
 }
