@@ -1,223 +1,239 @@
-﻿import { useEffect, useRef, useState } from "react";
+﻿import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
-import { useCollectionsManager } from "./hooks/useCollectionsManager";
-import { useMediaEditor } from "./hooks/useMediaEditor";
-import { useTagsManager } from "./hooks/useTagsManager";
-import { useUploadManager } from "./hooks/useUploadManager";
+
+const PAGE_SIZE = 36;
+const BASE_SEARCH_TAG_OPTIONS = ["path", "title", "description", "id", "source"];
+const BASE_SEARCH_TAG_NAMES = new Set(BASE_SEARCH_TAG_OPTIONS);
+const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".jfif", ".png", ".webp", ".bmp"]);
+const VIDEO_EXTENSIONS = new Set([".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v"]);
+const ALLOWED_EXTENSIONS = new Set([
+  ...IMAGE_EXTENSIONS,
+  ".gif",
+  ...VIDEO_EXTENSIONS
+]);
+
+const Pagination = memo(function Pagination({
+  isLoading,
+  page,
+  totalPages,
+  jumpValue,
+  jumpLabel,
+  loadingLabel,
+  showLoadingState,
+  onJumpValueChange,
+  onPageChange,
+  onJumpSubmit
+}) {
+  return (
+    <div className="media-pagination-wrap">
+      <div className="media-pagination">
+        <button
+          type="button"
+          onClick={() => onPageChange(page - 1)}
+          disabled={isLoading || page <= 1 || totalPages === 0}
+        >
+          Prev
+        </button>
+        <p>
+          Page {totalPages === 0 ? 0 : page} of {totalPages}
+        </p>
+        <button
+          type="button"
+          onClick={() => onPageChange(page + 1)}
+          disabled={isLoading || totalPages === 0 || page >= totalPages}
+        >
+          Next
+        </button>
+        <form className="media-pagination-jump" onSubmit={onJumpSubmit}>
+          <input
+            type="number"
+            min={1}
+            max={Math.max(totalPages, 1)}
+            step={1}
+            inputMode="numeric"
+            value={jumpValue}
+            onChange={(event) => onJumpValueChange(event.target.value)}
+            disabled={isLoading || totalPages === 0}
+            aria-label={jumpLabel}
+          />
+          <button type="submit" disabled={isLoading || totalPages === 0}>
+            Go
+          </button>
+        </form>
+      </div>
+      {showLoadingState ? (
+        <p className="media-pagination-status" aria-live="polite">
+          {isLoading ? loadingLabel : "\u00A0"}
+        </p>
+      ) : null}
+    </div>
+  );
+});
+
+const MediaGrid = memo(function MediaGrid({ files, failedPreviewPaths, getDisplayName, onOpenMedia, onPreviewError }) {
+  return (
+    <div className="media-grid">
+      {files.map((file) => (
+        <article
+          key={file.relativePath}
+          className="media-tile"
+          role="button"
+          tabIndex={0}
+          onClick={() => onOpenMedia(file)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onOpenMedia(file);
+            }
+          }}
+        >
+          <div className="media-preview">
+            {file._tileUrl && !failedPreviewPaths.has(file.relativePath) ? (
+              <img
+                src={file._tileUrl}
+                alt={getDisplayName(file.name)}
+                loading="lazy"
+                onError={() => onPreviewError(file.relativePath)}
+              />
+            ) : (
+              <div className="media-fallback">Preview unavailable</div>
+            )}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+});
 
 function App() {
-  const PAGE_SIZE = 36;
-  const baseSearchTagOptions = ["path", "title", "description", "id", "source"];
-  const baseSearchTagNames = new Set(baseSearchTagOptions);
-  const allowedExtensions = new Set([
-    ".jpg",
-    ".jpeg",
-    ".jfif",
-    ".png",
-    ".gif",
-    ".webp",
-    ".bmp",
-    ".mp4",
-    ".webm",
-    ".mov",
-    ".avi",
-    ".mkv",
-    ".m4v"
-  ]);
   const [health, setHealth] = useState("loading...");
   const [inputValue, setInputValue] = useState("");
   const [submittedText, setSubmittedText] = useState("");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isSlideMenuOpen, setIsSlideMenuOpen] = useState(false);
   const [activePage, setActivePage] = useState("gallery");
-  const {
-    tagTypeNameInput,
-    setTagTypeNameInput,
-    tagTypeColorInput,
-    setTagTypeColorInput,
-    tagTypes,
-    setTagTypes,
-    isTagTypesLoading,
-    setIsTagTypesLoading,
-    isTagTypeSaving,
-    setIsTagTypeSaving,
-    editingTagTypeId,
-    setEditingTagTypeId,
-    editingTagTypeName,
-    setEditingTagTypeName,
-    editingTagTypeColor,
-    setEditingTagTypeColor,
-    isTagTypeUpdating,
-    setIsTagTypeUpdating,
-    tagsByTagTypeId,
-    setTagsByTagTypeId,
-    tagSearchQueryByTagTypeId,
-    setTagSearchQueryByTagTypeId,
-    tagTableStateByTagTypeId,
-    setTagTableStateByTagTypeId,
-    newTagDraftByTagTypeId,
-    setNewTagDraftByTagTypeId,
-    editingTagByTagTypeId,
-    setEditingTagByTagTypeId,
-    editingTagDraftById,
-    setEditingTagDraftById,
-    savingTagByTagTypeId,
-    setSavingTagByTagTypeId,
-    tagTypesError,
-    setTagTypesError,
-    isTagMoveInProgress,
-    setIsTagMoveInProgress,
-    draggedTag,
-    setDraggedTag,
-    dragTargetTagTypeId,
-    setDragTargetTagTypeId,
-    tagTypeCalloutOpenById,
-    setTagTypeCalloutOpenById,
-    activeTagTypeDropdownId,
-    setActiveTagTypeDropdownId,
-    tagTypeQueryById,
-    setTagTypeQueryById
-  } = useTagsManager();
-  const {
-    uploadItems,
-    setUploadItems,
-    uploadStep,
-    setUploadStep,
-    activeUploadIndex,
-    setActiveUploadIndex,
-    uploadState,
-    setUploadState,
-    isGroupUploadEnabled,
-    setIsGroupUploadEnabled,
-    uploadCollectionIds,
-    setUploadCollectionIds,
-    uploadCollections,
-    setUploadCollections,
-    isUploadCollectionsLoading,
-    setIsUploadCollectionsLoading,
-    uploadCollectionsError,
-    setUploadCollectionsError,
-    isUploadCollectionPickerOpen,
-    setIsUploadCollectionPickerOpen,
-    isUploadQueueDragOver,
-    setIsUploadQueueDragOver,
-    isDragOverPage,
-    setIsDragOverPage,
-    backgroundUploadState,
-    setBackgroundUploadState,
-    uploadTaskStatuses,
-    setUploadTaskStatuses
-  } = useUploadManager();
-  const {
-    collections,
-    setCollections,
-    isCollectionsLoading,
-    setIsCollectionsLoading,
-    collectionsError,
-    setCollectionsError,
-    collectionsSearchQuery,
-    setCollectionsSearchQuery,
-    collectionFormLabel,
-    setCollectionFormLabel,
-    collectionFormDescription,
-    setCollectionFormDescription,
-    collectionFormCover,
-    setCollectionFormCover,
-    editingCollectionId,
-    setEditingCollectionId,
-    isCollectionSaving,
-    setIsCollectionSaving,
-    isCollectionModalOpen,
-    setIsCollectionModalOpen,
-    collectionPreviewMedia,
-    setCollectionPreviewMedia,
-    isCollectionPreviewLoading,
-    setIsCollectionPreviewLoading,
-    selectedCollection,
-    setSelectedCollection,
-    collectionFiles,
-    setCollectionFiles,
-    isCollectionFilesLoading,
-    setIsCollectionFilesLoading,
-    collectionFilesError,
-    setCollectionFilesError,
-    collectionFilesPage,
-    setCollectionFilesPage,
-    collectionFilesTotalPages,
-    setCollectionFilesTotalPages,
-    collectionFilesTotalCount,
-    setCollectionFilesTotalCount,
-    collectionFilesPageJumpInput,
-    setCollectionFilesPageJumpInput,
-    pendingCollectionDelete,
-    setPendingCollectionDelete,
-    isCollectionDeleting,
-    setIsCollectionDeleting
-  } = useCollectionsManager();
-  const {
-    selectedMedia,
-    setSelectedMedia,
-    isEditingMedia,
-    setIsEditingMedia,
-    isMediaSaving,
-    setIsMediaSaving,
-    isMediaDeleting,
-    setIsMediaDeleting,
-    showDeleteConfirm,
-    setShowDeleteConfirm,
-    pendingTagDelete,
-    setPendingTagDelete,
-    isTagDeleting,
-    setIsTagDeleting,
-    mediaModalError,
-    setMediaModalError,
-    isFavoriteUpdating,
-    setIsFavoriteUpdating,
-    isCollectionPickerOpen,
-    setIsCollectionPickerOpen,
-    collectionPickerItems,
-    setCollectionPickerItems,
-    isCollectionPickerLoading,
-    setIsCollectionPickerLoading,
-    collectionPickerError,
-    setCollectionPickerError,
-    isAddingMediaToCollection,
-    setIsAddingMediaToCollection,
-    mediaTagCatalog,
-    setMediaTagCatalog,
-    isMediaTagCatalogLoading,
-    setIsMediaTagCatalogLoading,
-    mediaTagCatalogError,
-    setMediaTagCatalogError,
-    activeTagManagerTagTypeId,
-    setActiveTagManagerTagTypeId,
-    mediaDraft,
-    setMediaDraft,
-    isMediaRelationPickerOpen,
-    setIsMediaRelationPickerOpen,
-    mediaRelationPickerMode,
-    setMediaRelationPickerMode,
-    mediaRelationPickerContext,
-    setMediaRelationPickerContext,
-    mediaRelationPickerQuery,
-    setMediaRelationPickerQuery,
-    mediaRelationPickerPage,
-    setMediaRelationPickerPage,
-    mediaRelationPickerItems,
-    setMediaRelationPickerItems,
-    mediaRelationPickerTotalPages,
-    setMediaRelationPickerTotalPages,
-    mediaRelationPickerTotalCount,
-    setMediaRelationPickerTotalCount,
-    isMediaRelationPickerLoading,
-    setIsMediaRelationPickerLoading,
-    mediaRelationPickerError,
-    setMediaRelationPickerError,
-    mediaRelationPreviewByMode,
-    setMediaRelationPreviewByMode
-  } = useMediaEditor();
-  const imageExtensions = new Set([".jpg", ".jpeg", ".jfif", ".png", ".webp", ".bmp"]);
-  const videoExtensions = new Set([".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v"]);
+  const [tagTypeNameInput, setTagTypeNameInput] = useState("");
+  const [tagTypeColorInput, setTagTypeColorInput] = useState("#2563EB");
+  const [tagTypes, setTagTypes] = useState([]);
+  const [isTagTypesLoading, setIsTagTypesLoading] = useState(false);
+  const [isTagTypeSaving, setIsTagTypeSaving] = useState(false);
+  const [editingTagTypeId, setEditingTagTypeId] = useState(null);
+  const [editingTagTypeName, setEditingTagTypeName] = useState("");
+  const [editingTagTypeColor, setEditingTagTypeColor] = useState("#2563EB");
+  const [isTagTypeUpdating, setIsTagTypeUpdating] = useState(false);
+  const [tagsByTagTypeId, setTagsByTagTypeId] = useState({});
+  const [tagSearchQueryByTagTypeId, setTagSearchQueryByTagTypeId] = useState({});
+  const [tagTableStateByTagTypeId, setTagTableStateByTagTypeId] = useState({});
+  const [newTagDraftByTagTypeId, setNewTagDraftByTagTypeId] = useState({});
+  const [editingTagByTagTypeId, setEditingTagByTagTypeId] = useState({});
+  const [editingTagDraftById, setEditingTagDraftById] = useState({});
+  const [savingTagByTagTypeId, setSavingTagByTagTypeId] = useState({});
+  const [tagTypesError, setTagTypesError] = useState("");
+  const [isTagMoveInProgress, setIsTagMoveInProgress] = useState(false);
+  const [draggedTag, setDraggedTag] = useState(null);
+  const [dragTargetTagTypeId, setDragTargetTagTypeId] = useState(null);
+  const [tagTypeCalloutOpenById, setTagTypeCalloutOpenById] = useState({});
+  const [uploadItems, setUploadItems] = useState([]);
+  const [uploadStep, setUploadStep] = useState("queue");
+  const [activeUploadIndex, setActiveUploadIndex] = useState(0);
+  const [uploadState, setUploadState] = useState({ type: "", message: "" });
+  const [isGroupUploadEnabled, setIsGroupUploadEnabled] = useState(false);
+  const [uploadCollectionIds, setUploadCollectionIds] = useState([]);
+  const [uploadCollections, setUploadCollections] = useState([]);
+  const [isUploadCollectionsLoading, setIsUploadCollectionsLoading] = useState(false);
+  const [uploadCollectionsError, setUploadCollectionsError] = useState("");
+  const [isUploadCollectionPickerOpen, setIsUploadCollectionPickerOpen] = useState(false);
+  const [isUploadQueueDragOver, setIsUploadQueueDragOver] = useState(false);
+  const [isDragOverPage, setIsDragOverPage] = useState(false);
+  const [backgroundUploadState, setBackgroundUploadState] = useState({
+    total: 0,
+    queued: 0,
+    completed: 0,
+    failed: 0,
+    isProcessing: false,
+    activeFileName: "",
+    activePercent: 0
+  });
+  const [uploadTaskStatuses, setUploadTaskStatuses] = useState([]);
+  const [mediaFiles, setMediaFiles] = useState([]);
+  const [isMediaLoading, setIsMediaLoading] = useState(true);
+  const [mediaError, setMediaError] = useState("");
+  const [favoritesFiles, setFavoritesFiles] = useState([]);
+  const [isFavoritesLoading, setIsFavoritesLoading] = useState(false);
+  const [favoritesError, setFavoritesError] = useState("");
+  const [collections, setCollections] = useState([]);
+  const [isCollectionsLoading, setIsCollectionsLoading] = useState(false);
+  const [collectionsError, setCollectionsError] = useState("");
+  const [collectionsSearchQuery, setCollectionsSearchQuery] = useState("");
+  const [collectionFormLabel, setCollectionFormLabel] = useState("");
+  const [collectionFormDescription, setCollectionFormDescription] = useState("");
+  const [collectionFormCover, setCollectionFormCover] = useState("");
+  const [editingCollectionId, setEditingCollectionId] = useState(null);
+  const [isCollectionSaving, setIsCollectionSaving] = useState(false);
+  const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
+  const [collectionPreviewMedia, setCollectionPreviewMedia] = useState(null);
+  const [isCollectionPreviewLoading, setIsCollectionPreviewLoading] = useState(false);
+  const [selectedCollection, setSelectedCollection] = useState(null);
+  const [collectionFiles, setCollectionFiles] = useState([]);
+  const [isCollectionFilesLoading, setIsCollectionFilesLoading] = useState(false);
+  const [collectionFilesError, setCollectionFilesError] = useState("");
+  const [collectionFilesPage, setCollectionFilesPage] = useState(1);
+  const [collectionFilesTotalPages, setCollectionFilesTotalPages] = useState(0);
+  const [collectionFilesTotalCount, setCollectionFilesTotalCount] = useState(0);
+  const [collectionFilesPageJumpInput, setCollectionFilesPageJumpInput] = useState("1");
+  const [pendingCollectionDelete, setPendingCollectionDelete] = useState(null);
+  const [isCollectionDeleting, setIsCollectionDeleting] = useState(false);
+  const [favoritesPage, setFavoritesPage] = useState(1);
+  const [favoritesTotalPages, setFavoritesTotalPages] = useState(0);
+  const [favoritesTotalFiles, setFavoritesTotalFiles] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [pageJumpInput, setPageJumpInput] = useState("1");
+  const [favoritesPageJumpInput, setFavoritesPageJumpInput] = useState("1");
+  const [totalFiles, setTotalFiles] = useState(0);
+  const [failedPreviewPaths, setFailedPreviewPaths] = useState(new Set());
+  const [selectedMedia, setSelectedMedia] = useState(null);
+  const [isEditingMedia, setIsEditingMedia] = useState(false);
+  const [isSavingMedia, setIsSavingMedia] = useState(false);
+  const [isDeletingMedia, setIsDeletingMedia] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [pendingTagDelete, setPendingTagDelete] = useState(null);
+  const [isDeletingTagEntity, setIsDeletingTagEntity] = useState(false);
+  const [mediaModalError, setMediaModalError] = useState("");
+  const [isFavoriteUpdating, setIsFavoriteUpdating] = useState(false);
+  const [isCollectionPickerOpen, setIsCollectionPickerOpen] = useState(false);
+  const [collectionPickerItems, setCollectionPickerItems] = useState([]);
+  const [isCollectionPickerLoading, setIsCollectionPickerLoading] = useState(false);
+  const [collectionPickerError, setCollectionPickerError] = useState("");
+  const [isAddingMediaToCollection, setIsAddingMediaToCollection] = useState(false);
+  const [mediaTagCatalog, setMediaTagCatalog] = useState([]);
+  const [isMediaTagCatalogLoading, setIsMediaTagCatalogLoading] = useState(false);
+  const [mediaTagCatalogError, setMediaTagCatalogError] = useState("");
+  const [activeTagManagerTagTypeId, setActiveTagManagerTagTypeId] = useState(null);
+  const [mediaDraft, setMediaDraft] = useState({
+    title: "",
+    description: "",
+    source: "",
+    tagsByType: {},
+    parent: "",
+    child: ""
+  });
+  const [isMediaRelationPickerOpen, setIsMediaRelationPickerOpen] = useState(false);
+  const [mediaRelationPickerMode, setMediaRelationPickerMode] = useState("parent");
+  const [mediaRelationPickerContext, setMediaRelationPickerContext] = useState("media");
+  const [mediaRelationPickerQuery, setMediaRelationPickerQuery] = useState("");
+  const [mediaRelationPickerPage, setMediaRelationPickerPage] = useState(1);
+  const [mediaRelationPickerItems, setMediaRelationPickerItems] = useState([]);
+  const [mediaRelationPickerTotalPages, setMediaRelationPickerTotalPages] = useState(0);
+  const [mediaRelationPickerTotalCount, setMediaRelationPickerTotalCount] = useState(0);
+  const [isMediaRelationPickerLoading, setIsMediaRelationPickerLoading] = useState(false);
+  const [mediaRelationPickerError, setMediaRelationPickerError] = useState("");
+  const [mediaRelationPreviewByMode, setMediaRelationPreviewByMode] = useState({
+    parent: { item: null, isLoading: false, error: "" },
+    child: { item: null, isLoading: false, error: "" }
+  });
+  const [activeTagTypeDropdownId, setActiveTagTypeDropdownId] = useState(null);
+  const [tagTypeQueryById, setTagTypeQueryById] = useState({});
   const backgroundUploadQueueRef = useRef([]);
   const isBackgroundUploadWorkerRunningRef = useRef(false);
   const uploadTaskSequenceRef = useRef(1);
@@ -234,7 +250,7 @@ function App() {
   const [isSearchInputFocused, setIsSearchInputFocused] = useState(false);
   const [activeSearchSuggestionIndex, setActiveSearchSuggestionIndex] = useState(0);
   const [isSearchSuggestionExplicitlyActive, setIsSearchSuggestionExplicitlyActive] = useState(false);
-  const searchTagTypeOptions = (() => {
+  const searchTagTypeOptions = useMemo(() => {
     const map = new Map();
 
     tagTypes.forEach((tagType) => {
@@ -278,25 +294,25 @@ function App() {
     });
 
     return Array.from(map.values());
-  })();
-  const searchTagTypeMap = (() => {
+  }, [tagTypes, mediaTagCatalog]);
+  const searchTagTypeMap = useMemo(() => {
     const map = new Map();
     searchTagTypeOptions.forEach((item) => {
       map.set(item.lowerName, item);
     });
     return map;
-  })();
-  const searchTagOptions = Array.from(new Set([
-    ...baseSearchTagOptions,
+  }, [searchTagTypeOptions]);
+  const searchTagOptions = useMemo(() => Array.from(new Set([
+    ...BASE_SEARCH_TAG_OPTIONS,
     ...searchTagTypeOptions.map((item) => item.lowerName)
-  ]));
-  const syncSearchHighlightScroll = () => {
+  ])), [searchTagTypeOptions]);
+  const syncSearchHighlightScroll = useCallback(() => {
     if (!searchInputRef.current || !searchHighlightRef.current) {
       return;
     }
 
     searchHighlightRef.current.scrollLeft = searchInputRef.current.scrollLeft;
-  };
+  }, []);
   const parseSearchSegments = (value) => {
     const text = String(value || "");
     if (!text) {
@@ -332,7 +348,7 @@ function App() {
         ? normalizedToken
         : tagName;
       const tagType = searchTagTypeMap.get(normalizedTokenTagName);
-      const isKnownSearchTag = baseSearchTagNames.has(normalizedTokenTagName);
+      const isKnownSearchTag = BASE_SEARCH_TAG_NAMES.has(normalizedTokenTagName);
       const isTypedKnownPrefix = separatorIndex < 0 && searchTagOptions.some((option) => option.startsWith(normalizedTokenTagName));
       const isTag = Boolean(normalizedTokenTagName) && (
         isKnownSearchTag
@@ -452,7 +468,7 @@ function App() {
     }
 
     const tagName = tokenWithoutAtPrefix.slice(0, separatorIndex).trim().toLowerCase();
-    if (!tagName || baseSearchTagNames.has(tagName) || !searchTagTypeMap.has(tagName)) {
+    if (!tagName || BASE_SEARCH_TAG_NAMES.has(tagName) || !searchTagTypeMap.has(tagName)) {
       return [];
     }
 
@@ -587,6 +603,9 @@ function App() {
     setActiveSearchSuggestionIndex(0);
     setIsSearchSuggestionExplicitlyActive(false);
   }, [searchSuggestions.length, activeSearchSuggestionIndex]);
+  const handlePreviewError = useCallback((relativePath) => {
+    setFailedPreviewPaths((prev) => new Set(prev).add(relativePath));
+  }, []);
   const getExtensionFromPath = (value) => {
     if (!value) {
       return "";
@@ -610,7 +629,7 @@ function App() {
       return original;
     }
 
-    if (imageExtensions.has(getExtensionFromPath(original))) {
+    if (IMAGE_EXTENSIONS.has(getExtensionFromPath(original))) {
       return original;
     }
 
@@ -620,12 +639,12 @@ function App() {
 
     return "";
   };
-  const visibleMediaFiles = mediaFiles
-    .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) }));
-  const visibleFavoriteFiles = favoritesFiles
-    .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) }));
-  const visibleCollectionFiles = collectionFiles
-    .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) }));
+  const visibleMediaFiles = useMemo(() => mediaFiles
+    .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) })), [mediaFiles]);
+  const visibleFavoriteFiles = useMemo(() => favoritesFiles
+    .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) })), [favoritesFiles]);
+  const visibleCollectionFiles = useMemo(() => collectionFiles
+    .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) })), [collectionFiles]);
   const getMediaIdentity = (file) => {
     if (!file || typeof file !== "object") {
       return "";
@@ -694,7 +713,7 @@ function App() {
       return true;
     }
 
-    return videoExtensions.has(getExtensionFromPath(resolveOriginalMediaUrl(file) || file.name));
+    return VIDEO_EXTENSIONS.has(getExtensionFromPath(resolveOriginalMediaUrl(file) || file.name));
   };
   const formatMediaDate = (value) => {
     if (!value) {
@@ -778,7 +797,7 @@ function App() {
       .map((item) => item.trim())
       .filter(Boolean);
   };
-  const mediaTagCatalogByTypeId = (() => {
+  const mediaTagCatalogByTypeId = useMemo(() => {
     const map = new Map();
     mediaTagCatalog.forEach((tag) => {
       const tagTypeId = getTagTypeId(tag?.tagTypeId);
@@ -793,7 +812,7 @@ function App() {
       map.get(tagTypeId).push(tag);
     });
     return map;
-  })();
+  }, [mediaTagCatalog]);
   const buildMediaDraftTagsByType = (file) => {
     const grouped = new Map();
     getFileMediaTags(file).forEach((tag) => {
@@ -1465,7 +1484,7 @@ function App() {
     }
 
     setIsEditingMedia(false);
-    setIsMediaSaving(false);
+    setIsSavingMedia(false);
     setIsDeletingMedia(false);
     setShowDeleteConfirm(false);
     setMediaModalError("");
@@ -1670,51 +1689,6 @@ function App() {
     handlePageChange(targetPage);
   };
 
-  const renderPagination = (showLoadingState = false) => (
-    <div className="media-pagination-wrap">
-      <div className="media-pagination">
-        <button
-          type="button"
-          onClick={() => handlePageChange(currentPage - 1)}
-          disabled={isMediaLoading || currentPage <= 1 || totalPages === 0}
-        >
-          Prev
-        </button>
-        <p>
-          Page {totalPages === 0 ? 0 : currentPage} of {totalPages}
-        </p>
-        <button
-          type="button"
-          onClick={() => handlePageChange(currentPage + 1)}
-          disabled={isMediaLoading || totalPages === 0 || currentPage >= totalPages}
-        >
-          Next
-        </button>
-        <form className="media-pagination-jump" onSubmit={handlePageJumpSubmit}>
-          <input
-            type="number"
-            min={1}
-            max={Math.max(totalPages, 1)}
-            step={1}
-            inputMode="numeric"
-            value={pageJumpInput}
-            onChange={(event) => setPageJumpInput(event.target.value)}
-            disabled={isMediaLoading || totalPages === 0}
-            aria-label="Go to page"
-          />
-          <button type="submit" disabled={isMediaLoading || totalPages === 0}>
-            Go
-          </button>
-        </form>
-      </div>
-      {showLoadingState ? (
-        <p className="media-pagination-status" aria-live="polite">
-          {isMediaLoading ? "Loading media..." : "\u00A0"}
-        </p>
-      ) : null}
-    </div>
-  );
-
   const handleFavoritesPageChange = (nextPage) => {
     if (isFavoritesLoading) {
       return;
@@ -1748,51 +1722,6 @@ function App() {
     handleFavoritesPageChange(targetPage);
   };
 
-  const renderFavoritesPagination = (showLoadingState = false) => (
-    <div className="media-pagination-wrap">
-      <div className="media-pagination">
-        <button
-          type="button"
-          onClick={() => handleFavoritesPageChange(favoritesPage - 1)}
-          disabled={isFavoritesLoading || favoritesPage <= 1 || favoritesTotalPages === 0}
-        >
-          Prev
-        </button>
-        <p>
-          Page {favoritesTotalPages === 0 ? 0 : favoritesPage} of {favoritesTotalPages}
-        </p>
-        <button
-          type="button"
-          onClick={() => handleFavoritesPageChange(favoritesPage + 1)}
-          disabled={isFavoritesLoading || favoritesTotalPages === 0 || favoritesPage >= favoritesTotalPages}
-        >
-          Next
-        </button>
-        <form className="media-pagination-jump" onSubmit={handleFavoritesPageJumpSubmit}>
-          <input
-            type="number"
-            min={1}
-            max={Math.max(favoritesTotalPages, 1)}
-            step={1}
-            inputMode="numeric"
-            value={favoritesPageJumpInput}
-            onChange={(event) => setFavoritesPageJumpInput(event.target.value)}
-            disabled={isFavoritesLoading || favoritesTotalPages === 0}
-            aria-label="Go to favorites page"
-          />
-          <button type="submit" disabled={isFavoritesLoading || favoritesTotalPages === 0}>
-            Go
-          </button>
-        </form>
-      </div>
-      {showLoadingState ? (
-        <p className="media-pagination-status" aria-live="polite">
-          {isFavoritesLoading ? "Loading favorites..." : "\u00A0"}
-        </p>
-      ) : null}
-    </div>
-  );
-
   const handleCollectionFilesPageChange = (nextPage) => {
     if (isCollectionFilesLoading || !selectedCollection?.id) {
       return;
@@ -1825,51 +1754,6 @@ function App() {
     setCollectionFilesPageJumpInput(String(targetPage));
     handleCollectionFilesPageChange(targetPage);
   };
-
-  const renderCollectionFilesPagination = (showLoadingState = false) => (
-    <div className="media-pagination-wrap">
-      <div className="media-pagination">
-        <button
-          type="button"
-          onClick={() => handleCollectionFilesPageChange(collectionFilesPage - 1)}
-          disabled={isCollectionFilesLoading || collectionFilesPage <= 1 || collectionFilesTotalPages === 0}
-        >
-          Prev
-        </button>
-        <p>
-          Page {collectionFilesTotalPages === 0 ? 0 : collectionFilesPage} of {collectionFilesTotalPages}
-        </p>
-        <button
-          type="button"
-          onClick={() => handleCollectionFilesPageChange(collectionFilesPage + 1)}
-          disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0 || collectionFilesPage >= collectionFilesTotalPages}
-        >
-          Next
-        </button>
-        <form className="media-pagination-jump" onSubmit={handleCollectionFilesPageJumpSubmit}>
-          <input
-            type="number"
-            min={1}
-            max={Math.max(collectionFilesTotalPages, 1)}
-            step={1}
-            inputMode="numeric"
-            value={collectionFilesPageJumpInput}
-            onChange={(event) => setCollectionFilesPageJumpInput(event.target.value)}
-            disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0}
-            aria-label="Go to collection media page"
-          />
-          <button type="submit" disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0}>
-            Go
-          </button>
-        </form>
-      </div>
-      {showLoadingState ? (
-        <p className="media-pagination-status" aria-live="polite">
-          {isCollectionFilesLoading ? "Loading collection files..." : "\u00A0"}
-        </p>
-      ) : null}
-    </div>
-  );
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -1943,7 +1827,7 @@ function App() {
         key: getFileKey(file),
         file,
         previewUrl: sourceUrl,
-        mediaType: videoExtensions.has(extension) ? "video" : "image",
+        mediaType: VIDEO_EXTENSIONS.has(extension) ? "video" : "image",
         draft: createMediaDraft(null)
       };
     });
@@ -2142,7 +2026,7 @@ function App() {
               name: uploaded?.storedName || task.file.name,
               relativePath: uploadedRelativePath,
               originalUrl: `/media/${encodeURIComponent(uploadedRelativePath).replace(/%2F/g, "/")}`,
-              mediaType: videoExtensions.has(uploadedExtension) ? "video" : "image",
+              mediaType: VIDEO_EXTENSIONS.has(uploadedExtension) ? "video" : "image",
               title: task.draft.title || null,
               description: task.draft.description || null,
               source: task.draft.source || null,
@@ -2691,7 +2575,7 @@ function App() {
 
     setUploadState({ type: "", message: "" });
 
-    if (!allowedExtensions.has(getExtension(activeItem.file.name))) {
+    if (!ALLOWED_EXTENSIONS.has(getExtension(activeItem.file.name))) {
       setUploadState({ type: "error", message: `Unsupported file type: ${activeItem.file.name}` });
       return;
     }
@@ -2739,7 +2623,7 @@ function App() {
     }
 
     if (isGroupUploadEnabled) {
-      const unsupportedFile = uploadItems.find((item) => !allowedExtensions.has(getExtension(item.file.name)));
+      const unsupportedFile = uploadItems.find((item) => !ALLOWED_EXTENSIONS.has(getExtension(item.file.name)));
       if (unsupportedFile) {
         setUploadState({ type: "error", message: `Unsupported file type: ${unsupportedFile.file.name}` });
         return;
@@ -3246,7 +3130,7 @@ function App() {
       }
     }
 
-    setIsMediaSaving(true);
+    setIsSavingMedia(true);
     const previousParentId = selectedMedia?.parent ?? null;
     const previousChildId = selectedMedia?.child ?? null;
     try {
@@ -3327,7 +3211,7 @@ function App() {
     } catch (error) {
       setMediaModalError(error instanceof Error ? error.message : "Failed to update media.");
     } finally {
-      setIsMediaSaving(false);
+      setIsSavingMedia(false);
     }
   };
 
@@ -4048,7 +3932,7 @@ function App() {
     setTagTypesError("");
   };
   const closeTagDeleteConfirm = () => {
-    if (isTagDeleting) {
+    if (isDeletingTagEntity) {
       return;
     }
 
@@ -4059,7 +3943,7 @@ function App() {
       return;
     }
 
-    setIsTagDeleting(true);
+    setIsDeletingTagEntity(true);
     let deleted = false;
     if (pendingTagDelete.kind === "tagType") {
       deleted = await handleDeleteTagType(pendingTagDelete.id);
@@ -4067,7 +3951,7 @@ function App() {
       deleted = await handleDeleteTag(pendingTagDelete.tagTypeId, pendingTagDelete.id);
     }
 
-    setIsTagDeleting(false);
+    setIsDeletingTagEntity(false);
     if (deleted) {
       setPendingTagDelete(null);
     }
@@ -4339,40 +4223,37 @@ function App() {
 
         {!mediaError && visibleMediaFiles.length > 0 ? (
           <>
-            {renderPagination(true)}
-            <div className="media-grid">
-              {visibleMediaFiles.map((file) => (
-                <article
-                  key={file.relativePath}
-                  className="media-tile"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setSelectedMedia(file)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      setSelectedMedia(file);
-                    }
-                  }}
-                >
-                  <div className="media-preview">
-                    {file._tileUrl && !failedPreviewPaths.has(file.relativePath) ? (
-                    <img
-                      src={file._tileUrl}
-                      alt={getDisplayName(file.name)}
-                      loading="lazy"
-                      onError={() => {
-                        setFailedPreviewPaths((prev) => new Set(prev).add(file.relativePath));
-                        }}
-                      />
-                    ) : (
-                      <div className="media-fallback">Preview unavailable</div>
-                    )}
-                  </div>
-                </article>
-              ))}
-            </div>
-            {renderPagination(false)}
+            <Pagination
+              isLoading={isMediaLoading}
+              page={currentPage}
+              totalPages={totalPages}
+              jumpValue={pageJumpInput}
+              jumpLabel="Go to page"
+              loadingLabel="Loading media..."
+              showLoadingState
+              onJumpValueChange={setPageJumpInput}
+              onPageChange={handlePageChange}
+              onJumpSubmit={handlePageJumpSubmit}
+            />
+            <MediaGrid
+              files={visibleMediaFiles}
+              failedPreviewPaths={failedPreviewPaths}
+              getDisplayName={getDisplayName}
+              onOpenMedia={setSelectedMedia}
+              onPreviewError={handlePreviewError}
+            />
+            <Pagination
+              isLoading={isMediaLoading}
+              page={currentPage}
+              totalPages={totalPages}
+              jumpValue={pageJumpInput}
+              jumpLabel="Go to page"
+              loadingLabel="Loading media..."
+              showLoadingState={false}
+              onJumpValueChange={setPageJumpInput}
+              onPageChange={handlePageChange}
+              onJumpSubmit={handlePageJumpSubmit}
+            />
           </>
         ) : null}
       </section>
@@ -4387,40 +4268,37 @@ function App() {
           ) : null}
           {!favoritesError && favoritesTotalFiles > 0 ? (
             <>
-              {renderFavoritesPagination(true)}
-              <div className="media-grid">
-                {visibleFavoriteFiles.map((file) => (
-                  <article
-                    key={file.relativePath}
-                    className="media-tile"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedMedia(file)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        setSelectedMedia(file);
-                      }
-                    }}
-                  >
-                    <div className="media-preview">
-                      {file._tileUrl && !failedPreviewPaths.has(file.relativePath) ? (
-                        <img
-                          src={file._tileUrl}
-                          alt={getDisplayName(file.name)}
-                          loading="lazy"
-                          onError={() => {
-                            setFailedPreviewPaths((prev) => new Set(prev).add(file.relativePath));
-                          }}
-                        />
-                      ) : (
-                        <div className="media-fallback">Preview unavailable</div>
-                      )}
-                    </div>
-                  </article>
-                ))}
-              </div>
-              {renderFavoritesPagination(false)}
+              <Pagination
+                isLoading={isFavoritesLoading}
+                page={favoritesPage}
+                totalPages={favoritesTotalPages}
+                jumpValue={favoritesPageJumpInput}
+                jumpLabel="Go to favorites page"
+                loadingLabel="Loading favorites..."
+                showLoadingState
+                onJumpValueChange={setFavoritesPageJumpInput}
+                onPageChange={handleFavoritesPageChange}
+                onJumpSubmit={handleFavoritesPageJumpSubmit}
+              />
+              <MediaGrid
+                files={visibleFavoriteFiles}
+                failedPreviewPaths={failedPreviewPaths}
+                getDisplayName={getDisplayName}
+                onOpenMedia={setSelectedMedia}
+                onPreviewError={handlePreviewError}
+              />
+              <Pagination
+                isLoading={isFavoritesLoading}
+                page={favoritesPage}
+                totalPages={favoritesTotalPages}
+                jumpValue={favoritesPageJumpInput}
+                jumpLabel="Go to favorites page"
+                loadingLabel="Loading favorites..."
+                showLoadingState={false}
+                onJumpValueChange={setFavoritesPageJumpInput}
+                onPageChange={handleFavoritesPageChange}
+                onJumpSubmit={handleFavoritesPageJumpSubmit}
+              />
             </>
           ) : null}
         </section>
@@ -5442,40 +5320,37 @@ function App() {
               ) : null}
               {!collectionFilesError && collectionFilesTotalCount > 0 ? (
                 <>
-                  {renderCollectionFilesPagination(true)}
-                  <div className="media-grid">
-                    {visibleCollectionFiles.map((file) => (
-                      <article
-                        key={file.relativePath}
-                        className="media-tile"
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => setSelectedMedia(file)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            setSelectedMedia(file);
-                          }
-                        }}
-                      >
-                        <div className="media-preview">
-                          {file._tileUrl && !failedPreviewPaths.has(file.relativePath) ? (
-                            <img
-                              src={file._tileUrl}
-                              alt={getDisplayName(file.name)}
-                              loading="lazy"
-                              onError={() => {
-                                setFailedPreviewPaths((prev) => new Set(prev).add(file.relativePath));
-                              }}
-                            />
-                          ) : (
-                            <div className="media-fallback">Preview unavailable</div>
-                          )}
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                  {renderCollectionFilesPagination(false)}
+                  <Pagination
+                    isLoading={isCollectionFilesLoading}
+                    page={collectionFilesPage}
+                    totalPages={collectionFilesTotalPages}
+                    jumpValue={collectionFilesPageJumpInput}
+                    jumpLabel="Go to collection media page"
+                    loadingLabel="Loading collection files..."
+                    showLoadingState
+                    onJumpValueChange={setCollectionFilesPageJumpInput}
+                    onPageChange={handleCollectionFilesPageChange}
+                    onJumpSubmit={handleCollectionFilesPageJumpSubmit}
+                  />
+'                  <MediaGrid
+                    files={visibleCollectionFiles}
+                    failedPreviewPaths={failedPreviewPaths}
+                    getDisplayName={getDisplayName}
+                    onOpenMedia={setSelectedMedia}
+                    onPreviewError={handlePreviewError}
+                  />
+                  <Pagination
+                    isLoading={isCollectionFilesLoading}
+                    page={collectionFilesPage}
+                    totalPages={collectionFilesTotalPages}
+                    jumpValue={collectionFilesPageJumpInput}
+                    jumpLabel="Go to collection media page"
+                    loadingLabel="Loading collection files..."
+                    showLoadingState={false}
+                    onJumpValueChange={setCollectionFilesPageJumpInput}
+                    onPageChange={handleCollectionFilesPageChange}
+                    onJumpSubmit={handleCollectionFilesPageJumpSubmit}
+                  />
                 </>
               ) : null}
             </div>
@@ -5634,15 +5509,15 @@ function App() {
                       type="button"
                       className="media-action-btn media-action-primary"
                       onClick={handleSaveMedia}
-                      disabled={isMediaSaving || isDeletingMedia}
+                      disabled={isSavingMedia || isDeletingMedia}
                     >
-                      {isMediaSaving ? "Saving..." : "Okay"}
+                      {isSavingMedia ? "Saving..." : "Okay"}
                     </button>
                     <button
                       type="button"
                       className="media-action-btn"
                       onClick={handleCancelEditMedia}
-                      disabled={isMediaSaving || isDeletingMedia}
+                      disabled={isSavingMedia || isDeletingMedia}
                     >
                       Cancel
                     </button>
@@ -5876,15 +5751,15 @@ function App() {
                 type="button"
                 className="media-action-btn media-action-danger"
                 onClick={handleConfirmTagDelete}
-                disabled={isTagDeleting}
+                disabled={isDeletingTagEntity}
               >
-                {isTagDeleting ? "Deleting..." : "Yes"}
+                {isDeletingTagEntity ? "Deleting..." : "Yes"}
               </button>
               <button
                 type="button"
                 className="media-action-btn"
                 onClick={closeTagDeleteConfirm}
-                disabled={isTagDeleting}
+                disabled={isDeletingTagEntity}
               >
                 No
               </button>
