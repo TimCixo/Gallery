@@ -1,4 +1,9 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { collectionsApi } from "./api/collectionsApi";
+import { getErrorMessage } from "./api/httpClient";
+import { mediaApi } from "./api/mediaApi";
+import { tagsApi } from "./api/tagsApi";
+import { uploadApi } from "./api/uploadApi";
 import "./App.css";
 
 function App() {
@@ -1304,8 +1309,7 @@ function App() {
   };
 
   useEffect(() => {
-    fetch("/api/health")
-      .then((response) => response.json())
+    mediaApi.getHealth()
       .then((data) => setHealth(`${data.status} (${data.timestampUtc})`))
       .catch(() => setHealth("backend unavailable"));
   }, []);
@@ -1316,27 +1320,19 @@ function App() {
     mediaLoadAbortRef.current = controller;
     mediaLoadRequestIdRef.current += 1;
     const requestId = mediaLoadRequestIdRef.current;
-    const timeoutId = window.setTimeout(() => controller.abort(), 20000);
 
     setIsMediaLoading(true);
     setMediaError("");
 
     try {
-      const query = new URLSearchParams({
-        page: String(page),
-        pageSize: String(PAGE_SIZE)
-      });
       const normalizedSearchText = String(searchText || "").trim();
-      if (normalizedSearchText) {
-        query.set("search", normalizedSearchText);
-      }
-
-      const response = await fetch(`/api/media?${query.toString()}`, { signal: controller.signal });
-      if (!response.ok) {
-        throw new Error("Failed to fetch media files.");
-      }
-
-      const result = await response.json();
+      const result = await mediaApi.listMedia({
+        page,
+        pageSize: PAGE_SIZE,
+        search: normalizedSearchText,
+        signal: controller.signal,
+        timeoutMs: 20000
+      });
       if (requestId !== mediaLoadRequestIdRef.current) {
         return;
       }
@@ -1353,13 +1349,8 @@ function App() {
       setMediaFiles([]);
       setTotalPages(0);
       setTotalFiles(0);
-      if (error instanceof DOMException && error.name === "AbortError") {
-        setMediaError("Media request timed out. Try again.");
-      } else {
-        setMediaError(error instanceof Error ? error.message : "Failed to fetch media files.");
-      }
+      setMediaError(getErrorMessage(error, "Failed to fetch media files."));
     } finally {
-      window.clearTimeout(timeoutId);
       if (requestId === mediaLoadRequestIdRef.current) {
         setIsMediaLoading(false);
       }
@@ -2084,27 +2075,11 @@ function App() {
             : null;
 
           if (uploaded?.id) {
-            const response = await fetch(`/api/media/${uploaded.id}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(task.draft)
-            });
-            if (!response.ok) {
-              const payload = await readResponsePayload(response);
-              throw new Error(payload?.error || `Failed to save metadata for ${task.file.name}.`);
-            }
+            await uploadApi.updateUploadedMedia(uploaded.id, task.draft);
 
             const collectionIds = Array.isArray(task.collectionIds) ? task.collectionIds : [];
             for (const collectionId of collectionIds) {
-              const addToCollectionResponse = await fetch(`/api/collections/${collectionId}/media`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ mediaId: uploaded.id })
-              });
-              if (!addToCollectionResponse.ok) {
-                const payload = await readResponsePayload(addToCollectionResponse);
-                throw new Error(payload?.error || `Failed to add ${task.file.name} to collection.`);
-              }
+              await collectionsApi.addMediaToCollection(collectionId, uploaded.id);
             }
           }
 
@@ -2164,12 +2139,7 @@ function App() {
     setFavoritesError("");
 
     try {
-      const response = await fetch(`/api/favorites?page=${page}&pageSize=${PAGE_SIZE}`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch favorites.");
-      }
-
-      const result = await response.json();
+      const result = await mediaApi.listFavorites({ page, pageSize: PAGE_SIZE });
       setFavoritesFiles(getPagedFiles(result));
       setFavoritesPage(Number.isInteger(result.page) ? result.page : page);
       setFavoritesTotalPages(Number.isInteger(result.totalPages) ? result.totalPages : 0);
@@ -2179,7 +2149,7 @@ function App() {
       setFavoritesPage(1);
       setFavoritesTotalPages(0);
       setFavoritesTotalFiles(0);
-      setFavoritesError(error instanceof Error ? error.message : "Failed to fetch favorites.");
+      setFavoritesError(getErrorMessage(error, "Failed to fetch favorites."));
     } finally {
       setIsFavoritesLoading(false);
     }
@@ -2424,19 +2394,11 @@ function App() {
     setTagTypesError("");
 
     try {
-      const response = await fetch("/api/tag-types");
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("TagTypes API not found (404). Restart backend to apply latest changes.");
-        }
-        throw new Error("Failed to fetch tag types.");
-      }
-
-      const result = await response.json();
+      const result = await tagsApi.listTagTypes();
       setTagTypes(Array.isArray(result.items) ? result.items : []);
     } catch (error) {
       setTagTypes([]);
-      setTagTypesError(error instanceof Error ? error.message : "Failed to fetch tag types.");
+      setTagTypesError(getErrorMessage(error, "Failed to fetch tag types."));
     } finally {
       setIsTagTypesLoading(false);
     }
@@ -2446,19 +2408,11 @@ function App() {
     setMediaTagCatalogError("");
 
     try {
-      const response = await fetch("/api/tags");
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("Tags API not found (404). Restart backend to apply latest changes.");
-        }
-        throw new Error("Failed to fetch tags for autocomplete.");
-      }
-
-      const result = await response.json();
+      const result = await tagsApi.listTags();
       setMediaTagCatalog(Array.isArray(result.items) ? result.items : []);
     } catch (error) {
       setMediaTagCatalog([]);
-      setMediaTagCatalogError(error instanceof Error ? error.message : "Failed to fetch tags for autocomplete.");
+      setMediaTagCatalogError(getErrorMessage(error, "Failed to fetch tags for autocomplete."));
     } finally {
       setIsMediaTagCatalogLoading(false);
     }
@@ -2470,15 +2424,7 @@ function App() {
     }));
 
     try {
-      const response = await fetch(`/api/tag-types/${tagTypeId}/tags`);
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("Tags API not found (404). Restart backend to apply latest changes.");
-        }
-        throw new Error("Failed to fetch tags.");
-      }
-
-      const result = await response.json();
+      const result = await tagsApi.listTagsByTagType(tagTypeId);
       const items = Array.isArray(result.items) ? result.items : [];
       setTagsByTagTypeId((current) => ({
         ...current,
@@ -2498,7 +2444,7 @@ function App() {
         ...current,
         [tagTypeId]: {
           loading: false,
-          error: error instanceof Error ? error.message : "Failed to fetch tags."
+          error: getErrorMessage(error, "Failed to fetch tags.")
         }
       }));
       return [];
@@ -2835,19 +2781,17 @@ function App() {
       return null;
     }
 
-    const query = new URLSearchParams({
-      page: "1",
-      pageSize: "1",
-      search: `id:${normalizedId}`
-    });
-    const response = await fetch(`/api/media?${query.toString()}`);
-    if (!response.ok) {
+    try {
+      const payload = await mediaApi.listMedia({
+        page: 1,
+        pageSize: 1,
+        search: `id:${normalizedId}`
+      });
+      const files = getPagedFiles(payload);
+      return files.find((item) => item?.id === normalizedId) || null;
+    } catch {
       return null;
     }
-
-    const payload = await response.json();
-    const files = getPagedFiles(payload);
-    return files.find((item) => item?.id === normalizedId) || null;
   };
   const closeMediaRelationPicker = () => {
     setIsMediaRelationPickerOpen(false);
@@ -3182,23 +3126,14 @@ function App() {
     const previousParentId = selectedMedia?.parent ?? null;
     const previousChildId = selectedMedia?.child ?? null;
     try {
-      const response = await fetch(`/api/media/${selectedMedia.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title || null,
-          description: description || null,
-          source: source || null,
-          tagIds,
-          parent,
-          child
-        })
+      const result = await mediaApi.updateMedia(selectedMedia.id, {
+        title: title || null,
+        description: description || null,
+        source: source || null,
+        tagIds,
+        parent,
+        child
       });
-
-      const result = await readResponsePayload(response);
-      if (!response.ok) {
-        throw new Error(result?.error || "Failed to update media.");
-      }
 
       const patch = {
         title: result.title ?? null,
@@ -3257,7 +3192,7 @@ function App() {
       setActiveTagTypeDropdownId(null);
       setTagTypeQueryById({});
     } catch (error) {
-      setMediaModalError(error instanceof Error ? error.message : "Failed to update media.");
+      setMediaModalError(getErrorMessage(error, "Failed to update media."));
     } finally {
       setIsSavingMedia(false);
     }
@@ -3272,19 +3207,13 @@ function App() {
     setMediaModalError("");
     setIsDeletingMedia(true);
     try {
-      const response = await fetch(`/api/media/${selectedMedia.id}`, {
-        method: "DELETE"
-      });
-      const result = await readResponsePayload(response);
-      if (!response.ok) {
-        throw new Error(result?.error || "Failed to delete media.");
-      }
+      await mediaApi.deleteMedia(selectedMedia.id);
 
       setSelectedMedia(null);
       await loadMedia(currentPage, submittedText);
       await loadFavorites(favoritesPage);
     } catch (error) {
-      setMediaModalError(error instanceof Error ? error.message : "Failed to delete media.");
+      setMediaModalError(getErrorMessage(error, "Failed to delete media."));
     } finally {
       setIsDeletingMedia(false);
       setShowDeleteConfirm(false);
@@ -5862,7 +5791,6 @@ function App() {
 }
 
 export default App;
-
 
 
 
