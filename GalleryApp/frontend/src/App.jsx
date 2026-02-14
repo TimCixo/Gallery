@@ -1,5 +1,10 @@
 ﻿import { useEffect, useRef, useState } from "react";
 import "./App.css";
+import MediaEditorModal from "./features/media/components/MediaEditorModal";
+import MediaRelationPickerModal from "./features/media/components/MediaRelationPickerModal";
+import UploadModal from "./features/upload/components/UploadModal";
+import CollectionPickerModal from "./features/collections/components/CollectionPickerModal";
+import TagManagerPopup from "./features/tags/components/TagManagerPopup";
 
 function App() {
   const PAGE_SIZE = 36;
@@ -1393,7 +1398,7 @@ function App() {
 
   useEffect(() => {
     if (!selectedMedia) {
-      return undefined;
+      return;
     }
 
     setIsEditingMedia(false);
@@ -1411,61 +1416,8 @@ function App() {
     setTagTypeQueryById({});
     setMediaDraft(createMediaDraft(selectedMedia));
     void loadMediaTagCatalog();
-
-    const handleEsc = (event) => {
-      if (event.key === "Escape") {
-        setSelectedMedia(null);
-      }
-    };
-
-    window.addEventListener("keydown", handleEsc);
-    return () => window.removeEventListener("keydown", handleEsc);
   }, [selectedMedia]);
 
-  useEffect(() => {
-    if (!selectedMedia) {
-      return undefined;
-    }
-
-    const handleMediaArrows = (event) => {
-      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
-        return;
-      }
-
-      const activeElement = document.activeElement;
-      if (
-        activeElement instanceof HTMLElement &&
-        (activeElement.tagName === "INPUT" || activeElement.tagName === "TEXTAREA" || activeElement.isContentEditable)
-      ) {
-        return;
-      }
-
-      if (!canNavigateSelectedMedia) {
-        return;
-      }
-
-      event.preventDefault();
-      handleNavigateSelectedMedia(event.key === "ArrowRight" ? 1 : -1);
-    };
-
-    window.addEventListener("keydown", handleMediaArrows);
-    return () => window.removeEventListener("keydown", handleMediaArrows);
-  }, [selectedMedia, canNavigateSelectedMedia, selectedMediaIndex, currentModalMediaFiles]);
-
-  useEffect(() => {
-    if (!isUploadOpen) {
-      return undefined;
-    }
-
-    const handleEsc = (event) => {
-      if (event.key === "Escape") {
-        closeUploadModal();
-      }
-    };
-
-    window.addEventListener("keydown", handleEsc);
-    return () => window.removeEventListener("keydown", handleEsc);
-  }, [isUploadOpen]);
 
   useEffect(() => {
     if (!isSlideMenuOpen) {
@@ -1482,31 +1434,6 @@ function App() {
     return () => window.removeEventListener("keydown", handleEsc);
   }, [isSlideMenuOpen]);
 
-  useEffect(() => {
-    if (activeTagManagerTagTypeId === null) {
-      return undefined;
-    }
-
-    const closeButton = tagManagerCloseButtonRef.current;
-    if (closeButton instanceof HTMLButtonElement) {
-      closeButton.focus();
-    }
-
-    const handleEsc = (event) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closeTagManagerPopup();
-      }
-    };
-
-    window.addEventListener("keydown", handleEsc);
-    return () => {
-      window.removeEventListener("keydown", handleEsc);
-      if (tagManagerTriggerButtonRef.current instanceof HTMLButtonElement) {
-        tagManagerTriggerButtonRef.current.focus();
-      }
-    };
-  }, [activeTagManagerTagTypeId]);
 
   useEffect(() => {
     if (!selectedMedia) {
@@ -3371,35 +3298,6 @@ function App() {
     });
   }, [uploadItems.length, isUploadOpen]);
 
-  useEffect(() => {
-    if (!isUploadOpen) {
-      return undefined;
-    }
-
-    const handleUploadNavigation = (event) => {
-      const target = event.target;
-      if (
-        target instanceof HTMLElement
-        && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
-      ) {
-        return;
-      }
-
-      if (event.key === "ArrowLeft") {
-        event.preventDefault();
-        setActiveUploadIndex((current) => Math.max(current - 1, 0));
-      }
-
-      if (event.key === "ArrowRight") {
-        event.preventDefault();
-        setActiveUploadIndex((current) => Math.min(current + 1, Math.max(uploadItems.length - 1, 0)));
-      }
-    };
-
-    window.addEventListener("keydown", handleUploadNavigation);
-    return () => window.removeEventListener("keydown", handleUploadNavigation);
-  }, [isUploadOpen, uploadItems.length]);
-
   const isFileDragEvent = (event) => Array.from(event.dataTransfer?.types || []).includes("Files");
   const handleRootDragEnter = (event) => {
     if (!isGalleryPage || !isFileDragEvent(event)) {
@@ -4756,22 +4654,28 @@ function App() {
         </section>
       )}
 
-      {activeTagManagerTagTypeId !== null ? (
+      <TagManagerPopup
+        isOpen={activeTagManagerTagTypeId !== null}
+        onClose={() => {
+          if (activeTagManagerTagTypeId !== null && !savingTagByTagTypeId[activeTagManagerTagTypeId]) {
+            closeTagManagerPopup();
+          }
+        }}
+        onSubmit={handleCreateTag}
+        initialData={{
+          closeButtonRef: tagManagerCloseButtonRef,
+          triggerButtonRef: tagManagerTriggerButtonRef,
+          activeTagManagerTagTypeId,
+          isSaving: activeTagManagerTagTypeId !== null ? !!savingTagByTagTypeId[activeTagManagerTagTypeId] : false
+        }}
+      >
         <div
-          className="media-confirm-overlay"
-          onClick={() => {
-            if (!savingTagByTagTypeId[activeTagManagerTagTypeId]) {
-              closeTagManagerPopup();
-            }
-          }}
+          className="media-confirm-dialog tag-manager-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Tag manager"
+          onClick={(event) => event.stopPropagation()}
         >
-          <div
-            className="media-confirm-dialog tag-manager-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Tag manager"
-            onClick={(event) => event.stopPropagation()}
-          >
             <div className="tag-manager-header">
               <strong>
                 Manage tags: {tagTypes.find((item) => item.id === activeTagManagerTagTypeId)?.name || `TagType ${activeTagManagerTagTypeId}`}
@@ -4925,8 +4829,7 @@ function App() {
               <p className="tag-table-state tag-table-state-error">{tagTableStateByTagTypeId[activeTagManagerTagTypeId].error}</p>
             ) : null}
           </div>
-        </div>
-      ) : null}
+      </TagManagerPopup>
 
       <footer className="app-footer">
         <p>React frontend is running.</p>
@@ -4935,18 +4838,22 @@ function App() {
         {submittedText ? <p>Last submitted: {submittedText}</p> : null}
       </footer>
 
-      {isUploadOpen ? (
+      <UploadModal
+        isOpen={isUploadOpen}
+        onClose={closeUploadModal}
+        onSubmit={handleUpload}
+        initialData={{
+          uploadStep,
+          activeUploadIndex,
+          onPrev: () => setActiveUploadIndex((current) => Math.max(current - 1, 0)),
+          onNext: () => setActiveUploadIndex((current) => Math.min(current + 1, Math.max(uploadItems.length - 1, 0)))
+        }}
+      >
         <div
-          className="media-modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          onClick={closeUploadModal}
+          className={`media-modal${uploadStep === "queue" ? " media-modal-upload-queue" : " media-modal-editing"}`}
+          onClick={(event) => event.stopPropagation()}
+          onPaste={uploadStep === "queue" ? handleUploadQueuePaste : undefined}
         >
-          <div
-            className={`media-modal${uploadStep === "queue" ? " media-modal-upload-queue" : " media-modal-editing"}`}
-            onClick={(event) => event.stopPropagation()}
-            onPaste={uploadStep === "queue" ? handleUploadQueuePaste : undefined}
-          >
             <div className="media-modal-header">
               <h2 className="upload-modal-title">
                 {uploadStep === "queue"
@@ -5172,18 +5079,18 @@ function App() {
               </>
             )}
           </div>
-        </div>
-      ) : null}
+      </UploadModal>
 
-      {isUploadOpen && isUploadCollectionPickerOpen ? (
+      <CollectionPickerModal
+        isOpen={isUploadOpen && isUploadCollectionPickerOpen}
+        onClose={closeUploadCollectionPicker}
+        onSelect={toggleUploadCollectionSelection}
+        initialData={{ kind: "upload" }}
+      >
         <div
-          className="media-confirm-overlay"
-          onClick={closeUploadCollectionPicker}
+          className="collection-picker-dialog"
+          onClick={(event) => event.stopPropagation()}
         >
-          <div
-            className="collection-picker-dialog"
-            onClick={(event) => event.stopPropagation()}
-          >
             <p className="collection-picker-title">Select collection</p>
             {uploadCollectionsError ? <p className="media-action-error">{uploadCollectionsError}</p> : null}
             {isUploadCollectionsLoading ? (
@@ -5221,8 +5128,7 @@ function App() {
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+      </CollectionPickerModal>
 
       {isCollectionModalOpen ? (
         <div
@@ -5415,17 +5321,17 @@ function App() {
         </div>
       ) : null}
 
-      {selectedMedia ? (
+      <MediaEditorModal
+        isOpen={Boolean(selectedMedia)}
+        onClose={() => setSelectedMedia(null)}
+        onSubmit={handleSaveMedia}
+        onNavigate={handleNavigateSelectedMedia}
+        initialData={{ selectedMedia, canNavigate: canNavigateSelectedMedia }}
+      >
         <div
-          className="media-modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setSelectedMedia(null)}
+          className={`media-modal${isEditingMedia ? " media-modal-editing" : ""}`}
+          onClick={(event) => event.stopPropagation()}
         >
-          <div
-            className={`media-modal${isEditingMedia ? " media-modal-editing" : ""}`}
-            onClick={(event) => event.stopPropagation()}
-          >
             <div className="media-modal-header media-modal-header-empty" />
 
             {!isEditingMedia ? (
@@ -5637,15 +5543,16 @@ function App() {
               </div>
             </div>
           ) : null}
-          {isCollectionPickerOpen ? (
+          <CollectionPickerModal
+            isOpen={isCollectionPickerOpen}
+            onClose={closeCollectionPicker}
+            onSelect={handleAddSelectedMediaToCollection}
+            initialData={{ kind: "media" }}
+          >
             <div
-              className="media-confirm-overlay"
-              onClick={closeCollectionPicker}
+              className="collection-picker-dialog"
+              onClick={(event) => event.stopPropagation()}
             >
-              <div
-                className="collection-picker-dialog"
-                onClick={(event) => event.stopPropagation()}
-              >
                 <p className="collection-picker-title">Select collection</p>
                 {collectionPickerError ? <p className="media-action-error">{collectionPickerError}</p> : null}
                 {isCollectionPickerLoading ? (
@@ -5681,19 +5588,19 @@ function App() {
                   </button>
                 </div>
               </div>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-      {isMediaRelationPickerOpen ? (
+          </CollectionPickerModal>
+      </MediaEditorModal>
+      <MediaRelationPickerModal
+        isOpen={isMediaRelationPickerOpen}
+        onClose={closeMediaRelationPicker}
+        onSelect={handleSelectMediaRelationFromPicker}
+        onSubmit={handleSelectMediaRelationFromPicker}
+        initialData={{ mode: mediaRelationPickerMode, context: mediaRelationPickerContext }}
+      >
         <div
-          className="media-confirm-overlay"
-          onClick={closeMediaRelationPicker}
+          className="collection-picker-dialog media-relation-picker-dialog"
+          onClick={(event) => event.stopPropagation()}
         >
-          <div
-            className="collection-picker-dialog media-relation-picker-dialog"
-            onClick={(event) => event.stopPropagation()}
-          >
             <p className="collection-picker-title">
               Select {mediaRelationPickerMode === "child" ? "child" : "parent"} media
             </p>
@@ -5788,9 +5695,8 @@ function App() {
                 </button>
               </div>
             </div>
-          </div>
         </div>
-      ) : null}
+      </MediaRelationPickerModal>
       {pendingTagDelete ? (
         <div
           className="media-confirm-overlay"
@@ -5862,8 +5768,5 @@ function App() {
 }
 
 export default App;
-
-
-
 
 
