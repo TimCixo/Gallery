@@ -1,20 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { collectionsApi } from "./api/collectionsApi";
-import { getErrorMessage } from "./api/httpClient";
-import { mediaApi } from "./api/mediaApi";
-import { tagsApi } from "./api/tagsApi";
-import { uploadApi } from "./api/uploadApi";
+﻿import { useEffect, useRef, useState } from "react";
 import "./App.css";
-import { formatFileSize, formatMediaDate, getExtensionFromPath } from "./features/shared/utils/mediaFormatters";
-import { isVideoFile, resolveOriginalMediaUrl, resolvePreviewMediaUrl, resolveTileMediaUrl } from "./features/shared/utils/mediaPredicates";
-import { buildSearchSuggestions, formatSearchTagValue, getSearchTokenRange, parseSearchSegments } from "./features/shared/utils/searchUtils";
-import { buildMediaTagCatalogByTypeId, buildSearchTagTypeOptions, createTagTypeRows, getTagTypeColor, getTagTypeId, hexToRgba, parseTagNamesList } from "./features/shared/utils/tagUtils";
-
-const PAGE_SIZE = 36;
-const BASE_SEARCH_TAG_OPTIONS = ["path", "title", "description", "id", "source"];
-const BASE_SEARCH_TAG_NAMES = new Set(BASE_SEARCH_TAG_OPTIONS);
+import { useCollectionsManager } from "./hooks/useCollectionsManager";
+import { useMediaEditor } from "./hooks/useMediaEditor";
+import { useTagsManager } from "./hooks/useTagsManager";
+import { useUploadManager } from "./hooks/useUploadManager";
 
 function App() {
+  const PAGE_SIZE = 36;
+  const baseSearchTagOptions = ["path", "title", "description", "id", "source"];
+  const baseSearchTagNames = new Set(baseSearchTagOptions);
   const allowedExtensions = new Set([
     ".jpg",
     ".jpeg",
@@ -36,128 +30,194 @@ function App() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isSlideMenuOpen, setIsSlideMenuOpen] = useState(false);
   const [activePage, setActivePage] = useState("gallery");
-  const [tagTypeNameInput, setTagTypeNameInput] = useState("");
-  const [tagTypeColorInput, setTagTypeColorInput] = useState("#2563EB");
-  const [tagTypes, setTagTypes] = useState([]);
-  const [isTagTypesLoading, setIsTagTypesLoading] = useState(false);
-  const [isTagTypeSaving, setIsTagTypeSaving] = useState(false);
-  const [editingTagTypeId, setEditingTagTypeId] = useState(null);
-  const [editingTagTypeName, setEditingTagTypeName] = useState("");
-  const [editingTagTypeColor, setEditingTagTypeColor] = useState("#2563EB");
-  const [isTagTypeUpdating, setIsTagTypeUpdating] = useState(false);
-  const [tagsByTagTypeId, setTagsByTagTypeId] = useState({});
-  const [tagSearchQueryByTagTypeId, setTagSearchQueryByTagTypeId] = useState({});
-  const [tagTableStateByTagTypeId, setTagTableStateByTagTypeId] = useState({});
-  const [newTagDraftByTagTypeId, setNewTagDraftByTagTypeId] = useState({});
-  const [editingTagByTagTypeId, setEditingTagByTagTypeId] = useState({});
-  const [editingTagDraftById, setEditingTagDraftById] = useState({});
-  const [savingTagByTagTypeId, setSavingTagByTagTypeId] = useState({});
-  const [tagTypesError, setTagTypesError] = useState("");
-  const [isTagMoveInProgress, setIsTagMoveInProgress] = useState(false);
-  const [draggedTag, setDraggedTag] = useState(null);
-  const [dragTargetTagTypeId, setDragTargetTagTypeId] = useState(null);
-  const [tagTypeCalloutOpenById, setTagTypeCalloutOpenById] = useState({});
-  const [uploadItems, setUploadItems] = useState([]);
-  const [uploadStep, setUploadStep] = useState("queue");
-  const [activeUploadIndex, setActiveUploadIndex] = useState(0);
-  const [uploadState, setUploadState] = useState({ type: "", message: "" });
-  const [isGroupUploadEnabled, setIsGroupUploadEnabled] = useState(false);
-  const [uploadCollectionIds, setUploadCollectionIds] = useState([]);
-  const [uploadCollections, setUploadCollections] = useState([]);
-  const [isUploadCollectionsLoading, setIsUploadCollectionsLoading] = useState(false);
-  const [uploadCollectionsError, setUploadCollectionsError] = useState("");
-  const [isUploadCollectionPickerOpen, setIsUploadCollectionPickerOpen] = useState(false);
-  const [isUploadQueueDragOver, setIsUploadQueueDragOver] = useState(false);
-  const [isDragOverPage, setIsDragOverPage] = useState(false);
-  const [backgroundUploadState, setBackgroundUploadState] = useState({
-    total: 0,
-    queued: 0,
-    completed: 0,
-    failed: 0,
-    isProcessing: false,
-    activeFileName: "",
-    activePercent: 0
-  });
-  const [uploadTaskStatuses, setUploadTaskStatuses] = useState([]);
-  const [mediaFiles, setMediaFiles] = useState([]);
-  const [isMediaLoading, setIsMediaLoading] = useState(true);
-  const [mediaError, setMediaError] = useState("");
-  const [favoritesFiles, setFavoritesFiles] = useState([]);
-  const [isFavoritesLoading, setIsFavoritesLoading] = useState(false);
-  const [favoritesError, setFavoritesError] = useState("");
-  const [collections, setCollections] = useState([]);
-  const [isCollectionsLoading, setIsCollectionsLoading] = useState(false);
-  const [collectionsError, setCollectionsError] = useState("");
-  const [collectionsSearchQuery, setCollectionsSearchQuery] = useState("");
-  const [collectionFormLabel, setCollectionFormLabel] = useState("");
-  const [collectionFormDescription, setCollectionFormDescription] = useState("");
-  const [collectionFormCover, setCollectionFormCover] = useState("");
-  const [editingCollectionId, setEditingCollectionId] = useState(null);
-  const [isCollectionSaving, setIsCollectionSaving] = useState(false);
-  const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
-  const [collectionPreviewMedia, setCollectionPreviewMedia] = useState(null);
-  const [isCollectionPreviewLoading, setIsCollectionPreviewLoading] = useState(false);
-  const [selectedCollection, setSelectedCollection] = useState(null);
-  const [collectionFiles, setCollectionFiles] = useState([]);
-  const [isCollectionFilesLoading, setIsCollectionFilesLoading] = useState(false);
-  const [collectionFilesError, setCollectionFilesError] = useState("");
-  const [collectionFilesPage, setCollectionFilesPage] = useState(1);
-  const [collectionFilesTotalPages, setCollectionFilesTotalPages] = useState(0);
-  const [collectionFilesTotalCount, setCollectionFilesTotalCount] = useState(0);
-  const [collectionFilesPageJumpInput, setCollectionFilesPageJumpInput] = useState("1");
-  const [pendingCollectionDelete, setPendingCollectionDelete] = useState(null);
-  const [isCollectionDeleting, setIsCollectionDeleting] = useState(false);
-  const [favoritesPage, setFavoritesPage] = useState(1);
-  const [favoritesTotalPages, setFavoritesTotalPages] = useState(0);
-  const [favoritesTotalFiles, setFavoritesTotalFiles] = useState(0);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
-  const [pageJumpInput, setPageJumpInput] = useState("1");
-  const [favoritesPageJumpInput, setFavoritesPageJumpInput] = useState("1");
-  const [totalFiles, setTotalFiles] = useState(0);
-  const [failedPreviewPaths, setFailedPreviewPaths] = useState(new Set());
-  const [selectedMedia, setSelectedMedia] = useState(null);
-  const [isEditingMedia, setIsEditingMedia] = useState(false);
-  const [isSavingMedia, setIsSavingMedia] = useState(false);
-  const [isDeletingMedia, setIsDeletingMedia] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [pendingTagDelete, setPendingTagDelete] = useState(null);
-  const [isDeletingTagEntity, setIsDeletingTagEntity] = useState(false);
-  const [mediaModalError, setMediaModalError] = useState("");
-  const [isFavoriteUpdating, setIsFavoriteUpdating] = useState(false);
-  const [isCollectionPickerOpen, setIsCollectionPickerOpen] = useState(false);
-  const [collectionPickerItems, setCollectionPickerItems] = useState([]);
-  const [isCollectionPickerLoading, setIsCollectionPickerLoading] = useState(false);
-  const [collectionPickerError, setCollectionPickerError] = useState("");
-  const [isAddingMediaToCollection, setIsAddingMediaToCollection] = useState(false);
-  const [mediaTagCatalog, setMediaTagCatalog] = useState([]);
-  const [isMediaTagCatalogLoading, setIsMediaTagCatalogLoading] = useState(false);
-  const [mediaTagCatalogError, setMediaTagCatalogError] = useState("");
-  const [activeTagManagerTagTypeId, setActiveTagManagerTagTypeId] = useState(null);
-  const [mediaDraft, setMediaDraft] = useState({
-    title: "",
-    description: "",
-    source: "",
-    tagsByType: {},
-    parent: "",
-    child: ""
-  });
-  const [isMediaRelationPickerOpen, setIsMediaRelationPickerOpen] = useState(false);
-  const [mediaRelationPickerMode, setMediaRelationPickerMode] = useState("parent");
-  const [mediaRelationPickerContext, setMediaRelationPickerContext] = useState("media");
-  const [mediaRelationPickerQuery, setMediaRelationPickerQuery] = useState("");
-  const [mediaRelationPickerPage, setMediaRelationPickerPage] = useState(1);
-  const [mediaRelationPickerItems, setMediaRelationPickerItems] = useState([]);
-  const [mediaRelationPickerTotalPages, setMediaRelationPickerTotalPages] = useState(0);
-  const [mediaRelationPickerTotalCount, setMediaRelationPickerTotalCount] = useState(0);
-  const [isMediaRelationPickerLoading, setIsMediaRelationPickerLoading] = useState(false);
-  const [mediaRelationPickerError, setMediaRelationPickerError] = useState("");
-  const [mediaRelationPreviewByMode, setMediaRelationPreviewByMode] = useState({
-    parent: { item: null, isLoading: false, error: "" },
-    child: { item: null, isLoading: false, error: "" }
-  });
-  const [activeTagTypeDropdownId, setActiveTagTypeDropdownId] = useState(null);
-  const [tagTypeQueryById, setTagTypeQueryById] = useState({});
+  const {
+    tagTypeNameInput,
+    setTagTypeNameInput,
+    tagTypeColorInput,
+    setTagTypeColorInput,
+    tagTypes,
+    setTagTypes,
+    isTagTypesLoading,
+    setIsTagTypesLoading,
+    isTagTypeSaving,
+    setIsTagTypeSaving,
+    editingTagTypeId,
+    setEditingTagTypeId,
+    editingTagTypeName,
+    setEditingTagTypeName,
+    editingTagTypeColor,
+    setEditingTagTypeColor,
+    isTagTypeUpdating,
+    setIsTagTypeUpdating,
+    tagsByTagTypeId,
+    setTagsByTagTypeId,
+    tagSearchQueryByTagTypeId,
+    setTagSearchQueryByTagTypeId,
+    tagTableStateByTagTypeId,
+    setTagTableStateByTagTypeId,
+    newTagDraftByTagTypeId,
+    setNewTagDraftByTagTypeId,
+    editingTagByTagTypeId,
+    setEditingTagByTagTypeId,
+    editingTagDraftById,
+    setEditingTagDraftById,
+    savingTagByTagTypeId,
+    setSavingTagByTagTypeId,
+    tagTypesError,
+    setTagTypesError,
+    isTagMoveInProgress,
+    setIsTagMoveInProgress,
+    draggedTag,
+    setDraggedTag,
+    dragTargetTagTypeId,
+    setDragTargetTagTypeId,
+    tagTypeCalloutOpenById,
+    setTagTypeCalloutOpenById,
+    activeTagTypeDropdownId,
+    setActiveTagTypeDropdownId,
+    tagTypeQueryById,
+    setTagTypeQueryById
+  } = useTagsManager();
+  const {
+    uploadItems,
+    setUploadItems,
+    uploadStep,
+    setUploadStep,
+    activeUploadIndex,
+    setActiveUploadIndex,
+    uploadState,
+    setUploadState,
+    isGroupUploadEnabled,
+    setIsGroupUploadEnabled,
+    uploadCollectionIds,
+    setUploadCollectionIds,
+    uploadCollections,
+    setUploadCollections,
+    isUploadCollectionsLoading,
+    setIsUploadCollectionsLoading,
+    uploadCollectionsError,
+    setUploadCollectionsError,
+    isUploadCollectionPickerOpen,
+    setIsUploadCollectionPickerOpen,
+    isUploadQueueDragOver,
+    setIsUploadQueueDragOver,
+    isDragOverPage,
+    setIsDragOverPage,
+    backgroundUploadState,
+    setBackgroundUploadState,
+    uploadTaskStatuses,
+    setUploadTaskStatuses
+  } = useUploadManager();
+  const {
+    collections,
+    setCollections,
+    isCollectionsLoading,
+    setIsCollectionsLoading,
+    collectionsError,
+    setCollectionsError,
+    collectionsSearchQuery,
+    setCollectionsSearchQuery,
+    collectionFormLabel,
+    setCollectionFormLabel,
+    collectionFormDescription,
+    setCollectionFormDescription,
+    collectionFormCover,
+    setCollectionFormCover,
+    editingCollectionId,
+    setEditingCollectionId,
+    isCollectionSaving,
+    setIsCollectionSaving,
+    isCollectionModalOpen,
+    setIsCollectionModalOpen,
+    collectionPreviewMedia,
+    setCollectionPreviewMedia,
+    isCollectionPreviewLoading,
+    setIsCollectionPreviewLoading,
+    selectedCollection,
+    setSelectedCollection,
+    collectionFiles,
+    setCollectionFiles,
+    isCollectionFilesLoading,
+    setIsCollectionFilesLoading,
+    collectionFilesError,
+    setCollectionFilesError,
+    collectionFilesPage,
+    setCollectionFilesPage,
+    collectionFilesTotalPages,
+    setCollectionFilesTotalPages,
+    collectionFilesTotalCount,
+    setCollectionFilesTotalCount,
+    collectionFilesPageJumpInput,
+    setCollectionFilesPageJumpInput,
+    pendingCollectionDelete,
+    setPendingCollectionDelete,
+    isCollectionDeleting,
+    setIsCollectionDeleting
+  } = useCollectionsManager();
+  const {
+    selectedMedia,
+    setSelectedMedia,
+    isEditingMedia,
+    setIsEditingMedia,
+    isMediaSaving,
+    setIsMediaSaving,
+    isMediaDeleting,
+    setIsMediaDeleting,
+    showDeleteConfirm,
+    setShowDeleteConfirm,
+    pendingTagDelete,
+    setPendingTagDelete,
+    isTagDeleting,
+    setIsTagDeleting,
+    mediaModalError,
+    setMediaModalError,
+    isFavoriteUpdating,
+    setIsFavoriteUpdating,
+    isCollectionPickerOpen,
+    setIsCollectionPickerOpen,
+    collectionPickerItems,
+    setCollectionPickerItems,
+    isCollectionPickerLoading,
+    setIsCollectionPickerLoading,
+    collectionPickerError,
+    setCollectionPickerError,
+    isAddingMediaToCollection,
+    setIsAddingMediaToCollection,
+    mediaTagCatalog,
+    setMediaTagCatalog,
+    isMediaTagCatalogLoading,
+    setIsMediaTagCatalogLoading,
+    mediaTagCatalogError,
+    setMediaTagCatalogError,
+    activeTagManagerTagTypeId,
+    setActiveTagManagerTagTypeId,
+    mediaDraft,
+    setMediaDraft,
+    isMediaRelationPickerOpen,
+    setIsMediaRelationPickerOpen,
+    mediaRelationPickerMode,
+    setMediaRelationPickerMode,
+    mediaRelationPickerContext,
+    setMediaRelationPickerContext,
+    mediaRelationPickerQuery,
+    setMediaRelationPickerQuery,
+    mediaRelationPickerPage,
+    setMediaRelationPickerPage,
+    mediaRelationPickerItems,
+    setMediaRelationPickerItems,
+    mediaRelationPickerTotalPages,
+    setMediaRelationPickerTotalPages,
+    mediaRelationPickerTotalCount,
+    setMediaRelationPickerTotalCount,
+    isMediaRelationPickerLoading,
+    setIsMediaRelationPickerLoading,
+    mediaRelationPickerError,
+    setMediaRelationPickerError,
+    mediaRelationPreviewByMode,
+    setMediaRelationPreviewByMode
+  } = useMediaEditor();
+  const imageExtensions = new Set([".jpg", ".jpeg", ".jfif", ".png", ".webp", ".bmp"]);
+  const videoExtensions = new Set([".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v"]);
   const backgroundUploadQueueRef = useRef([]);
   const isBackgroundUploadWorkerRunningRef = useRef(false);
   const uploadTaskSequenceRef = useRef(1);
@@ -174,27 +234,120 @@ function App() {
   const [isSearchInputFocused, setIsSearchInputFocused] = useState(false);
   const [activeSearchSuggestionIndex, setActiveSearchSuggestionIndex] = useState(0);
   const [isSearchSuggestionExplicitlyActive, setIsSearchSuggestionExplicitlyActive] = useState(false);
-  const searchTagTypeOptions = useMemo(
-    () => buildSearchTagTypeOptions(tagTypes, mediaTagCatalog),
-    [tagTypes, mediaTagCatalog]
-  );
-  const searchTagTypeMap = useMemo(() => {
+  const searchTagTypeOptions = (() => {
+    const map = new Map();
+
+    tagTypes.forEach((tagType) => {
+      const name = String(tagType?.name || "").trim();
+      if (!name) {
+        return;
+      }
+
+      const lowerName = name.toLowerCase();
+      const color = /^#[0-9A-Fa-f]{6}$/.test(String(tagType?.color || "").trim())
+        ? String(tagType.color).trim()
+        : "#94a3b8";
+      if (!map.has(lowerName)) {
+        map.set(lowerName, {
+          lowerName,
+          label: name,
+          color
+        });
+      }
+    });
+
+    mediaTagCatalog.forEach((tag) => {
+      const typeName = String(tag?.tagTypeName || "").trim();
+      if (!typeName) {
+        return;
+      }
+
+      const lowerName = typeName.toLowerCase();
+      if (map.has(lowerName)) {
+        return;
+      }
+
+      const color = /^#[0-9A-Fa-f]{6}$/.test(String(tag?.tagTypeColor || "").trim())
+        ? String(tag.tagTypeColor).trim()
+        : "#94a3b8";
+      map.set(lowerName, {
+        lowerName,
+        label: typeName,
+        color
+      });
+    });
+
+    return Array.from(map.values());
+  })();
+  const searchTagTypeMap = (() => {
     const map = new Map();
     searchTagTypeOptions.forEach((item) => {
       map.set(item.lowerName, item);
     });
     return map;
-  }, [searchTagTypeOptions]);
-  const searchTagOptions = useMemo(() => Array.from(new Set([
-    ...BASE_SEARCH_TAG_OPTIONS,
+  })();
+  const searchTagOptions = Array.from(new Set([
+    ...baseSearchTagOptions,
     ...searchTagTypeOptions.map((item) => item.lowerName)
-  ])), [searchTagTypeOptions]);
+  ]));
   const syncSearchHighlightScroll = () => {
     if (!searchInputRef.current || !searchHighlightRef.current) {
       return;
     }
 
     searchHighlightRef.current.scrollLeft = searchInputRef.current.scrollLeft;
+  };
+  const parseSearchSegments = (value) => {
+    const text = String(value || "");
+    if (!text) {
+      return [];
+    }
+
+    const segments = [];
+    let index = 0;
+    while (index < text.length) {
+      if (text[index] === " ") {
+        const start = index;
+        while (index < text.length && text[index] === " ") {
+          index += 1;
+        }
+
+        segments.push({ text: text.slice(start, index), isTag: false });
+        continue;
+      }
+
+      const tokenStart = index;
+      let tokenEnd = tokenStart;
+      while (tokenEnd < text.length && text[tokenEnd] !== " ") {
+        tokenEnd += 1;
+      }
+      const token = text.slice(tokenStart, tokenEnd);
+      const separatorIndex = token.indexOf(":");
+      const tokenWithoutAtPrefix = token.startsWith("@") ? token.slice(1) : token;
+      const normalizedToken = tokenWithoutAtPrefix.trim().toLowerCase();
+      const tagName = separatorIndex > 0
+        ? tokenWithoutAtPrefix.slice(0, separatorIndex - (token.startsWith("@") ? 1 : 0)).trim().toLowerCase()
+        : "";
+      const normalizedTokenTagName = separatorIndex < 0
+        ? normalizedToken
+        : tagName;
+      const tagType = searchTagTypeMap.get(normalizedTokenTagName);
+      const isKnownSearchTag = baseSearchTagNames.has(normalizedTokenTagName);
+      const isTypedKnownPrefix = separatorIndex < 0 && searchTagOptions.some((option) => option.startsWith(normalizedTokenTagName));
+      const isTag = Boolean(normalizedTokenTagName) && (
+        isKnownSearchTag
+        || tagType != null
+        || isTypedKnownPrefix
+      );
+      segments.push({
+        text: text.slice(tokenStart, tokenEnd),
+        isTag,
+        color: tagType?.color || ""
+      });
+      index = tokenEnd;
+    }
+
+    return segments;
   };
   const handleSearchInputChange = (event) => {
     setInputValue(event.target.value);
@@ -208,18 +361,140 @@ function App() {
     setSearchCaretPosition(caretPosition);
     setIsSearchSuggestionExplicitlyActive(false);
   };
-  const searchTokenRange = useMemo(
-    () => getSearchTokenRange(inputValue, searchCaretPosition),
-    [inputValue, searchCaretPosition]
-  );
-  const searchSuggestions = useMemo(() => buildSearchSuggestions({
-    searchTokenRange,
-    searchTagOptions,
-    searchTagTypeMap,
-    baseSearchTagNames: BASE_SEARCH_TAG_NAMES,
-    mediaTagCatalog
-  }), [searchTokenRange, searchTagOptions, searchTagTypeMap, mediaTagCatalog]);
+  const getSearchTokenRange = (text, caret) => {
+    const normalizedText = String(text || "");
+    const normalizedCaret = Math.max(0, Math.min(caret ?? normalizedText.length, normalizedText.length));
+    let start = normalizedCaret;
+    while (start > 0 && normalizedText[start - 1] !== " ") {
+      start -= 1;
+    }
+
+    let end = normalizedCaret;
+    while (end < normalizedText.length && normalizedText[end] !== " ") {
+      end += 1;
+    }
+
+    return {
+      start,
+      end,
+      token: normalizedText.slice(start, end),
+      tokenBeforeCaret: normalizedText.slice(start, normalizedCaret)
+    };
+  };
+  const searchTokenRange = getSearchTokenRange(inputValue, searchCaretPosition);
+  const searchSuggestions = (() => {
+    const tokenBeforeCaret = searchTokenRange.tokenBeforeCaret;
+    const token = searchTokenRange.token;
+    const tokenBeforeCaretWithoutAtPrefix = tokenBeforeCaret.startsWith("@")
+      ? tokenBeforeCaret.slice(1)
+      : tokenBeforeCaret;
+    const tokenWithoutAtPrefix = token.startsWith("@") ? token.slice(1) : token;
+    const separatorIndex = tokenWithoutAtPrefix.indexOf(":");
+    if (separatorIndex < 0) {
+      if (tokenBeforeCaretWithoutAtPrefix.includes(":")) {
+        return [];
+      }
+
+      const typedFragment = tokenBeforeCaretWithoutAtPrefix.trim().toLowerCase();
+      const byTagNames = searchTagOptions
+        .filter((tagName) => tagName.startsWith(typedFragment))
+        .slice(0, 40)
+        .map((tagName) => ({
+          kind: "tagName",
+          key: `tag-${tagName}`,
+          tagName,
+          label: `${tagName}:`,
+          color: searchTagTypeMap.get(tagName)?.color || ""
+        }));
+
+      const byTagPairs = [];
+      const seenPairs = new Set();
+      mediaTagCatalog.forEach((tag) => {
+        const candidateTypeName = String(tag?.tagTypeName || "").trim();
+        const candidateType = candidateTypeName.toLowerCase();
+        const candidateValueName = String(tag?.name || "").trim();
+        const candidateValue = candidateValueName.toLowerCase();
+        if (!candidateType || !candidateValueName) {
+          return;
+        }
+
+        if (typedFragment && !candidateType.includes(typedFragment) && !candidateValue.includes(typedFragment)) {
+          return;
+        }
+
+        const normalizedPair = `${candidateType}:${candidateValue}`;
+        if (seenPairs.has(normalizedPair)) {
+          return;
+        }
+
+        seenPairs.add(normalizedPair);
+        byTagPairs.push({
+          kind: "tagValue",
+          key: `pair-${normalizedPair}`,
+          tagName: candidateType,
+          tagValue: candidateValueName,
+          label: `${candidateType}:${candidateValueName}`,
+          color: searchTagTypeMap.get(candidateType)?.color || ""
+        });
+      });
+
+      byTagPairs.sort((left, right) => left.label.localeCompare(right.label));
+
+      return [...byTagNames, ...byTagPairs].slice(0, 40);
+    }
+
+    if (!tokenBeforeCaretWithoutAtPrefix.includes(":")) {
+      return [];
+    }
+
+    if (separatorIndex <= 0) {
+      return [];
+    }
+
+    const tagName = tokenWithoutAtPrefix.slice(0, separatorIndex).trim().toLowerCase();
+    if (!tagName || baseSearchTagNames.has(tagName) || !searchTagTypeMap.has(tagName)) {
+      return [];
+    }
+
+    const typedTagValuePrefix = tokenBeforeCaretWithoutAtPrefix
+      .slice(tokenBeforeCaretWithoutAtPrefix.indexOf(":") + 1)
+      .trimStart()
+      .replace(/^"/, "")
+      .toLowerCase();
+
+    const candidates = [];
+    const seen = new Set();
+    mediaTagCatalog.forEach((tag) => {
+      const candidateType = String(tag?.tagTypeName || "").trim().toLowerCase();
+      const candidateName = String(tag?.name || "").trim();
+      if (!candidateName || candidateType !== tagName) {
+        return;
+      }
+
+      const normalizedCandidate = candidateName.toLowerCase();
+      if (typedTagValuePrefix && !normalizedCandidate.includes(typedTagValuePrefix)) {
+        return;
+      }
+      if (seen.has(normalizedCandidate)) {
+        return;
+      }
+
+      seen.add(normalizedCandidate);
+      candidates.push(candidateName);
+    });
+
+    candidates.sort((left, right) => left.localeCompare(right));
+    return candidates.slice(0, 40).map((tagValue) => ({
+      kind: "tagValue",
+      key: `value-${tagName}-${tagValue.toLowerCase()}`,
+      tagName,
+      tagValue,
+      label: tagValue,
+      color: searchTagTypeMap.get(tagName)?.color || ""
+    }));
+  })();
   const hasSearchSuggestions = isSearchInputFocused && searchSuggestions.length > 0;
+  const formatSearchTagValue = (value) => (/\s/.test(value) ? `"${value.replace(/"/g, "")}"` : value);
   const applySearchSuggestion = (suggestion) => {
     const prefix = inputValue.slice(0, searchTokenRange.start);
     const suffix = inputValue.slice(searchTokenRange.end);
@@ -312,12 +587,45 @@ function App() {
     setActiveSearchSuggestionIndex(0);
     setIsSearchSuggestionExplicitlyActive(false);
   }, [searchSuggestions.length, activeSearchSuggestionIndex]);
+  const getExtensionFromPath = (value) => {
+    if (!value) {
+      return "";
+    }
+
+    const cleanValue = String(value).split("?")[0];
+    const dotIndex = cleanValue.lastIndexOf(".");
+    return dotIndex >= 0 ? cleanValue.slice(dotIndex).toLowerCase() : "";
+  };
+  const resolveTileUrl = (file) => {
+    if (file?.tileUrl) {
+      return file.tileUrl;
+    }
+
+    if (file?.previewUrl) {
+      return file.previewUrl;
+    }
+
+    const original = file?.originalUrl || file?.url || "";
+    if (file?.mediaType === "image" && original) {
+      return original;
+    }
+
+    if (imageExtensions.has(getExtensionFromPath(original))) {
+      return original;
+    }
+
+    if ((file?.mediaType === "video" || file?.mediaType === "gif") && file?.relativePath) {
+      return `/api/media/preview?path=${encodeURIComponent(file.relativePath)}`;
+    }
+
+    return "";
+  };
   const visibleMediaFiles = mediaFiles
-    .map((file) => ({ ...file, _tileUrl: resolveTileMediaUrl(file) }));
+    .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) }));
   const visibleFavoriteFiles = favoritesFiles
-    .map((file) => ({ ...file, _tileUrl: resolveTileMediaUrl(file) }));
+    .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) }));
   const visibleCollectionFiles = collectionFiles
-    .map((file) => ({ ...file, _tileUrl: resolveTileMediaUrl(file) }));
+    .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) }));
   const getMediaIdentity = (file) => {
     if (!file || typeof file !== "object") {
       return "";
@@ -361,6 +669,66 @@ function App() {
       setSelectedMedia(nextFile);
     }
   };
+  const resolveOriginalMediaUrl = (file) => file?.originalUrl || file?.url || file?._tileUrl || "";
+  const resolvePreviewMediaUrl = (file) => {
+    if (!file) {
+      return "";
+    }
+
+    if (file.previewUrl) {
+      return file.previewUrl;
+    }
+
+    if (file._tileUrl) {
+      return file._tileUrl;
+    }
+
+    return resolveTileUrl(file) || resolveOriginalMediaUrl(file);
+  };
+  const isVideoFile = (file) => {
+    if (!file) {
+      return false;
+    }
+
+    if (file.mediaType === "video") {
+      return true;
+    }
+
+    return videoExtensions.has(getExtensionFromPath(resolveOriginalMediaUrl(file) || file.name));
+  };
+  const formatMediaDate = (value) => {
+    if (!value) {
+      return "Unknown";
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "Unknown";
+    }
+
+    return date.toLocaleString();
+  };
+  const formatFileSize = (value) => {
+    const bytes = Number(value);
+    if (!Number.isFinite(bytes) || bytes < 0) {
+      return "-";
+    }
+
+    if (bytes === 0) {
+      return "0 B";
+    }
+
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    let size = bytes;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex += 1;
+    }
+
+    const fractionDigits = size >= 100 || unitIndex === 0 ? 0 : size >= 10 ? 1 : 2;
+    return `${size.toFixed(fractionDigits)} ${units[unitIndex]} (${bytes.toLocaleString()} B)`;
+  };
   const getMediaShortType = (file) => {
     const source = resolveOriginalMediaUrl(file) || file?.name || "";
     const extension = getExtensionFromPath(source);
@@ -381,7 +749,10 @@ function App() {
 
     return String(tag.name || "").trim();
   };
-  const getMediaTagColor = (tag) => getTagTypeColor(tag?.tagTypeColor);
+  const getMediaTagColor = (tag) => {
+    const value = String(tag?.tagTypeColor || "").trim();
+    return /^#[0-9A-Fa-f]{6}$/.test(value) ? value : "#94a3b8";
+  };
   const getTagId = (tag) => {
     const value = Number(tag?.id);
     return Number.isInteger(value) && value > 0 ? value : null;
@@ -391,36 +762,118 @@ function App() {
       ? file.tags.filter((tag) => getTagId(tag) !== null)
       : []
   );
-  const mediaTagCatalogByTypeId = useMemo(
-    () => buildMediaTagCatalogByTypeId(mediaTagCatalog),
-    [mediaTagCatalog]
-  );
-  const tagTypeRowsByMediaIdentity = useMemo(() => {
+  const getTagTypeId = (value) => {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  };
+  const parseTagNamesList = (value) => {
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => String(item || "").trim())
+        .filter(Boolean);
+    }
+
+    return String(value || "")
+      .split(/[\s,]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  };
+  const mediaTagCatalogByTypeId = (() => {
     const map = new Map();
-    const addRows = (file) => {
-      const identity = getMediaIdentity(file);
-      if (!identity || map.has(identity)) {
+    mediaTagCatalog.forEach((tag) => {
+      const tagTypeId = getTagTypeId(tag?.tagTypeId);
+      if (tagTypeId === null) {
         return;
       }
 
-      map.set(identity, createTagTypeRows(file, tagTypes, getFileMediaTags, getMediaTagColor));
-    };
+      if (!map.has(tagTypeId)) {
+        map.set(tagTypeId, []);
+      }
 
-    mediaFiles.forEach(addRows);
-    favoritesFiles.forEach(addRows);
-    collectionFiles.forEach(addRows);
-    addRows(selectedMedia);
+      map.get(tagTypeId).push(tag);
+    });
     return map;
-  }, [tagTypes, mediaFiles, favoritesFiles, collectionFiles, selectedMedia]);
-  const getTagTypeRows = (file) => tagTypeRowsByMediaIdentity.get(getMediaIdentity(file)) || [];
+  })();
+  const buildMediaDraftTagsByType = (file) => {
+    const grouped = new Map();
+    getFileMediaTags(file).forEach((tag) => {
+      const tagTypeId = getTagTypeId(tag?.tagTypeId);
+      const tagName = getMediaTagName(tag);
+      if (tagTypeId === null || !tagName) {
+        return;
+      }
+
+      if (!grouped.has(tagTypeId)) {
+        grouped.set(tagTypeId, []);
+      }
+
+      const names = grouped.get(tagTypeId);
+      if (!names.includes(tagName)) {
+        names.push(tagName);
+      }
+    });
+
+    const draftByType = {};
+    grouped.forEach((names, tagTypeId) => {
+      draftByType[tagTypeId] = names;
+    });
+    return draftByType;
+  };
+  const getTagTypeRows = (file) => {
+    const rows = [];
+    const seen = new Set();
+
+    tagTypes.forEach((tagType) => {
+      const tagTypeId = getTagTypeId(tagType?.id);
+      if (tagTypeId === null) {
+        return;
+      }
+
+      seen.add(tagTypeId);
+      rows.push({
+        id: tagTypeId,
+        name: String(tagType?.name || "").trim() || `TagType ${tagTypeId}`,
+        color: /^#[0-9A-Fa-f]{6}$/.test(String(tagType?.color || "").trim())
+          ? String(tagType.color).trim()
+          : "#94a3b8"
+      });
+    });
+
+    getFileMediaTags(file).forEach((tag) => {
+      const tagTypeId = getTagTypeId(tag?.tagTypeId);
+      if (tagTypeId === null || seen.has(tagTypeId)) {
+        return;
+      }
+
+      seen.add(tagTypeId);
+      rows.push({
+        id: tagTypeId,
+        name: String(tag?.tagTypeName || "").trim() || `TagType ${tagTypeId}`,
+        color: getMediaTagColor(tag)
+      });
+    });
+
+    return rows;
+  };
+  const hexToRgbaSoft = (hexColor, alpha) => {
+    const value = String(hexColor || "").trim();
+    if (!/^#[0-9A-Fa-f]{6}$/.test(value)) {
+      return `rgba(148, 163, 184, ${alpha})`;
+    }
+
+    const r = Number.parseInt(value.slice(1, 3), 16);
+    const g = Number.parseInt(value.slice(3, 5), 16);
+    const b = Number.parseInt(value.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
   const getTagTypeCellStyles = (color) => ({
     header: {
-      backgroundColor: hexToRgba(color, 0.22),
-      borderColor: hexToRgba(color, 0.5)
+      backgroundColor: hexToRgbaSoft(color, 0.22),
+      borderColor: hexToRgbaSoft(color, 0.5)
     },
     value: {
-      backgroundColor: hexToRgba(color, 0.08),
-      borderColor: hexToRgba(color, 0.35)
+      backgroundColor: hexToRgbaSoft(color, 0.08),
+      borderColor: hexToRgbaSoft(color, 0.35)
     }
   });
   const getDraftTagNamesByType = (draftByType, tagTypeId) => {
@@ -573,7 +1026,7 @@ function App() {
       const relationId = resolveDraftLinkedId(draftValue);
       const previewState = mediaRelationPreviewByMode[mode] || { item: null, isLoading: false, error: "" };
       const relationItem = previewState.item;
-      const previewUrl = relationItem ? resolveTileMediaUrl(relationItem) : "";
+      const previewUrl = relationItem ? resolveTileUrl(relationItem) : "";
       const hasSelection = Boolean(draftValue.trim());
 
       return (
@@ -919,7 +1372,8 @@ function App() {
   };
 
   useEffect(() => {
-    mediaApi.getHealth()
+    fetch("/api/health")
+      .then((response) => response.json())
       .then((data) => setHealth(`${data.status} (${data.timestampUtc})`))
       .catch(() => setHealth("backend unavailable"));
   }, []);
@@ -930,19 +1384,27 @@ function App() {
     mediaLoadAbortRef.current = controller;
     mediaLoadRequestIdRef.current += 1;
     const requestId = mediaLoadRequestIdRef.current;
+    const timeoutId = window.setTimeout(() => controller.abort(), 20000);
 
     setIsMediaLoading(true);
     setMediaError("");
 
     try {
-      const normalizedSearchText = String(searchText || "").trim();
-      const result = await mediaApi.listMedia({
-        page,
-        pageSize: PAGE_SIZE,
-        search: normalizedSearchText,
-        signal: controller.signal,
-        timeoutMs: 20000
+      const query = new URLSearchParams({
+        page: String(page),
+        pageSize: String(PAGE_SIZE)
       });
+      const normalizedSearchText = String(searchText || "").trim();
+      if (normalizedSearchText) {
+        query.set("search", normalizedSearchText);
+      }
+
+      const response = await fetch(`/api/media?${query.toString()}`, { signal: controller.signal });
+      if (!response.ok) {
+        throw new Error("Failed to fetch media files.");
+      }
+
+      const result = await response.json();
       if (requestId !== mediaLoadRequestIdRef.current) {
         return;
       }
@@ -959,8 +1421,13 @@ function App() {
       setMediaFiles([]);
       setTotalPages(0);
       setTotalFiles(0);
-      setMediaError(getErrorMessage(error, "Failed to fetch media files."));
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setMediaError("Media request timed out. Try again.");
+      } else {
+        setMediaError(error instanceof Error ? error.message : "Failed to fetch media files.");
+      }
     } finally {
+      window.clearTimeout(timeoutId);
       if (requestId === mediaLoadRequestIdRef.current) {
         setIsMediaLoading(false);
       }
@@ -998,7 +1465,7 @@ function App() {
     }
 
     setIsEditingMedia(false);
-    setIsSavingMedia(false);
+    setIsMediaSaving(false);
     setIsDeletingMedia(false);
     setShowDeleteConfirm(false);
     setMediaModalError("");
@@ -1685,11 +2152,27 @@ function App() {
             : null;
 
           if (uploaded?.id) {
-            await uploadApi.updateUploadedMedia(uploaded.id, task.draft);
+            const response = await fetch(`/api/media/${uploaded.id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(task.draft)
+            });
+            if (!response.ok) {
+              const payload = await readResponsePayload(response);
+              throw new Error(payload?.error || `Failed to save metadata for ${task.file.name}.`);
+            }
 
             const collectionIds = Array.isArray(task.collectionIds) ? task.collectionIds : [];
             for (const collectionId of collectionIds) {
-              await collectionsApi.addMediaToCollection(collectionId, uploaded.id);
+              const addToCollectionResponse = await fetch(`/api/collections/${collectionId}/media`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ mediaId: uploaded.id })
+              });
+              if (!addToCollectionResponse.ok) {
+                const payload = await readResponsePayload(addToCollectionResponse);
+                throw new Error(payload?.error || `Failed to add ${task.file.name} to collection.`);
+              }
             }
           }
 
@@ -1749,7 +2232,12 @@ function App() {
     setFavoritesError("");
 
     try {
-      const result = await mediaApi.listFavorites({ page, pageSize: PAGE_SIZE });
+      const response = await fetch(`/api/favorites?page=${page}&pageSize=${PAGE_SIZE}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch favorites.");
+      }
+
+      const result = await response.json();
       setFavoritesFiles(getPagedFiles(result));
       setFavoritesPage(Number.isInteger(result.page) ? result.page : page);
       setFavoritesTotalPages(Number.isInteger(result.totalPages) ? result.totalPages : 0);
@@ -1759,7 +2247,7 @@ function App() {
       setFavoritesPage(1);
       setFavoritesTotalPages(0);
       setFavoritesTotalFiles(0);
-      setFavoritesError(getErrorMessage(error, "Failed to fetch favorites."));
+      setFavoritesError(error instanceof Error ? error.message : "Failed to fetch favorites.");
     } finally {
       setIsFavoritesLoading(false);
     }
@@ -2004,11 +2492,19 @@ function App() {
     setTagTypesError("");
 
     try {
-      const result = await tagsApi.listTagTypes();
+      const response = await fetch("/api/tag-types");
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("TagTypes API not found (404). Restart backend to apply latest changes.");
+        }
+        throw new Error("Failed to fetch tag types.");
+      }
+
+      const result = await response.json();
       setTagTypes(Array.isArray(result.items) ? result.items : []);
     } catch (error) {
       setTagTypes([]);
-      setTagTypesError(getErrorMessage(error, "Failed to fetch tag types."));
+      setTagTypesError(error instanceof Error ? error.message : "Failed to fetch tag types.");
     } finally {
       setIsTagTypesLoading(false);
     }
@@ -2018,11 +2514,19 @@ function App() {
     setMediaTagCatalogError("");
 
     try {
-      const result = await tagsApi.listTags();
+      const response = await fetch("/api/tags");
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("Tags API not found (404). Restart backend to apply latest changes.");
+        }
+        throw new Error("Failed to fetch tags for autocomplete.");
+      }
+
+      const result = await response.json();
       setMediaTagCatalog(Array.isArray(result.items) ? result.items : []);
     } catch (error) {
       setMediaTagCatalog([]);
-      setMediaTagCatalogError(getErrorMessage(error, "Failed to fetch tags for autocomplete."));
+      setMediaTagCatalogError(error instanceof Error ? error.message : "Failed to fetch tags for autocomplete.");
     } finally {
       setIsMediaTagCatalogLoading(false);
     }
@@ -2034,7 +2538,15 @@ function App() {
     }));
 
     try {
-      const result = await tagsApi.listTagsByTagType(tagTypeId);
+      const response = await fetch(`/api/tag-types/${tagTypeId}/tags`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("Tags API not found (404). Restart backend to apply latest changes.");
+        }
+        throw new Error("Failed to fetch tags.");
+      }
+
+      const result = await response.json();
       const items = Array.isArray(result.items) ? result.items : [];
       setTagsByTagTypeId((current) => ({
         ...current,
@@ -2054,7 +2566,7 @@ function App() {
         ...current,
         [tagTypeId]: {
           loading: false,
-          error: getErrorMessage(error, "Failed to fetch tags.")
+          error: error instanceof Error ? error.message : "Failed to fetch tags."
         }
       }));
       return [];
@@ -2391,17 +2903,19 @@ function App() {
       return null;
     }
 
-    try {
-      const payload = await mediaApi.listMedia({
-        page: 1,
-        pageSize: 1,
-        search: `id:${normalizedId}`
-      });
-      const files = getPagedFiles(payload);
-      return files.find((item) => item?.id === normalizedId) || null;
-    } catch {
+    const query = new URLSearchParams({
+      page: "1",
+      pageSize: "1",
+      search: `id:${normalizedId}`
+    });
+    const response = await fetch(`/api/media?${query.toString()}`);
+    if (!response.ok) {
       return null;
     }
+
+    const payload = await response.json();
+    const files = getPagedFiles(payload);
+    return files.find((item) => item?.id === normalizedId) || null;
   };
   const closeMediaRelationPicker = () => {
     setIsMediaRelationPickerOpen(false);
@@ -2732,18 +3246,27 @@ function App() {
       }
     }
 
-    setIsSavingMedia(true);
+    setIsMediaSaving(true);
     const previousParentId = selectedMedia?.parent ?? null;
     const previousChildId = selectedMedia?.child ?? null;
     try {
-      const result = await mediaApi.updateMedia(selectedMedia.id, {
-        title: title || null,
-        description: description || null,
-        source: source || null,
-        tagIds,
-        parent,
-        child
+      const response = await fetch(`/api/media/${selectedMedia.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title || null,
+          description: description || null,
+          source: source || null,
+          tagIds,
+          parent,
+          child
+        })
       });
+
+      const result = await readResponsePayload(response);
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to update media.");
+      }
 
       const patch = {
         title: result.title ?? null,
@@ -2802,9 +3325,9 @@ function App() {
       setActiveTagTypeDropdownId(null);
       setTagTypeQueryById({});
     } catch (error) {
-      setMediaModalError(getErrorMessage(error, "Failed to update media."));
+      setMediaModalError(error instanceof Error ? error.message : "Failed to update media.");
     } finally {
-      setIsSavingMedia(false);
+      setIsMediaSaving(false);
     }
   };
 
@@ -2817,13 +3340,19 @@ function App() {
     setMediaModalError("");
     setIsDeletingMedia(true);
     try {
-      await mediaApi.deleteMedia(selectedMedia.id);
+      const response = await fetch(`/api/media/${selectedMedia.id}`, {
+        method: "DELETE"
+      });
+      const result = await readResponsePayload(response);
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to delete media.");
+      }
 
       setSelectedMedia(null);
       await loadMedia(currentPage, submittedText);
       await loadFavorites(favoritesPage);
     } catch (error) {
-      setMediaModalError(getErrorMessage(error, "Failed to delete media."));
+      setMediaModalError(error instanceof Error ? error.message : "Failed to delete media.");
     } finally {
       setIsDeletingMedia(false);
       setShowDeleteConfirm(false);
@@ -2843,7 +3372,7 @@ function App() {
       child: activeUploadItem.draft.child ? Number(activeUploadItem.draft.child) : null
     }
     : null;
-  const collectionPreviewTileUrl = collectionPreviewMedia ? resolveTileMediaUrl(collectionPreviewMedia) : "";
+  const collectionPreviewTileUrl = collectionPreviewMedia ? resolveTileUrl(collectionPreviewMedia) : "";
   const selectedUploadCollections = uploadCollections
     .filter((item) => uploadCollectionIds.includes(Number(item.id)));
   const hasUploadHistory = uploadTaskStatuses.length > 0 || backgroundUploadState.total > 0;
@@ -3519,7 +4048,7 @@ function App() {
     setTagTypesError("");
   };
   const closeTagDeleteConfirm = () => {
-    if (isDeletingTagEntity) {
+    if (isTagDeleting) {
       return;
     }
 
@@ -3530,7 +4059,7 @@ function App() {
       return;
     }
 
-    setIsDeletingTagEntity(true);
+    setIsTagDeleting(true);
     let deleted = false;
     if (pendingTagDelete.kind === "tagType") {
       deleted = await handleDeleteTagType(pendingTagDelete.id);
@@ -3538,10 +4067,21 @@ function App() {
       deleted = await handleDeleteTag(pendingTagDelete.tagTypeId, pendingTagDelete.id);
     }
 
-    setIsDeletingTagEntity(false);
+    setIsTagDeleting(false);
     if (deleted) {
       setPendingTagDelete(null);
     }
+  };
+  const hexToRgba = (hexColor, alpha) => {
+    const value = String(hexColor || "").trim();
+    if (!/^#[0-9A-Fa-f]{6}$/.test(value)) {
+      return `rgba(100, 116, 139, ${alpha})`;
+    }
+
+    const red = Number.parseInt(value.slice(1, 3), 16);
+    const green = Number.parseInt(value.slice(3, 5), 16);
+    const blue = Number.parseInt(value.slice(5, 7), 16);
+    return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
   };
   return (
     <main
@@ -3588,7 +4128,7 @@ function App() {
                 activePage === "collections" ? (
                   <span className="top-input-segment">{inputValue}</span>
                 ) : (
-                  parseSearchSegments({ value: inputValue, baseSearchTagNames: BASE_SEARCH_TAG_NAMES, searchTagTypeMap, searchTagOptions }).map((segment, index) => (
+                  parseSearchSegments(inputValue).map((segment, index) => (
                     <span
                       key={`${index}-${segment.text}`}
                       className={segment.isTag ? "top-input-segment is-tag" : "top-input-segment"}
@@ -5094,15 +5634,15 @@ function App() {
                       type="button"
                       className="media-action-btn media-action-primary"
                       onClick={handleSaveMedia}
-                      disabled={isSavingMedia || isDeletingMedia}
+                      disabled={isMediaSaving || isDeletingMedia}
                     >
-                      {isSavingMedia ? "Saving..." : "Okay"}
+                      {isMediaSaving ? "Saving..." : "Okay"}
                     </button>
                     <button
                       type="button"
                       className="media-action-btn"
                       onClick={handleCancelEditMedia}
-                      disabled={isSavingMedia || isDeletingMedia}
+                      disabled={isMediaSaving || isDeletingMedia}
                     >
                       Cancel
                     </button>
@@ -5256,7 +5796,7 @@ function App() {
             ) : (
               <ul className="collection-picker-list media-relation-picker-list">
                 {mediaRelationPickerItems.map((item) => {
-                  const previewUrl = resolveTileMediaUrl(item);
+                  const previewUrl = resolveTileUrl(item);
                   return (
                     <li key={`relation-picker-${item.id}`}>
                       <button
@@ -5336,15 +5876,15 @@ function App() {
                 type="button"
                 className="media-action-btn media-action-danger"
                 onClick={handleConfirmTagDelete}
-                disabled={isDeletingTagEntity}
+                disabled={isTagDeleting}
               >
-                {isDeletingTagEntity ? "Deleting..." : "Yes"}
+                {isTagDeleting ? "Deleting..." : "Yes"}
               </button>
               <button
                 type="button"
                 className="media-action-btn"
                 onClick={closeTagDeleteConfirm}
-                disabled={isDeletingTagEntity}
+                disabled={isTagDeleting}
               >
                 No
               </button>
