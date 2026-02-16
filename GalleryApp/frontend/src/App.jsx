@@ -4,6 +4,12 @@ import GalleryPage from "./features/gallery/GalleryPage";
 import FavoritesPage from "./features/favorites/FavoritesPage";
 import CollectionsPage from "./features/collections/CollectionsPage";
 import TagsPage from "./features/tags/TagsPage";
+import { mediaApi } from "./services/mediaApi";
+import { favoritesApi } from "./services/favoritesApi";
+import { collectionsApi } from "./services/collectionsApi";
+import { tagsApi } from "./services/tagsApi";
+import { uploadApi } from "./services/uploadApi";
+import { uploadSingleFileWithProgress } from "./services/upload/uploadWorkerController";
 
 function App() {
   const PAGE_SIZE = 36;
@@ -1308,8 +1314,7 @@ function App() {
   };
 
   useEffect(() => {
-    fetch("/api/health")
-      .then((response) => response.json())
+    mediaApi.getHealth()
       .then((data) => setHealth(`${data.status} (${data.timestampUtc})`))
       .catch(() => setHealth("backend unavailable"));
   }, []);
@@ -1335,12 +1340,13 @@ function App() {
         query.set("search", normalizedSearchText);
       }
 
-      const response = await fetch(`/api/media?${query.toString()}`, { signal: controller.signal });
-      if (!response.ok) {
-        throw new Error("Failed to fetch media files.");
-      }
-
-      const result = await response.json();
+      const result = await mediaApi.listMedia({
+        page,
+        pageSize: PAGE_SIZE,
+        search: normalizedSearchText,
+        signal: controller.signal,
+        timeoutMs: 20000
+      });
       if (requestId !== mediaLoadRequestIdRef.current) {
         return;
       }
@@ -1357,11 +1363,7 @@ function App() {
       setMediaFiles([]);
       setTotalPages(0);
       setTotalFiles(0);
-      if (error instanceof DOMException && error.name === "AbortError") {
-        setMediaError("Media request timed out. Try again.");
-      } else {
-        setMediaError(error instanceof Error ? error.message : "Failed to fetch media files.");
-      }
+      setMediaError(error instanceof Error ? error.message : "Failed to fetch media files.");
     } finally {
       window.clearTimeout(timeoutId);
       if (requestId === mediaLoadRequestIdRef.current) {
@@ -1847,15 +1849,7 @@ function App() {
     setIsUploadCollectionsLoading(true);
     setUploadCollectionsError("");
     try {
-      const response = await fetch("/api/collections");
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("Collections API not found (404). Restart backend to apply latest changes.");
-        }
-        throw new Error("Failed to fetch collections.");
-      }
-
-      const result = await response.json();
+      const result = await collectionsApi.listCollections();
       setUploadCollections(Array.isArray(result.items) ? result.items : []);
     } catch (error) {
       setUploadCollections([]);
@@ -1986,46 +1980,6 @@ function App() {
     });
   };
 
-  const uploadSingleFileWithProgress = (file, onProgress, onXhrReady) => new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    onXhrReady?.(xhr);
-    const formData = new FormData();
-    formData.append("files", file);
-
-    xhr.upload.onprogress = (progressEvent) => {
-      const loaded = progressEvent.loaded || 0;
-      const total = progressEvent.total || 0;
-      const percent = total > 0 ? Math.min((loaded / total) * 100, 100) : 0;
-      onProgress(percent);
-    };
-
-    xhr.onerror = () => reject(new Error("Upload failed."));
-    xhr.onabort = () => reject(new Error("Upload cancelled."));
-    xhr.onload = () => {
-      let payload = {};
-      if (xhr.responseType === "json") {
-        payload = xhr.response || {};
-      } else {
-        try {
-          payload = JSON.parse(xhr.responseText || "{}");
-        } catch {
-          payload = {};
-        }
-      }
-
-      if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(payload);
-      } else {
-        const errorMessage = payload?.error || "Upload failed.";
-        reject(new Error(errorMessage));
-      }
-    };
-
-    xhr.open("POST", "/api/upload");
-    xhr.responseType = "json";
-    xhr.send(formData);
-  });
-
   const runBackgroundUploadQueue = async () => {
     if (isBackgroundUploadWorkerRunningRef.current) {
       return;
@@ -2088,27 +2042,11 @@ function App() {
             : null;
 
           if (uploaded?.id) {
-            const response = await fetch(`/api/media/${uploaded.id}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(task.draft)
-            });
-            if (!response.ok) {
-              const payload = await readResponsePayload(response);
-              throw new Error(payload?.error || `Failed to save metadata for ${task.file.name}.`);
-            }
+            await uploadApi.updateUploadedMedia(uploaded.id, task.draft);
 
             const collectionIds = Array.isArray(task.collectionIds) ? task.collectionIds : [];
             for (const collectionId of collectionIds) {
-              const addToCollectionResponse = await fetch(`/api/collections/${collectionId}/media`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ mediaId: uploaded.id })
-              });
-              if (!addToCollectionResponse.ok) {
-                const payload = await readResponsePayload(addToCollectionResponse);
-                throw new Error(payload?.error || `Failed to add ${task.file.name} to collection.`);
-              }
+              await collectionsApi.addMediaToCollection(collectionId, uploaded.id);
             }
           }
 
@@ -2168,12 +2106,7 @@ function App() {
     setFavoritesError("");
 
     try {
-      const response = await fetch(`/api/favorites?page=${page}&pageSize=${PAGE_SIZE}`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch favorites.");
-      }
-
-      const result = await response.json();
+      const result = await favoritesApi.listFavorites({ page, pageSize: PAGE_SIZE });
       setFavoritesFiles(getPagedFiles(result));
       setFavoritesPage(Number.isInteger(result.page) ? result.page : page);
       setFavoritesTotalPages(Number.isInteger(result.totalPages) ? result.totalPages : 0);
@@ -2194,21 +2127,8 @@ function App() {
     setCollectionsError("");
 
     try {
-      const query = new URLSearchParams();
       const normalizedSearch = String(search || "").trim();
-      if (normalizedSearch) {
-        query.set("search", normalizedSearch);
-      }
-
-      const response = await fetch(`/api/collections${query.toString() ? `?${query.toString()}` : ""}`);
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("Collections API not found (404). Restart backend to apply latest changes.");
-        }
-        throw new Error("Failed to fetch collections.");
-      }
-
-      const result = await response.json();
+      const result = await collectionsApi.listCollections({ search: normalizedSearch || undefined });
       setCollections(Array.isArray(result.items) ? result.items : []);
     } catch (error) {
       setCollections([]);
@@ -2232,15 +2152,10 @@ function App() {
     setIsCollectionFilesLoading(true);
     setCollectionFilesError("");
     try {
-      const response = await fetch(`/api/collections/${normalizedCollectionId}/media?page=${page}&pageSize=${PAGE_SIZE}`);
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("Collection media API not found (404). Restart backend to apply latest changes.");
-        }
-        throw new Error("Failed to fetch collection media.");
-      }
-
-      const result = await response.json();
+      const result = await collectionsApi.listCollectionMedia(normalizedCollectionId, {
+        page,
+        pageSize: PAGE_SIZE
+      });
       setCollectionFiles(getPagedFiles(result));
       setCollectionFilesPage(Number.isInteger(result.page) ? result.page : page);
       setCollectionFilesTotalPages(Number.isInteger(result.totalPages) ? result.totalPages : 0);
@@ -2320,18 +2235,7 @@ function App() {
         cover
       };
       const isEdit = Number.isInteger(editingCollectionId) && editingCollectionId > 0;
-      const endpoint = isEdit ? `/api/collections/${editingCollectionId}` : "/api/collections";
-      const method = isEdit ? "PUT" : "POST";
-
-      const response = await fetch(endpoint, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      const result = await readResponsePayload(response);
-      if (!response.ok) {
-        throw new Error(result?.error || "Failed to save collection.");
-      }
+      await collectionsApi.saveCollection(isEdit ? editingCollectionId : null, payload);
 
       closeCollectionModal();
       await loadCollections(collectionsSearchQuery);
@@ -2397,13 +2301,7 @@ function App() {
     setIsCollectionDeleting(true);
     setCollectionsError("");
     try {
-      const response = await fetch(`/api/collections/${pendingCollectionDelete.id}`, {
-        method: "DELETE"
-      });
-      const result = await readResponsePayload(response);
-      if (!response.ok) {
-        throw new Error(result?.error || "Failed to delete collection.");
-      }
+      await collectionsApi.deleteCollection(pendingCollectionDelete.id);
 
       if (selectedCollection?.id === pendingCollectionDelete.id) {
         setSelectedCollection(null);
@@ -2428,15 +2326,7 @@ function App() {
     setTagTypesError("");
 
     try {
-      const response = await fetch("/api/tag-types");
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("TagTypes API not found (404). Restart backend to apply latest changes.");
-        }
-        throw new Error("Failed to fetch tag types.");
-      }
-
-      const result = await response.json();
+      const result = await tagsApi.listTagTypes();
       setTagTypes(Array.isArray(result.items) ? result.items : []);
     } catch (error) {
       setTagTypes([]);
@@ -2450,15 +2340,7 @@ function App() {
     setMediaTagCatalogError("");
 
     try {
-      const response = await fetch("/api/tags");
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("Tags API not found (404). Restart backend to apply latest changes.");
-        }
-        throw new Error("Failed to fetch tags for autocomplete.");
-      }
-
-      const result = await response.json();
+      const result = await tagsApi.listTags();
       setMediaTagCatalog(Array.isArray(result.items) ? result.items : []);
     } catch (error) {
       setMediaTagCatalog([]);
@@ -2474,15 +2356,7 @@ function App() {
     }));
 
     try {
-      const response = await fetch(`/api/tag-types/${tagTypeId}/tags`);
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("Tags API not found (404). Restart backend to apply latest changes.");
-        }
-        throw new Error("Failed to fetch tags.");
-      }
-
-      const result = await response.json();
+      const result = await tagsApi.listTagsByTagType(tagTypeId);
       const items = Array.isArray(result.items) ? result.items : [];
       setTagsByTagTypeId((current) => ({
         ...current,
@@ -2821,18 +2695,6 @@ function App() {
 
     return result;
   };
-  const readResponsePayload = async (response) => {
-    const text = await response.text();
-    if (!text) {
-      return {};
-    }
-
-    try {
-      return JSON.parse(text);
-    } catch {
-      return { error: text };
-    }
-  };
   const fetchMediaById = async (mediaId) => {
     const normalizedId = Number(mediaId);
     if (!Number.isSafeInteger(normalizedId) || normalizedId <= 0) {
@@ -2844,12 +2706,7 @@ function App() {
       pageSize: "1",
       search: `id:${normalizedId}`
     });
-    const response = await fetch(`/api/media?${query.toString()}`);
-    if (!response.ok) {
-      return null;
-    }
-
-    const payload = await response.json();
+    const payload = await mediaApi.listMedia({ page: 1, pageSize: 1, search: `id:${normalizedId}` });
     const files = getPagedFiles(payload);
     return files.find((item) => item?.id === normalizedId) || null;
   };
@@ -2894,12 +2751,11 @@ function App() {
         query.set("search", normalizedSearch);
       }
 
-      const response = await fetch(`/api/media?${query.toString()}`);
-      if (!response.ok) {
-        throw new Error("Failed to load media picker data.");
-      }
-
-      const payload = await response.json();
+      const payload = await mediaApi.listMedia({
+        page: mediaRelationPickerPage,
+        pageSize: 12,
+        search: normalizedSearch
+      });
       setMediaRelationPickerItems(getPagedFiles(payload));
       setMediaRelationPickerTotalPages(Math.max(0, Number(payload?.totalPages) || 0));
       setMediaRelationPickerTotalCount(Math.max(0, Number(payload?.total) || 0));
@@ -3096,17 +2952,7 @@ function App() {
     }
 
     try {
-      const query = new URLSearchParams({
-        page: "1",
-        pageSize: "1",
-        search: `id:${normalizedId}`
-      });
-      const response = await fetch(`/api/media?${query.toString()}`);
-      if (!response.ok) {
-        throw new Error("Failed to load related media.");
-      }
-
-      const payload = await response.json();
+      const payload = await mediaApi.listMedia({ page: 1, pageSize: 1, search: `id:${normalizedId}` });
       const files = getPagedFiles(payload);
       const matched = files.find((item) => item?.id === normalizedId);
       if (!matched) {
@@ -3186,23 +3032,14 @@ function App() {
     const previousParentId = selectedMedia?.parent ?? null;
     const previousChildId = selectedMedia?.child ?? null;
     try {
-      const response = await fetch(`/api/media/${selectedMedia.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title || null,
-          description: description || null,
-          source: source || null,
-          tagIds,
-          parent,
-          child
-        })
+      const result = await mediaApi.updateMedia(selectedMedia.id, {
+        title: title || null,
+        description: description || null,
+        source: source || null,
+        tagIds,
+        parent,
+        child
       });
-
-      const result = await readResponsePayload(response);
-      if (!response.ok) {
-        throw new Error(result?.error || "Failed to update media.");
-      }
 
       const patch = {
         title: result.title ?? null,
@@ -3276,13 +3113,7 @@ function App() {
     setMediaModalError("");
     setIsDeletingMedia(true);
     try {
-      const response = await fetch(`/api/media/${selectedMedia.id}`, {
-        method: "DELETE"
-      });
-      const result = await readResponsePayload(response);
-      if (!response.ok) {
-        throw new Error(result?.error || "Failed to delete media.");
-      }
+      await mediaApi.deleteMedia(selectedMedia.id);
 
       setSelectedMedia(null);
       await loadMedia(currentPage, submittedText);
@@ -3462,15 +3293,7 @@ function App() {
     setIsFavoriteUpdating(true);
     setMediaModalError("");
     try {
-      const response = await fetch(`/api/media/${mediaId}/favorite`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isFavorite: nextIsFavorite })
-      });
-      const result = await readResponsePayload(response);
-      if (!response.ok) {
-        throw new Error(result?.error || "Failed to update favorites.");
-      }
+      await favoritesApi.setFavorite(mediaId, nextIsFavorite);
 
       setSelectedMedia((current) => (
         current && current.id === mediaId ? { ...current, isFavorite: nextIsFavorite } : current
@@ -3494,12 +3317,7 @@ function App() {
     setCollectionPickerError("");
     setIsCollectionPickerLoading(true);
     try {
-      const response = await fetch(`/api/collections?mediaId=${selectedMedia.id}`);
-      const result = await readResponsePayload(response);
-      if (!response.ok) {
-        throw new Error(result?.error || "Failed to fetch collections.");
-      }
-
+      const result = await collectionsApi.listCollections({ mediaId: selectedMedia.id });
       setCollectionPickerItems(Array.isArray(result.items) ? result.items : []);
     } catch (error) {
       setCollectionPickerItems([]);
@@ -3525,15 +3343,7 @@ function App() {
     setCollectionPickerError("");
     setMediaModalError("");
     try {
-      const response = await fetch(`/api/collections/${collectionId}/media`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mediaId: selectedMedia.id })
-      });
-      const result = await readResponsePayload(response);
-      if (!response.ok) {
-        throw new Error(result?.error || "Failed to add media to collection.");
-      }
+      const result = await collectionsApi.addMediaToCollection(collectionId, selectedMedia.id);
 
       setCollectionPickerItems((current) => current.map((item) => (
         item.id === collectionId
@@ -3591,21 +3401,10 @@ function App() {
     setIsTagTypeSaving(true);
     setTagTypesError("");
     try {
-      const response = await fetch("/api/tag-types", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: normalizedName,
-          color: normalizedColor
-        })
+      const result = await tagsApi.createTagType({
+        name: normalizedName,
+        color: normalizedColor
       });
-      const result = await readResponsePayload(response);
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("TagTypes API not found (404). Restart backend to apply latest changes.");
-        }
-        throw new Error(result?.error || "Failed to create tag type.");
-      }
 
       setTagTypes((current) => [{
         id: result.id,
@@ -3707,18 +3506,7 @@ function App() {
     setIsTagMoveInProgress(true);
     setTagTypesError("");
     try {
-      const response = await fetch(`/api/tags/${draggedTag.id}/tag-type`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tagTypeId: targetTagTypeId })
-      });
-      const result = await readResponsePayload(response);
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("Tags API not found (404). Restart backend to apply latest changes.");
-        }
-        throw new Error(result?.error || "Failed to move tag.");
-      }
+      await tagsApi.moveTagToType(draggedTag.id, targetTagTypeId);
 
       await Promise.all([
         loadTagsForTagType(draggedTag.sourceTagTypeId),
@@ -3781,21 +3569,10 @@ function App() {
     setSavingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: true }));
     setTagTypesError("");
     try {
-      const response = await fetch(`/api/tag-types/${tagTypeId}/tags`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: normalizedName,
-          description: normalizedDescription || null
-        })
+      await tagsApi.createTag(tagTypeId, {
+        name: normalizedName,
+        description: normalizedDescription || null
       });
-      const result = await readResponsePayload(response);
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("Tags API not found (404). Restart backend to apply latest changes.");
-        }
-        throw new Error(result?.error || "Failed to create tag.");
-      }
 
       handleClearNewTagDraft(tagTypeId);
       const refreshedTags = await loadTagsForTagType(tagTypeId);
@@ -3842,21 +3619,10 @@ function App() {
     setSavingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: true }));
     setTagTypesError("");
     try {
-      const response = await fetch(`/api/tags/${tagId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: normalizedName,
-          description: normalizedDescription || null
-        })
+      await tagsApi.updateTag(tagId, {
+        name: normalizedName,
+        description: normalizedDescription || null
       });
-      const result = await readResponsePayload(response);
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("Tags API not found (404). Restart backend to apply latest changes.");
-        }
-        throw new Error(result?.error || "Failed to update tag.");
-      }
 
       setEditingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: null }));
       const refreshedTags = await loadTagsForTagType(tagTypeId);
@@ -3871,16 +3637,7 @@ function App() {
     setSavingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: true }));
     setTagTypesError("");
     try {
-      const response = await fetch(`/api/tags/${tagId}`, {
-        method: "DELETE"
-      });
-      const result = await readResponsePayload(response);
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("Tags API not found (404). Restart backend to apply latest changes.");
-        }
-        throw new Error(result?.error || "Failed to delete tag.");
-      }
+      await tagsApi.deleteTag(tagId);
 
       setTagsByTagTypeId((current) => ({
         ...current,
@@ -3914,21 +3671,10 @@ function App() {
     setIsTagTypeUpdating(true);
     setTagTypesError("");
     try {
-      const response = await fetch(`/api/tag-types/${itemId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: normalizedName,
-          color: normalizedColor
-        })
+      const result = await tagsApi.updateTagType(itemId, {
+        name: normalizedName,
+        color: normalizedColor
       });
-      const result = await readResponsePayload(response);
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("TagTypes API not found (404). Restart backend to apply latest changes.");
-        }
-        throw new Error(result?.error || "Failed to update tag type.");
-      }
 
       setTagTypes((current) => current.map((item) => (
         item.id === itemId
@@ -3945,16 +3691,7 @@ function App() {
     setIsTagTypeUpdating(true);
     setTagTypesError("");
     try {
-      const response = await fetch(`/api/tag-types/${itemId}`, {
-        method: "DELETE"
-      });
-      const result = await readResponsePayload(response);
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("TagTypes API not found (404). Restart backend to apply latest changes.");
-        }
-        throw new Error(result?.error || "Failed to delete tag type.");
-      }
+      await tagsApi.deleteTagType(itemId);
 
       setTagTypes((current) => current.filter((item) => item.id !== itemId));
       setTagsByTagTypeId((current) => {
