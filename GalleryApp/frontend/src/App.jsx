@@ -4,26 +4,26 @@ import GalleryPage from "./features/gallery/GalleryPage";
 import FavoritesPage from "./features/favorites/FavoritesPage";
 import CollectionsPage from "./features/collections/CollectionsPage";
 import TagsPage from "./features/tags/TagsPage";
+import {
+  formatSearchTagValue,
+  getSearchTokenRange,
+  parseSearchSegments
+} from "./features/search/searchParser";
+import { getMediaTagColor, getTagId, getTagTypeId, parseTagNamesList } from "./features/tags/tagUtils";
+import { formatFileSize, formatMediaDate, getMediaShortType } from "./utils/mediaFormat";
+import {
+  ALLOWED_MEDIA_EXTENSIONS,
+  getExtensionFromPath,
+  getMediaIdentity,
+  isVideoFile,
+  resolveTileUrl,
+  VIDEO_EXTENSIONS
+} from "./utils/mediaIdentity";
 
 function App() {
   const PAGE_SIZE = 36;
   const baseSearchTagOptions = ["path", "title", "description", "id", "source"];
   const baseSearchTagNames = new Set(baseSearchTagOptions);
-  const allowedExtensions = new Set([
-    ".jpg",
-    ".jpeg",
-    ".jfif",
-    ".png",
-    ".gif",
-    ".webp",
-    ".bmp",
-    ".mp4",
-    ".webm",
-    ".mov",
-    ".avi",
-    ".mkv",
-    ".m4v"
-  ]);
   const [health, setHealth] = useState("loading...");
   const [inputValue, setInputValue] = useState("");
   const [submittedText, setSubmittedText] = useState("");
@@ -152,8 +152,6 @@ function App() {
   });
   const [activeTagTypeDropdownId, setActiveTagTypeDropdownId] = useState(null);
   const [tagTypeQueryById, setTagTypeQueryById] = useState({});
-  const imageExtensions = new Set([".jpg", ".jpeg", ".jfif", ".png", ".webp", ".bmp"]);
-  const videoExtensions = new Set([".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v"]);
   const backgroundUploadQueueRef = useRef([]);
   const isBackgroundUploadWorkerRunningRef = useRef(false);
   const uploadTaskSequenceRef = useRef(1);
@@ -233,58 +231,6 @@ function App() {
 
     searchHighlightRef.current.scrollLeft = searchInputRef.current.scrollLeft;
   };
-  const parseSearchSegments = (value) => {
-    const text = String(value || "");
-    if (!text) {
-      return [];
-    }
-
-    const segments = [];
-    let index = 0;
-    while (index < text.length) {
-      if (text[index] === " ") {
-        const start = index;
-        while (index < text.length && text[index] === " ") {
-          index += 1;
-        }
-
-        segments.push({ text: text.slice(start, index), isTag: false });
-        continue;
-      }
-
-      const tokenStart = index;
-      let tokenEnd = tokenStart;
-      while (tokenEnd < text.length && text[tokenEnd] !== " ") {
-        tokenEnd += 1;
-      }
-      const token = text.slice(tokenStart, tokenEnd);
-      const separatorIndex = token.indexOf(":");
-      const tokenWithoutAtPrefix = token.startsWith("@") ? token.slice(1) : token;
-      const normalizedToken = tokenWithoutAtPrefix.trim().toLowerCase();
-      const tagName = separatorIndex > 0
-        ? tokenWithoutAtPrefix.slice(0, separatorIndex - (token.startsWith("@") ? 1 : 0)).trim().toLowerCase()
-        : "";
-      const normalizedTokenTagName = separatorIndex < 0
-        ? normalizedToken
-        : tagName;
-      const tagType = searchTagTypeMap.get(normalizedTokenTagName);
-      const isKnownSearchTag = baseSearchTagNames.has(normalizedTokenTagName);
-      const isTypedKnownPrefix = separatorIndex < 0 && searchTagOptions.some((option) => option.startsWith(normalizedTokenTagName));
-      const isTag = Boolean(normalizedTokenTagName) && (
-        isKnownSearchTag
-        || tagType != null
-        || isTypedKnownPrefix
-      );
-      segments.push({
-        text: text.slice(tokenStart, tokenEnd),
-        isTag,
-        color: tagType?.color || ""
-      });
-      index = tokenEnd;
-    }
-
-    return segments;
-  };
   const handleSearchInputChange = (event) => {
     setInputValue(event.target.value);
     const caretPosition = event.target.selectionStart ?? event.target.value.length;
@@ -296,26 +242,6 @@ function App() {
     const caretPosition = event.target.selectionStart ?? event.target.value.length;
     setSearchCaretPosition(caretPosition);
     setIsSearchSuggestionExplicitlyActive(false);
-  };
-  const getSearchTokenRange = (text, caret) => {
-    const normalizedText = String(text || "");
-    const normalizedCaret = Math.max(0, Math.min(caret ?? normalizedText.length, normalizedText.length));
-    let start = normalizedCaret;
-    while (start > 0 && normalizedText[start - 1] !== " ") {
-      start -= 1;
-    }
-
-    let end = normalizedCaret;
-    while (end < normalizedText.length && normalizedText[end] !== " ") {
-      end += 1;
-    }
-
-    return {
-      start,
-      end,
-      token: normalizedText.slice(start, end),
-      tokenBeforeCaret: normalizedText.slice(start, normalizedCaret)
-    };
   };
   const searchTokenRange = getSearchTokenRange(inputValue, searchCaretPosition);
   const searchSuggestions = (() => {
@@ -430,7 +356,6 @@ function App() {
     }));
   })();
   const hasSearchSuggestions = isSearchInputFocused && searchSuggestions.length > 0;
-  const formatSearchTagValue = (value) => (/\s/.test(value) ? `"${value.replace(/"/g, "")}"` : value);
   const applySearchSuggestion = (suggestion) => {
     const prefix = inputValue.slice(0, searchTokenRange.start);
     const suffix = inputValue.slice(searchTokenRange.end);
@@ -523,62 +448,12 @@ function App() {
     setActiveSearchSuggestionIndex(0);
     setIsSearchSuggestionExplicitlyActive(false);
   }, [searchSuggestions.length, activeSearchSuggestionIndex]);
-  const getExtensionFromPath = (value) => {
-    if (!value) {
-      return "";
-    }
-
-    const cleanValue = String(value).split("?")[0];
-    const dotIndex = cleanValue.lastIndexOf(".");
-    return dotIndex >= 0 ? cleanValue.slice(dotIndex).toLowerCase() : "";
-  };
-  const resolveTileUrl = (file) => {
-    if (file?.tileUrl) {
-      return file.tileUrl;
-    }
-
-    if (file?.previewUrl) {
-      return file.previewUrl;
-    }
-
-    const original = file?.originalUrl || file?.url || "";
-    if (file?.mediaType === "image" && original) {
-      return original;
-    }
-
-    if (imageExtensions.has(getExtensionFromPath(original))) {
-      return original;
-    }
-
-    if ((file?.mediaType === "video" || file?.mediaType === "gif") && file?.relativePath) {
-      return `/api/media/preview?path=${encodeURIComponent(file.relativePath)}`;
-    }
-
-    return "";
-  };
   const visibleMediaFiles = mediaFiles
     .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) }));
   const visibleFavoriteFiles = favoritesFiles
     .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) }));
   const visibleCollectionFiles = collectionFiles
     .map((file) => ({ ...file, _tileUrl: resolveTileUrl(file) }));
-  const getMediaIdentity = (file) => {
-    if (!file || typeof file !== "object") {
-      return "";
-    }
-
-    const id = Number(file.id);
-    if (Number.isSafeInteger(id) && id > 0) {
-      return `id:${id}`;
-    }
-
-    const path = String(file.relativePath || "").trim();
-    if (path) {
-      return `path:${path}`;
-    }
-
-    return "";
-  };
   const selectedMediaIdentity = getMediaIdentity(selectedMedia);
   const modalMediaScope = selectedCollection
     ? "collection"
@@ -621,63 +496,6 @@ function App() {
 
     return resolveTileUrl(file) || resolveOriginalMediaUrl(file);
   };
-  const isVideoFile = (file) => {
-    if (!file) {
-      return false;
-    }
-
-    if (file.mediaType === "video") {
-      return true;
-    }
-
-    return videoExtensions.has(getExtensionFromPath(resolveOriginalMediaUrl(file) || file.name));
-  };
-  const formatMediaDate = (value) => {
-    if (!value) {
-      return "Unknown";
-    }
-
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return "Unknown";
-    }
-
-    return date.toLocaleString();
-  };
-  const formatFileSize = (value) => {
-    const bytes = Number(value);
-    if (!Number.isFinite(bytes) || bytes < 0) {
-      return "-";
-    }
-
-    if (bytes === 0) {
-      return "0 B";
-    }
-
-    const units = ["B", "KB", "MB", "GB", "TB"];
-    let size = bytes;
-    let unitIndex = 0;
-    while (size >= 1024 && unitIndex < units.length - 1) {
-      size /= 1024;
-      unitIndex += 1;
-    }
-
-    const fractionDigits = size >= 100 || unitIndex === 0 ? 0 : size >= 10 ? 1 : 2;
-    return `${size.toFixed(fractionDigits)} ${units[unitIndex]} (${bytes.toLocaleString()} B)`;
-  };
-  const getMediaShortType = (file) => {
-    const source = resolveOriginalMediaUrl(file) || file?.name || "";
-    const extension = getExtensionFromPath(source);
-    if (extension === ".gif") {
-      return "gif";
-    }
-
-    if (isVideoFile(file)) {
-      return "vid";
-    }
-
-    return "img";
-  };
   const getMediaTagName = (tag) => {
     if (!tag || typeof tag !== "object") {
       return "";
@@ -685,35 +503,11 @@ function App() {
 
     return String(tag.name || "").trim();
   };
-  const getMediaTagColor = (tag) => {
-    const value = String(tag?.tagTypeColor || "").trim();
-    return /^#[0-9A-Fa-f]{6}$/.test(value) ? value : "#94a3b8";
-  };
-  const getTagId = (tag) => {
-    const value = Number(tag?.id);
-    return Number.isInteger(value) && value > 0 ? value : null;
-  };
   const getFileMediaTags = (file) => (
     Array.isArray(file?.tags)
       ? file.tags.filter((tag) => getTagId(tag) !== null)
       : []
   );
-  const getTagTypeId = (value) => {
-    const parsed = Number(value);
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-  };
-  const parseTagNamesList = (value) => {
-    if (Array.isArray(value)) {
-      return value
-        .map((item) => String(item || "").trim())
-        .filter(Boolean);
-    }
-
-    return String(value || "")
-      .split(/[\s,]+/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-  };
   const mediaTagCatalogByTypeId = (() => {
     const map = new Map();
     mediaTagCatalog.forEach((tag) => {
@@ -1276,10 +1070,6 @@ function App() {
   };
   const uploadPickerRef = useRef(null);
   const getFileKey = (file) => `${file.name}-${file.size}-${file.lastModified}`;
-  const getExtension = (fileName) => {
-    const dotIndex = fileName.lastIndexOf(".");
-    return dotIndex >= 0 ? fileName.slice(dotIndex).toLowerCase() : "";
-  };
   const getDisplayName = (fileName) => {
     if (!fileName) {
       return "";
@@ -1874,12 +1664,12 @@ function App() {
     const uniqueMap = new Map(nextFiles.map((file) => [getFileKey(file), file]));
     const nextItems = Array.from(uniqueMap.values()).map((file) => {
       const sourceUrl = URL.createObjectURL(file);
-      const extension = getExtension(file.name);
+      const extension = getExtensionFromPath(file.name);
       return {
         key: getFileKey(file),
         file,
         previewUrl: sourceUrl,
-        mediaType: videoExtensions.has(extension) ? "video" : "image",
+        mediaType: VIDEO_EXTENSIONS.has(extension) ? "video" : "image",
         draft: createMediaDraft(null)
       };
     });
@@ -2071,14 +1861,14 @@ function App() {
           const uploadedFiles = Array.isArray(result.files) ? result.files : [];
           const uploaded = uploadedFiles[0];
           const uploadedRelativePath = uploaded?.relativePath || "";
-          const uploadedExtension = getExtension(uploadedRelativePath || task.file.name);
+          const uploadedExtension = getExtensionFromPath(uploadedRelativePath || task.file.name);
           const uploadedMedia = uploadedRelativePath
             ? {
               id: uploaded?.id ?? null,
               name: uploaded?.storedName || task.file.name,
               relativePath: uploadedRelativePath,
               originalUrl: `/media/${encodeURIComponent(uploadedRelativePath).replace(/%2F/g, "/")}`,
-              mediaType: videoExtensions.has(uploadedExtension) ? "video" : "image",
+              mediaType: VIDEO_EXTENSIONS.has(uploadedExtension) ? "video" : "image",
               title: task.draft.title || null,
               description: task.draft.description || null,
               source: task.draft.source || null,
@@ -2627,7 +2417,7 @@ function App() {
 
     setUploadState({ type: "", message: "" });
 
-    if (!allowedExtensions.has(getExtension(activeItem.file.name))) {
+    if (!ALLOWED_MEDIA_EXTENSIONS.has(getExtensionFromPath(activeItem.file.name))) {
       setUploadState({ type: "error", message: `Unsupported file type: ${activeItem.file.name}` });
       return;
     }
@@ -2675,7 +2465,7 @@ function App() {
     }
 
     if (isGroupUploadEnabled) {
-      const unsupportedFile = uploadItems.find((item) => !allowedExtensions.has(getExtension(item.file.name)));
+      const unsupportedFile = uploadItems.find((item) => !ALLOWED_MEDIA_EXTENSIONS.has(getExtensionFromPath(item.file.name)));
       if (unsupportedFile) {
         setUploadState({ type: "error", message: `Unsupported file type: ${unsupportedFile.file.name}` });
         return;
@@ -4150,7 +3940,12 @@ function App() {
                 activePage === "collections" ? (
                   <span className="top-input-segment">{inputValue}</span>
                 ) : (
-                  parseSearchSegments(inputValue).map((segment, index) => (
+                  parseSearchSegments({
+                    value: inputValue,
+                    baseSearchTagNames,
+                    searchTagTypeMap,
+                    searchTagOptions
+                  }).map((segment, index) => (
                     <span
                       key={`${index}-${segment.text}`}
                       className={segment.isTag ? "top-input-segment is-tag" : "top-input-segment"}
@@ -5427,7 +5222,6 @@ function App() {
 }
 
 export default App;
-
 
 
 
