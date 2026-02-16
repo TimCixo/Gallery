@@ -232,31 +232,6 @@ export default function FavoritesContainer() {
 
     return (
       <div className="media-pagination-wrap">
-        <div className="media-pagination">
-          <button type="button" onClick={() => handleFavoritesPageChange(favoritesPage - 1)} disabled={isFavoritesLoading || favoritesPage <= 1}>
-            Prev
-          </button>
-          <p>Page {favoritesPage} of {favoritesTotalPages}</p>
-          <button type="button" onClick={() => handleFavoritesPageChange(favoritesPage + 1)} disabled={isFavoritesLoading || favoritesPage >= favoritesTotalPages}>
-            Next
-          </button>
-          <form className="media-pagination-jump" onSubmit={handleFavoritesPageJumpSubmit}>
-            <input
-              type="number"
-              min={1}
-              max={Math.max(favoritesTotalPages, 1)}
-              step={1}
-              inputMode="numeric"
-              value={favoritesPageJumpInput}
-              onChange={(event) => setFavoritesPageJumpInput(event.target.value)}
-              disabled={isFavoritesLoading || favoritesTotalPages === 0}
-              aria-label="Go to favorites page"
-            />
-            <button type="submit" disabled={isFavoritesLoading || favoritesTotalPages === 0}>
-              Go
-            </button>
-          </form>
-        </div>
         {showLoadingState ? (
           <p className="media-pagination-status" aria-live="polite">
             {isFavoritesLoading ? "Loading favorites..." : "\u00A0"}

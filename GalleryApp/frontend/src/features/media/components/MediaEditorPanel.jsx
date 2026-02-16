@@ -2,19 +2,8 @@ import { useMemo, useState } from "react";
 import { tagsApi } from "../../../api/tagsApi";
 import { formatFileSize, formatMediaDate } from "../../shared/utils/mediaFormatters";
 import { isVideoFile, resolveOriginalMediaUrl, resolvePreviewMediaUrl } from "../../shared/utils/mediaPredicates";
-import MediaEditorPanel from "./MediaEditorPanel";
-
-function renderSource(source) {
-  if (!source) {
-    return "-";
-  }
-
-  return (
-    <a href={source} target="_blank" rel="noreferrer">
-      {source}
-    </a>
-  );
-}
+import MediaCoreMetadataRows from "./MediaCoreMetadataRows";
+import MediaEditActions from "./MediaEditActions";
 
 const groupTagsByType = (tags) => {
   const map = new Map();
@@ -46,13 +35,16 @@ const getTagTypeCellStyles = (colorValue) => {
   return { header, value };
 };
 
-export default function MediaViewerModal({
+export default function MediaEditorPanel({
+  mode = "media",
   file,
   onClose,
-  onPrev,
-  onNext,
-  canNavigate,
-  getDisplayName,
+  showFavoriteButton = true,
+  showCloseButton = true,
+  allowOpenRelatedMedia = true,
+  previewNode = null,
+  previewClassName = "media-edit-thumbnail",
+  uploadFile = null,
   isFavorite,
   onToggleFavorite,
   isFavoriteUpdating,
@@ -60,14 +52,9 @@ export default function MediaViewerModal({
   isCollectionPickerLoading,
   isAddingMediaToCollection,
   errorMessage,
-  isEditing,
   draft,
   onDraftChange,
-  onStartEdit,
-  onCancelEdit,
-  onSaveEdit,
   isSavingMedia,
-  onDelete,
   isDeletingMedia,
   tagCatalog,
   tagTypes,
@@ -91,7 +78,14 @@ export default function MediaViewerModal({
   onMediaRelationPickerPrev,
   onMediaRelationPickerNext,
   onCloseMediaRelationPicker,
-  onSelectMediaRelationFromPicker
+  onSelectMediaRelationFromPicker,
+  primaryActionLabel = "Save",
+  primaryActionBusyLabel = "Saving...",
+  isPrimaryActionBusy = false,
+  onPrimaryAction,
+  secondaryActionLabel = "Cancel",
+  onSecondaryAction,
+  actionLeadingSlot = null
 }) {
   if (!file) {
     return null;
@@ -101,17 +95,6 @@ export default function MediaViewerModal({
   const fallbackTypeEntries = groupTagsByType(tagCatalog).map(([name]) => ({ id: name, name, color: "#64748B" }));
   const normalizedTagTypes = tagTypesSorted.length > 0 ? tagTypesSorted : fallbackTypeEntries;
   const selectedTagIdsSet = new Set(Array.isArray(selectedTagIds) ? selectedTagIds : []);
-  const selectedTagsByType = new Map();
-  (Array.isArray(file.tags) ? file.tags : []).forEach((tag) => {
-    const typeId = Number(tag?.tagTypeId);
-    if (!Number.isInteger(typeId) || typeId <= 0) {
-      return;
-    }
-    if (!selectedTagsByType.has(typeId)) {
-      selectedTagsByType.set(typeId, []);
-    }
-    selectedTagsByType.get(typeId).push(tag);
-  });
   const catalogTagsByType = new Map();
   (Array.isArray(tagCatalog) ? tagCatalog : []).forEach((tag) => {
     const typeId = Number(tag?.tagTypeId);
@@ -252,6 +235,10 @@ export default function MediaViewerModal({
       return String(value);
     }
 
+    if (!allowOpenRelatedMedia || !onOpenRelatedMediaById) {
+      return <span>{normalizedId}</span>;
+    }
+
     return (
       <button
         type="button"
@@ -324,249 +311,96 @@ export default function MediaViewerModal({
     );
   };
 
-  if (isEditing) {
-    return (
-      <div className="media-modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
-        <div className="media-modal media-modal-editing" onClick={(event) => event.stopPropagation()}>
-          <MediaEditorPanel
-            mode="media"
-            file={file}
-            onClose={onClose}
-            showFavoriteButton
-            showCloseButton
-            allowOpenRelatedMedia
-            isFavorite={isFavorite}
-            onToggleFavorite={onToggleFavorite}
-            isFavoriteUpdating={isFavoriteUpdating}
-            onOpenCollectionPicker={onOpenCollectionPicker}
-            isCollectionPickerLoading={isCollectionPickerLoading}
-            isAddingMediaToCollection={isAddingMediaToCollection}
-            errorMessage={errorMessage}
-            draft={draft}
-            onDraftChange={onDraftChange}
-            isSavingMedia={isSavingMedia}
-            isDeletingMedia={isDeletingMedia}
-            tagCatalog={tagCatalog}
-            tagTypes={tagTypes}
-            isTagCatalogLoading={isTagCatalogLoading}
-            selectedTagIds={selectedTagIds}
-            onToggleTag={onToggleTag}
-            onRefreshTagCatalog={onRefreshTagCatalog}
-            relationPreviewByMode={relationPreviewByMode}
-            onOpenRelationPicker={onOpenRelationPicker}
-            onOpenRelatedMediaById={onOpenRelatedMediaById}
-            isMediaRelationPickerOpen={isMediaRelationPickerOpen}
-            mediaRelationPickerMode={mediaRelationPickerMode}
-            mediaRelationPickerQuery={mediaRelationPickerQuery}
-            onMediaRelationPickerQueryChange={onMediaRelationPickerQueryChange}
-            mediaRelationPickerItems={mediaRelationPickerItems}
-            mediaRelationPickerPage={mediaRelationPickerPage}
-            mediaRelationPickerTotalPages={mediaRelationPickerTotalPages}
-            mediaRelationPickerTotalCount={mediaRelationPickerTotalCount}
-            isMediaRelationPickerLoading={isMediaRelationPickerLoading}
-            mediaRelationPickerError={mediaRelationPickerError}
-            onMediaRelationPickerPrev={onMediaRelationPickerPrev}
-            onMediaRelationPickerNext={onMediaRelationPickerNext}
-            onCloseMediaRelationPicker={onCloseMediaRelationPicker}
-            onSelectMediaRelationFromPicker={onSelectMediaRelationFromPicker}
-            primaryActionLabel="Save"
-            primaryActionBusyLabel="Saving..."
-            isPrimaryActionBusy={isSavingMedia}
-            onPrimaryAction={onSaveEdit}
-            secondaryActionLabel="Cancel"
-            onSecondaryAction={onCancelEdit}
-          />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <>
-      <div className="media-modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
-        <div className={`media-modal${isEditing ? " media-modal-editing" : ""}`} onClick={(event) => event.stopPropagation()}>
-        {!isEditing ? (
-          <div className="media-modal-content">
-            <button
-              type="button"
-              className="media-nav-btn media-nav-btn-prev"
-              onClick={onPrev}
-              disabled={!canNavigate}
-              aria-label="Previous media"
-              title="Previous media"
-            >
-              {"<"}
-            </button>
-            {isVideoFile(file) ? (
-              <video
-                src={resolveOriginalMediaUrl(file)}
-                poster={resolvePreviewMediaUrl(file)}
-                controls
-                autoPlay
-                preload="metadata"
-              />
-            ) : (
-              <img src={resolveOriginalMediaUrl(file)} alt={getDisplayName(file.name)} />
-            )}
-            <button
-              type="button"
-              className="media-nav-btn media-nav-btn-next"
-              onClick={onNext}
-              disabled={!canNavigate}
-              aria-label="Next media"
-              title="Next media"
-            >
-              {">"}
-            </button>
-          </div>
-        ) : null}
-        <div className="media-modal-meta">
+      <div className="media-modal-meta">
           <div className="media-favorite-row">
-            <button
-              type="button"
-              className="media-icon-btn media-icon-btn-collections"
-              onClick={onOpenCollectionPicker}
-              disabled={isCollectionPickerLoading || isAddingMediaToCollection || !file.id}
-              aria-label="Add to collection"
-              title="Add to collection"
-            >
-              {"\uD83D\uDCC1"}
-            </button>
-            <button
-              type="button"
-              className={`media-favorite-btn${isFavorite ? " is-active" : ""}`}
-              onClick={onToggleFavorite}
-              disabled={isFavoriteUpdating || !file.id}
-              aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
-              title={isFavorite ? "Remove from favorites" : "Add to favorites"}
-              aria-pressed={isFavorite}
-            >
-              {"\u2764"}
-            </button>
-            <button
-              type="button"
-              className="media-icon-btn media-icon-btn-close"
-              onClick={onClose}
-              aria-label="Close media modal"
-              title="Close media modal"
-            >
-              {"\u274C"}
-            </button>
+            {onOpenCollectionPicker ? (
+              <button
+                type="button"
+                className="media-icon-btn media-icon-btn-collections"
+                onClick={onOpenCollectionPicker}
+                disabled={isCollectionPickerLoading || isAddingMediaToCollection || isSavingMedia || isDeletingMedia}
+                aria-label="Add to collection"
+                title="Add to collection"
+              >
+                {"\uD83D\uDCC1"}
+              </button>
+            ) : null}
+            {showFavoriteButton ? (
+              <button
+                type="button"
+                className={`media-favorite-btn${isFavorite ? " is-active" : ""}`}
+                onClick={onToggleFavorite}
+                disabled={isFavoriteUpdating || !file.id || isSavingMedia || isDeletingMedia}
+                aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                aria-pressed={isFavorite}
+              >
+                {"\u2764"}
+              </button>
+            ) : null}
+            {showCloseButton ? (
+              <button
+                type="button"
+                className="media-icon-btn media-icon-btn-close"
+                onClick={onClose}
+                aria-label="Close media modal"
+                title="Close media modal"
+              >
+                {"\u274C"}
+              </button>
+            ) : null}
           </div>
 
           {errorMessage ? <p className="media-action-error">{errorMessage}</p> : null}
 
-          <div className={`media-meta-primary${isEditing ? " is-editing" : ""}`}>
+          <div className="media-meta-primary is-editing">
             <table className="media-meta-table">
               <tbody>
-              <tr>
-                <th scope="row">Source</th>
-                <td>
-                  {isEditing ? (
-                    <input
-                      type="url"
-                      className="media-edit-input"
-                      value={draft?.source ?? ""}
-                      onChange={(event) => onDraftChange?.({ source: event.target.value })}
-                      placeholder="https://example.com"
-                    />
-                  ) : renderSource(file.source)}
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">Title</th>
-                <td>
-                  {isEditing ? (
-                    <input
-                      type="text"
-                      className="media-edit-input"
-                      value={draft?.title ?? ""}
-                      onChange={(event) => onDraftChange?.({ title: event.target.value })}
-                    />
-                  ) : (file.title || "-")}
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">Description</th>
-                <td>
-                  {isEditing ? (
-                    <textarea
-                      className="media-edit-input media-edit-textarea"
-                      value={draft?.description ?? ""}
-                      onChange={(event) => onDraftChange?.({ description: event.target.value })}
-                    />
-                  ) : (file.description || "-")}
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">Parent</th>
-                <td>
-                  {isEditing ? (
-                    renderLinkedMediaPicker("parent", "Parent")
-                  ) : renderLinkedMediaId(file.parent, "Parent")}
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">Child</th>
-                <td>
-                  {isEditing ? (
-                    renderLinkedMediaPicker("child", "Child")
-                  ) : renderLinkedMediaId(file.child, "Child")}
-                </td>
-              </tr>
+                <MediaCoreMetadataRows
+                  isEditing
+                  file={file}
+                  draft={draft}
+                  onDraftChange={onDraftChange}
+                  isEditingDisabled={isSavingMedia || isDeletingMedia}
+                  renderParentCell={() => renderLinkedMediaPicker("parent", "Parent")}
+                  renderChildCell={() => renderLinkedMediaPicker("child", "Child")}
+                />
                 {normalizedTagTypes.map((tagType, index) => {
                 const typeId = Number(tagType?.id);
                 const typeName = String(tagType?.name || `Tag type ${index + 1}`);
                 const rowStyles = getTagTypeCellStyles(tagType?.color);
-                const typeSelectedTags = Number.isInteger(typeId) ? (selectedTagsByType.get(typeId) || []) : [];
-                const typeCatalogTags = Number.isInteger(typeId) ? (catalogTagsByType.get(typeId) || []) : [];
-                if (!isEditing && typeSelectedTags.length === 0) {
-                  return null;
-                }
-
                 return (
                   <tr key={`tag-type-row-${tagType.id ?? typeName}`}>
                     <th scope="row" style={rowStyles.header}>
                       <span className="media-tagtype-label">
                         <span className="media-tagtype-heading">
                           <span>{typeName}</span>
-                          {isEditing ? (
-                            <button
-                              type="button"
-                              className="media-tagtype-manage-btn"
-                              aria-label={`Manage tags for ${typeName}`}
-                              title={`Manage tags for ${typeName}`}
-                              disabled={!Number.isInteger(typeId) || typeId <= 0}
-                              onClick={() => {
-                                setTagManagerError("");
-                                if (Number.isInteger(typeId) && typeId > 0) {
-                                  setActiveTagManagerTagTypeId(typeId);
-                                }
-                              }}
-                            >
-                              {"\u2026"}
-                            </button>
-                          ) : null}
+                          <button
+                            type="button"
+                            className="media-tagtype-manage-btn"
+                            aria-label={`Manage tags for ${typeName}`}
+                            title={`Manage tags for ${typeName}`}
+                            disabled={!Number.isInteger(typeId) || typeId <= 0}
+                            onClick={() => {
+                              setTagManagerError("");
+                              if (Number.isInteger(typeId) && typeId > 0) {
+                                setActiveTagManagerTagTypeId(typeId);
+                              }
+                            }}
+                          >
+                            {"\u2026"}
+                          </button>
                         </span>
                       </span>
                     </th>
                     <td style={rowStyles.value}>
-                      {!isEditing ? (
-                        typeSelectedTags.length > 0 ? (
-                          <div className="media-tag-view-list">
-                            {typeSelectedTags.map((tag) => (
-                              <span key={`tag-${tag.id}`} className="media-tag-view-pill">
-                                {tag.name}
-                              </span>
-                            ))}
-                          </div>
-                        ) : "-"
-                      ) : (
-                        <>
-                          {isTagCatalogLoading ? (
-                            <span>Loading tags...</span>
-                          ) : (
-                            <div className="media-tagtype-edit-wrap">
+                      <>
+                        {isTagCatalogLoading ? (
+                          <span>Loading tags...</span>
+                        ) : (
+                          <div className="media-tagtype-edit-wrap">
                               <div
                                 className="media-tagtype-field"
                                 onMouseDown={(event) => {
@@ -654,19 +488,18 @@ export default function MediaViewerModal({
                                   )}
                                 </ul>
                               ) : null}
-                            </div>
-                          )}
-                        </>
-                      )}
+                          </div>
+                        )}
+                      </>
                     </td>
                   </tr>
                 );
                 })}
               </tbody>
             </table>
-            {isEditing ? (
-              <div className="media-edit-thumbnail" aria-label="Current media thumbnail">
-                {isVideoFile(file) ? (
+            <div className={previewClassName} aria-label="Current media thumbnail">
+              {previewNode ?? (
+                isVideoFile(file) ? (
                   <video
                     src={resolveOriginalMediaUrl(file)}
                     poster={resolvePreviewMediaUrl(file)}
@@ -677,85 +510,71 @@ export default function MediaViewerModal({
                 ) : (
                   <img
                     src={resolvePreviewMediaUrl(file)}
-                    alt={getDisplayName(file.name)}
+                    alt={String(file?.name || "")}
                     loading="lazy"
                   />
-                )}
-              </div>
-            ) : null}
+                )
+              )}
+            </div>
           </div>
 
-          <div className="media-action-row media-action-row-spaced">
-            {isEditing ? (
-              <>
-                <button
-                  type="button"
-                  className="media-action-btn media-action-primary"
-                  onClick={onSaveEdit}
-                  disabled={isSavingMedia || isDeletingMedia}
-                >
-                  {isSavingMedia ? "Saving..." : "Save"}
-                </button>
-                <button
-                  type="button"
-                  className="media-action-btn"
-                  onClick={onCancelEdit}
-                  disabled={isSavingMedia || isDeletingMedia}
-                >
-                  Cancel
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  className="media-action-btn media-action-primary"
-                  onClick={onStartEdit}
-                  disabled={isSavingMedia || isDeletingMedia}
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className="media-action-btn media-action-danger"
-                  onClick={onDelete}
-                  disabled={isSavingMedia || isDeletingMedia}
-                >
-                  {isDeletingMedia ? "Deleting..." : "Delete"}
-                </button>
-              </>
-            )}
-          </div>
+          <MediaEditActions
+            primaryLabel={primaryActionLabel}
+            primaryBusyLabel={primaryActionBusyLabel}
+            isPrimaryBusy={isPrimaryActionBusy}
+            onPrimary={onPrimaryAction}
+            secondaryLabel={secondaryActionLabel}
+            onSecondary={onSecondaryAction}
+            isDisabled={isSavingMedia || isDeletingMedia}
+            leadingSlot={actionLeadingSlot}
+          />
 
           <details className="media-system-callout">
             <summary className="media-system-summary">System details</summary>
-            <table className="media-system-table">
-              <tbody>
-                <tr>
-                  <th scope="row">Id</th>
-                  <td>{file.id ?? "-"}</td>
-                </tr>
-                <tr>
-                  <th scope="row">Path</th>
-                  <td>{file.relativePath || "-"}</td>
-                </tr>
-                <tr>
-                  <th scope="row">Created At</th>
-                  <td>{formatMediaDate(file.createdAtUtc || file.modifiedAtUtc)}</td>
-                </tr>
-                <tr>
-                  <th scope="row">Name</th>
-                  <td>{file.name || "-"}</td>
-                </tr>
-                <tr>
-                  <th scope="row">File Size</th>
-                  <td>{formatFileSize(file.sizeBytes)}</td>
-                </tr>
-              </tbody>
-            </table>
+            {mode === "upload" ? (
+              <table className="media-system-table">
+                <tbody>
+                  <tr>
+                    <th scope="row">File Name</th>
+                    <td>{uploadFile?.name || "-"}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">File Type</th>
+                    <td>{uploadFile?.type || "-"}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">File Size</th>
+                    <td>{formatFileSize(uploadFile?.size || 0)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            ) : (
+              <table className="media-system-table">
+                <tbody>
+                  <tr>
+                    <th scope="row">Id</th>
+                    <td>{file.id ?? "-"}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Path</th>
+                    <td>{file.relativePath || "-"}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Created At</th>
+                    <td>{formatMediaDate(file.createdAtUtc || file.modifiedAtUtc)}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Name</th>
+                    <td>{file.name || "-"}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">File Size</th>
+                    <td>{formatFileSize(file.sizeBytes)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            )}
           </details>
-        </div>
-      </div>
       </div>
 
       {isMediaRelationPickerOpen ? (

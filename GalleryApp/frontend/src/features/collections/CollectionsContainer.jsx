@@ -277,39 +277,6 @@ export default function CollectionsContainer({ searchQuery = "" }) {
 
     return (
       <div className="media-pagination-wrap">
-        <div className="media-pagination">
-          <button
-            type="button"
-            onClick={() => handleCollectionFilesPageChange(collectionFilesPage - 1)}
-            disabled={isCollectionFilesLoading || collectionFilesPage <= 1}
-          >
-            Prev
-          </button>
-          <p>Page {collectionFilesPage} of {collectionFilesTotalPages}</p>
-          <button
-            type="button"
-            onClick={() => handleCollectionFilesPageChange(collectionFilesPage + 1)}
-            disabled={isCollectionFilesLoading || collectionFilesPage >= collectionFilesTotalPages}
-          >
-            Next
-          </button>
-          <form className="media-pagination-jump" onSubmit={handleCollectionFilesPageJumpSubmit}>
-            <input
-              type="number"
-              min={1}
-              max={Math.max(collectionFilesTotalPages, 1)}
-              step={1}
-              inputMode="numeric"
-              value={collectionFilesPageJumpInput}
-              onChange={(event) => setCollectionFilesPageJumpInput(event.target.value)}
-              disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0}
-              aria-label="Go to collection page"
-            />
-            <button type="submit" disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0}>
-              Go
-            </button>
-          </form>
-        </div>
         {showLoadingState ? (
           <p className="media-pagination-status" aria-live="polite">
             {isCollectionFilesLoading ? "Loading collection files..." : "\u00A0"}

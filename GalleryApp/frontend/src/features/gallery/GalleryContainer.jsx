@@ -242,31 +242,6 @@ export default function GalleryContainer({ searchQuery = "" }) {
 
     return (
       <div className="media-pagination-wrap">
-        <div className="media-pagination">
-          <button type="button" onClick={() => handlePageChange(currentPage - 1)} disabled={isMediaLoading || currentPage <= 1}>
-            Prev
-          </button>
-          <p>Page {currentPage} of {totalPages}</p>
-          <button type="button" onClick={() => handlePageChange(currentPage + 1)} disabled={isMediaLoading || currentPage >= totalPages}>
-            Next
-          </button>
-          <form className="media-pagination-jump" onSubmit={handlePageJumpSubmit}>
-            <input
-              type="number"
-              min={1}
-              max={Math.max(totalPages, 1)}
-              step={1}
-              inputMode="numeric"
-              value={pageJumpInput}
-              onChange={(event) => setPageJumpInput(event.target.value)}
-              disabled={isMediaLoading || totalPages === 0}
-              aria-label="Go to page"
-            />
-            <button type="submit" disabled={isMediaLoading || totalPages === 0}>
-              Go
-            </button>
-          </form>
-        </div>
         {showLoadingState ? (
           <p className="media-pagination-status" aria-live="polite">
             {isMediaLoading ? "Loading media..." : "\u00A0"}
