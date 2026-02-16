@@ -1950,6 +1950,22 @@
   line-height: 1.2;
 }
 
+.media-tag-pill-toggle {
+  border: 1px solid #d5dbe1;
+  border-radius: 0.35rem;
+  background-color: #f8fafc;
+  color: #0f172a;
+  padding: 0.12rem 0.4rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.media-tag-pill-toggle.is-active {
+  border-color: #93c5fd;
+  background-color: #dbeafe;
+  color: #1d4ed8;
+}
+
 .media-action-row {
   display: flex;
   gap: 0.5rem;
