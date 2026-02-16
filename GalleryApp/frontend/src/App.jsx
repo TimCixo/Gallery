@@ -4,6 +4,11 @@ import GalleryPage from "./features/gallery/GalleryPage";
 import FavoritesPage from "./features/favorites/FavoritesPage";
 import CollectionsPage from "./features/collections/CollectionsPage";
 import TagsPage from "./features/tags/TagsPage";
+import AppShell from "./app/AppShell";
+import { MODAL_KEYS } from "./app/modal/modalKeys";
+import { useModalManager } from "./hooks/useModalManager";
+import TagDeleteConfirmModal from "./features/tags/components/TagDeleteConfirmModal";
+import CollectionDeleteConfirmModal from "./features/collections/components/CollectionDeleteConfirmModal";
 
 function App() {
   const PAGE_SIZE = 36;
@@ -24,12 +29,18 @@ function App() {
     ".mkv",
     ".m4v"
   ]);
+  const { openModal, closeModal, isModalOpen, getModalPayload } = useModalManager();
+
   const [health, setHealth] = useState("loading...");
   const [inputValue, setInputValue] = useState("");
   const [submittedText, setSubmittedText] = useState("");
-  const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isSlideMenuOpen, setIsSlideMenuOpen] = useState(false);
   const [activePage, setActivePage] = useState("gallery");
+  const pendingCollectionDelete = getModalPayload(MODAL_KEYS.COLLECTION_DELETE_CONFIRM);
+  const pendingTagDelete = getModalPayload(MODAL_KEYS.TAG_DELETE_CONFIRM);
+  const showDeleteConfirm = Boolean(getModalPayload(MODAL_KEYS.MEDIA_EDITOR)?.confirmDelete);
+  const isUploadOpen = isModalOpen(MODAL_KEYS.UPLOAD_DIALOG);
+  const isMediaRelationPickerOpen = isModalOpen(MODAL_KEYS.RELATION_PICKER);
   const [tagTypeNameInput, setTagTypeNameInput] = useState("");
   const [tagTypeColorInput, setTagTypeColorInput] = useState("#2563EB");
   const [tagTypes, setTagTypes] = useState([]);
@@ -99,7 +110,6 @@ function App() {
   const [collectionFilesTotalPages, setCollectionFilesTotalPages] = useState(0);
   const [collectionFilesTotalCount, setCollectionFilesTotalCount] = useState(0);
   const [collectionFilesPageJumpInput, setCollectionFilesPageJumpInput] = useState("1");
-  const [pendingCollectionDelete, setPendingCollectionDelete] = useState(null);
   const [isCollectionDeleting, setIsCollectionDeleting] = useState(false);
   const [favoritesPage, setFavoritesPage] = useState(1);
   const [favoritesTotalPages, setFavoritesTotalPages] = useState(0);
@@ -114,8 +124,6 @@ function App() {
   const [isEditingMedia, setIsEditingMedia] = useState(false);
   const [isSavingMedia, setIsSavingMedia] = useState(false);
   const [isDeletingMedia, setIsDeletingMedia] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [pendingTagDelete, setPendingTagDelete] = useState(null);
   const [isDeletingTagEntity, setIsDeletingTagEntity] = useState(false);
   const [mediaModalError, setMediaModalError] = useState("");
   const [isFavoriteUpdating, setIsFavoriteUpdating] = useState(false);
@@ -136,7 +144,6 @@ function App() {
     parent: "",
     child: ""
   });
-  const [isMediaRelationPickerOpen, setIsMediaRelationPickerOpen] = useState(false);
   const [mediaRelationPickerMode, setMediaRelationPickerMode] = useState("parent");
   const [mediaRelationPickerContext, setMediaRelationPickerContext] = useState("media");
   const [mediaRelationPickerQuery, setMediaRelationPickerQuery] = useState("");
@@ -1396,6 +1403,15 @@ function App() {
   }, [activePage]);
 
   useEffect(() => {
+    if (selectedMedia) {
+      openModal(MODAL_KEYS.MEDIA_EDITOR, { confirmDelete: false });
+      return;
+    }
+
+    closeModal(MODAL_KEYS.MEDIA_EDITOR);
+  }, [selectedMedia, openModal, closeModal]);
+
+  useEffect(() => {
     if (!selectedMedia) {
       return undefined;
     }
@@ -1403,7 +1419,7 @@ function App() {
     setIsEditingMedia(false);
     setIsSavingMedia(false);
     setIsDeletingMedia(false);
-    setShowDeleteConfirm(false);
+    closeModal(MODAL_KEYS.MEDIA_EDITOR);
     setMediaModalError("");
     setIsFavoriteUpdating(false);
     setIsCollectionPickerOpen(false);
@@ -1819,7 +1835,7 @@ function App() {
     uploadPickerRef.current?.click();
   };
   const openUploadModal = () => {
-    setIsUploadOpen(true);
+    openModal(MODAL_KEYS.UPLOAD_DIALOG);
     setUploadStep("queue");
     setUploadState({ type: "", message: "" });
     if (uploadCollections.length === 0 && !isUploadCollectionsLoading) {
@@ -1832,7 +1848,7 @@ function App() {
       current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
       return [];
     });
-    setIsUploadOpen(false);
+    closeModal(MODAL_KEYS.UPLOAD_DIALOG);
     setUploadState({ type: "", message: "" });
     setIsGroupUploadEnabled(false);
     setUploadCollectionIds([]);
@@ -1906,7 +1922,7 @@ function App() {
     setUploadCollectionIds([]);
     setUploadCollectionsError("");
     setActiveUploadIndex(0);
-    setIsUploadOpen(true);
+    openModal(MODAL_KEYS.UPLOAD_DIALOG);
     if (uploadCollections.length === 0 && !isUploadCollectionsLoading) {
       void loadUploadCollections();
     }
@@ -2375,7 +2391,7 @@ function App() {
       return;
     }
 
-    setPendingCollectionDelete({
+    openModal(MODAL_KEYS.COLLECTION_DELETE_CONFIRM, {
       id: item.id,
       name: String(item.label || "")
     });
@@ -2386,7 +2402,7 @@ function App() {
       return;
     }
 
-    setPendingCollectionDelete(null);
+    closeModal(MODAL_KEYS.COLLECTION_DELETE_CONFIRM);
   };
 
   const handleConfirmDeleteCollection = async () => {
@@ -2414,7 +2430,7 @@ function App() {
         setCollectionFilesTotalCount(0);
       }
 
-      setPendingCollectionDelete(null);
+      closeModal(MODAL_KEYS.COLLECTION_DELETE_CONFIRM);
       await loadCollections(collectionsSearchQuery);
     } catch (error) {
       setCollectionsError(error instanceof Error ? error.message : "Failed to delete collection.");
@@ -2854,7 +2870,7 @@ function App() {
     return files.find((item) => item?.id === normalizedId) || null;
   };
   const closeMediaRelationPicker = () => {
-    setIsMediaRelationPickerOpen(false);
+    closeModal(MODAL_KEYS.RELATION_PICKER);
     setMediaRelationPickerError("");
   };
   const openMediaRelationPicker = (mode, context = "media") => {
@@ -2863,7 +2879,7 @@ function App() {
     setMediaRelationPickerPage(1);
     setMediaRelationPickerQuery("");
     setMediaRelationPickerError("");
-    setIsMediaRelationPickerOpen(true);
+    openModal(MODAL_KEYS.RELATION_PICKER, { mode, context });
   };
   const handleSelectMediaRelationFromPicker = (item) => {
     const relationId = Number(item?.id);
@@ -3126,7 +3142,7 @@ function App() {
     }
 
     setMediaModalError("");
-    setShowDeleteConfirm(false);
+    closeModal(MODAL_KEYS.MEDIA_EDITOR);
     setMediaDraft(createMediaDraft(selectedMedia));
     setActiveTagTypeDropdownId(null);
     setTagTypeQueryById({});
@@ -3291,7 +3307,7 @@ function App() {
       setMediaModalError(error instanceof Error ? error.message : "Failed to delete media.");
     } finally {
       setIsDeletingMedia(false);
-      setShowDeleteConfirm(false);
+      closeModal(MODAL_KEYS.MEDIA_EDITOR);
     }
   };
 
@@ -3980,7 +3996,7 @@ function App() {
     }
   };
   const openTagDeleteConfirm = (payload) => {
-    setPendingTagDelete(payload);
+    openModal(MODAL_KEYS.TAG_DELETE_CONFIRM, payload);
     setTagTypesError("");
   };
   const closeTagDeleteConfirm = () => {
@@ -3988,7 +4004,7 @@ function App() {
       return;
     }
 
-    setPendingTagDelete(null);
+    closeModal(MODAL_KEYS.TAG_DELETE_CONFIRM);
   };
   const handleConfirmTagDelete = async () => {
     if (!pendingTagDelete) {
@@ -4005,7 +4021,7 @@ function App() {
 
     setIsDeletingTagEntity(false);
     if (deleted) {
-      setPendingTagDelete(null);
+      closeModal(MODAL_KEYS.TAG_DELETE_CONFIRM);
     }
   };
   const renderActivePage = () => {
@@ -5014,7 +5030,7 @@ function App() {
                       className="media-action-btn media-action-danger"
                       onClick={() => {
                         setMediaModalError("");
-                        setShowDeleteConfirm(true);
+                        openModal(MODAL_KEYS.MEDIA_EDITOR, { confirmDelete: true });
                       }}
                       disabled={!selectedMedia.id || isDeletingMedia}
                     >
@@ -5029,7 +5045,7 @@ function App() {
           {showDeleteConfirm && !isEditingMedia ? (
             <div
               className="media-confirm-overlay"
-              onClick={() => !isDeletingMedia && setShowDeleteConfirm(false)}
+              onClick={() => !isDeletingMedia && closeModal(MODAL_KEYS.MEDIA_EDITOR)}
             >
               <div
                 className="media-confirm-dialog"
@@ -5048,7 +5064,7 @@ function App() {
                   <button
                     type="button"
                     className="media-action-btn"
-                    onClick={() => setShowDeleteConfirm(false)}
+                    onClick={() => closeModal(MODAL_KEYS.MEDIA_EDITOR)}
                     disabled={isDeletingMedia}
                   >
                     No
@@ -5356,72 +5372,24 @@ function App() {
           </div>
         </div>
       ) : null}
-      {pendingTagDelete ? (
-        <div
-          className="media-confirm-overlay"
-          onClick={closeTagDeleteConfirm}
-        >
-          <div
-            className="media-confirm-dialog"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <p>
-              Are you sure you want to delete {pendingTagDelete.kind === "tagType" ? "TagType" : "Tag"} "{pendingTagDelete.name}"?
-            </p>
-            <div className="media-delete-buttons">
-              <button
-                type="button"
-                className="media-action-btn media-action-danger"
-                onClick={handleConfirmTagDelete}
-                disabled={isDeletingTagEntity}
-              >
-                {isDeletingTagEntity ? "Deleting..." : "Yes"}
-              </button>
-              <button
-                type="button"
-                className="media-action-btn"
-                onClick={closeTagDeleteConfirm}
-                disabled={isDeletingTagEntity}
-              >
-                No
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-      {pendingCollectionDelete ? (
-        <div
-          className="media-confirm-overlay"
-          onClick={closeDeleteCollectionConfirm}
-        >
-          <div
-            className="media-confirm-dialog"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <p>
-              Are you sure you want to delete collection "{pendingCollectionDelete.name}"?
-            </p>
-            <div className="media-delete-buttons">
-              <button
-                type="button"
-                className="media-action-btn media-action-danger"
-                onClick={handleConfirmDeleteCollection}
-                disabled={isCollectionDeleting}
-              >
-                {isCollectionDeleting ? "Deleting..." : "Yes"}
-              </button>
-              <button
-                type="button"
-                className="media-action-btn"
-                onClick={closeDeleteCollectionConfirm}
-                disabled={isCollectionDeleting}
-              >
-                No
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <AppShell
+        tagDeleteConfirm={(
+          <TagDeleteConfirmModal
+            pendingTagDelete={pendingTagDelete}
+            isDeletingTagEntity={isDeletingTagEntity}
+            onConfirm={handleConfirmTagDelete}
+            onClose={closeTagDeleteConfirm}
+          />
+        )}
+        collectionDeleteConfirm={(
+          <CollectionDeleteConfirmModal
+            pendingCollectionDelete={pendingCollectionDelete}
+            isCollectionDeleting={isCollectionDeleting}
+            onConfirm={handleConfirmDeleteCollection}
+            onClose={closeDeleteCollectionConfirm}
+          />
+        )}
+      />
     </main>
   );
 }
