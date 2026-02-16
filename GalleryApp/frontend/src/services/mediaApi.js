@@ -26,6 +26,24 @@ export const mediaApi = {
       throw toServiceError(error, "Failed to fetch media files.", "MEDIA_LIST_FAILED");
     }
   },
+  listFavorites: async ({ page, pageSize, signal, timeoutMs }) => {
+    try {
+      return await requestJson(`/api/favorites${toQuery({ page, pageSize })}`, { signal, timeoutMs });
+    } catch (error) {
+      throw toServiceError(error, "Failed to fetch favorites.", "FAVORITES_LIST_FAILED");
+    }
+  },
+  setFavorite: async (mediaId, isFavorite) => {
+    try {
+      return await requestJson(`/api/media/${mediaId}/favorite`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isFavorite })
+      });
+    } catch (error) {
+      throw toServiceError(error, "Failed to update favorite.", "FAVORITE_UPDATE_FAILED");
+    }
+  },
   updateMedia: async (mediaId, payload) => {
     try {
       return await requestJson(`/api/media/${mediaId}`, {

@@ -7,10 +7,12 @@ export default function GalleryPage({
   setSelectedMedia,
   failedPreviewPaths,
   getDisplayName,
-  setFailedPreviewPaths
+  setFailedPreviewPaths,
+  children
 }) {
   return (
-    <section className="media-section">
+    <>
+      <section className="media-section">
       {mediaError ? <p className="media-state error">{mediaError}</p> : null}
       {!mediaError && isMediaLoading && visibleMediaFiles.length === 0 ? (
         <p className="media-state">Loading media...</p>
@@ -60,6 +62,8 @@ export default function GalleryPage({
           {renderPagination(false)}
         </>
       ) : null}
-    </section>
+      </section>
+      {children}
+    </>
   );
 }

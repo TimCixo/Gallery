@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { mediaApi } from "../../api/mediaApi";
+import { isVideoFile, resolveOriginalMediaUrl, resolvePreviewMediaUrl } from "../shared/utils/mediaPredicates";
 import FavoritesPage from "./FavoritesPage";
 
 const PAGE_SIZE = 36;
@@ -22,40 +23,78 @@ export default function FavoritesContainer() {
   const [isFavoritesLoading, setIsFavoritesLoading] = useState(true);
   const [favoritesError, setFavoritesError] = useState("");
   const [failedPreviewPaths, setFailedPreviewPaths] = useState(new Set());
+  const [selectedMedia, setSelectedMedia] = useState(null);
+
+  const loadFavorites = useCallback(async (page) => {
+    setIsFavoritesLoading(true);
+    setFavoritesError("");
+    try {
+      const response = await mediaApi.listFavorites({ page, pageSize: PAGE_SIZE });
+      const items = Array.isArray(response?.items) ? response.items : [];
+      setFavoritesFiles(items.map((item) => ({ ...item, _tileUrl: item.tileUrl || item.previewUrl || item.originalUrl || item.url || "" })));
+      setFavoritesTotalPages(Number(response?.totalPages || 0));
+      setFavoritesTotalFiles(Number(response?.totalCount || items.length));
+    } catch (error) {
+      setFavoritesError(error instanceof Error ? error.message : "Failed to load favorites.");
+    } finally {
+      setIsFavoritesLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    const loadFavorites = async () => {
-      setIsFavoritesLoading(true);
-      setFavoritesError("");
-      try {
-        const response = await mediaApi.listFavorites({ page: favoritesPage, pageSize: PAGE_SIZE });
-        if (cancelled) {
-          return;
-        }
+    void loadFavorites(favoritesPage);
+  }, [favoritesPage, loadFavorites]);
 
-        const items = Array.isArray(response?.items) ? response.items : [];
-        setFavoritesFiles(items.map((item) => ({ ...item, _tileUrl: item.tileUrl || item.previewUrl || item.originalUrl || item.url || "" })));
-        setFavoritesTotalPages(Number(response?.totalPages || 0));
-        setFavoritesTotalFiles(Number(response?.totalCount || items.length));
-      } catch (error) {
-        if (!cancelled) {
-          setFavoritesError(error instanceof Error ? error.message : "Failed to load favorites.");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsFavoritesLoading(false);
-        }
+  useEffect(() => {
+    const handleRefresh = () => {
+      void loadFavorites(favoritesPage);
+    };
+    window.addEventListener("gallery:media-updated", handleRefresh);
+    return () => window.removeEventListener("gallery:media-updated", handleRefresh);
+  }, [favoritesPage, loadFavorites]);
+
+  const visibleFavoriteFiles = useMemo(() => favoritesFiles, [favoritesFiles]);
+  const selectedMediaIndex = useMemo(() => (
+    selectedMedia
+      ? visibleFavoriteFiles.findIndex((file) => file.id === selectedMedia.id || file.relativePath === selectedMedia.relativePath)
+      : -1
+  ), [selectedMedia, visibleFavoriteFiles]);
+  const canNavigateSelectedMedia = selectedMediaIndex >= 0 && visibleFavoriteFiles.length > 1;
+
+  const handleNavigateSelectedMedia = useCallback((offset) => {
+    if (!canNavigateSelectedMedia || !Number.isInteger(offset) || offset === 0) {
+      return;
+    }
+
+    const nextIndex = (selectedMediaIndex + offset + visibleFavoriteFiles.length) % visibleFavoriteFiles.length;
+    const nextItem = visibleFavoriteFiles[nextIndex];
+    if (nextItem) {
+      setSelectedMedia(nextItem);
+    }
+  }, [canNavigateSelectedMedia, selectedMediaIndex, visibleFavoriteFiles]);
+
+  useEffect(() => {
+    if (!selectedMedia) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setSelectedMedia(null);
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        handleNavigateSelectedMedia(-1);
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        handleNavigateSelectedMedia(1);
       }
     };
 
-    void loadFavorites();
-    return () => {
-      cancelled = true;
-    };
-  }, [favoritesPage]);
-
-  const visibleFavoriteFiles = useMemo(() => favoritesFiles, [favoritesFiles]);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedMedia, handleNavigateSelectedMedia]);
 
   const renderFavoritesPagination = () => {
     if (favoritesTotalPages <= 1) {
@@ -82,10 +121,46 @@ export default function FavoritesContainer() {
       favoritesTotalFiles={favoritesTotalFiles}
       visibleFavoriteFiles={visibleFavoriteFiles}
       renderFavoritesPagination={renderFavoritesPagination}
-      setSelectedMedia={() => {}}
+      setSelectedMedia={setSelectedMedia}
       failedPreviewPaths={failedPreviewPaths}
       getDisplayName={getDisplayName}
       setFailedPreviewPaths={setFailedPreviewPaths}
-    />
+    >
+      {selectedMedia ? (
+        <div className="media-modal-overlay" role="dialog" aria-modal="true" onClick={() => setSelectedMedia(null)}>
+          <div className="media-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="media-modal-header">
+              <h2>{getDisplayName(selectedMedia.name)}</h2>
+              <button type="button" className="media-action-btn" onClick={() => setSelectedMedia(null)}>
+                Close
+              </button>
+            </div>
+            <div className="media-modal-content">
+              {isVideoFile(selectedMedia) ? (
+                <video
+                  src={resolveOriginalMediaUrl(selectedMedia)}
+                  poster={resolvePreviewMediaUrl(selectedMedia)}
+                  controls
+                  autoPlay
+                  preload="metadata"
+                />
+              ) : (
+                <img src={resolveOriginalMediaUrl(selectedMedia)} alt={getDisplayName(selectedMedia.name)} />
+              )}
+            </div>
+            <div className="media-modal-meta">
+              <div className="media-action-row">
+                <button type="button" className="media-action-btn" disabled={!canNavigateSelectedMedia} onClick={() => handleNavigateSelectedMedia(-1)}>
+                  Prev
+                </button>
+                <button type="button" className="media-action-btn" disabled={!canNavigateSelectedMedia} onClick={() => handleNavigateSelectedMedia(1)}>
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </FavoritesPage>
   );
 }
