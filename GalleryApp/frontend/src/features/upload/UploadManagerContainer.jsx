@@ -84,7 +84,7 @@ export default function UploadManagerContainer() {
         Upload
       </button>
       <UploadModal isOpen={isUploadOpen} onClose={closeModal}>
-        <div className="media-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="media-modal media-modal-upload-queue" onClick={(event) => event.stopPropagation()}>
           <header className="media-modal-header">
             <h2>Upload manager</h2>
           </header>

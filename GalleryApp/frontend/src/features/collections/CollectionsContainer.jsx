@@ -15,7 +15,7 @@ const getDisplayName = (value) => {
   return normalized.replace(/\.[^./]+$/, "") || normalized;
 };
 
-export default function CollectionsContainer() {
+export default function CollectionsContainer({ searchQuery = "" }) {
   const [collections, setCollections] = useState([]);
   const [isCollectionsLoading, setIsCollectionsLoading] = useState(true);
   const [collectionsError, setCollectionsError] = useState("");
@@ -26,6 +26,7 @@ export default function CollectionsContainer() {
   const [collectionFilesTotalCount, setCollectionFilesTotalCount] = useState(0);
   const [isCollectionFilesLoading, setIsCollectionFilesLoading] = useState(false);
   const [collectionFilesError, setCollectionFilesError] = useState("");
+  const [collectionFilesPageJumpInput, setCollectionFilesPageJumpInput] = useState("1");
   const [selectedMedia, setSelectedMedia] = useState(null);
   const [failedPreviewPaths, setFailedPreviewPaths] = useState(new Set());
 
@@ -33,7 +34,7 @@ export default function CollectionsContainer() {
     setIsCollectionsLoading(true);
     setCollectionsError("");
     try {
-      const response = await collectionsApi.listCollections();
+      const response = await collectionsApi.listCollections({ search: searchQuery || undefined });
       setCollections(Array.isArray(response?.items) ? response.items : []);
     } catch (error) {
       setCollections([]);
@@ -41,7 +42,7 @@ export default function CollectionsContainer() {
     } finally {
       setIsCollectionsLoading(false);
     }
-  }, []);
+  }, [searchQuery]);
 
   const loadCollectionMedia = useCallback(async (collectionId, page = 1) => {
     if (!Number.isSafeInteger(collectionId) || collectionId <= 0) {
@@ -152,30 +153,72 @@ export default function CollectionsContainer() {
     void loadCollectionMedia(selectedCollection.id, nextPage);
   };
 
-  const renderCollectionFilesPagination = () => {
+  useEffect(() => {
+    setCollectionFilesPageJumpInput(String(collectionFilesPage));
+  }, [collectionFilesPage]);
+
+  const handleCollectionFilesPageJumpSubmit = (event) => {
+    event.preventDefault();
+    if (isCollectionFilesLoading || collectionFilesTotalPages <= 0 || !selectedCollection?.id) {
+      return;
+    }
+
+    const parsed = Number.parseInt(collectionFilesPageJumpInput, 10);
+    if (!Number.isFinite(parsed)) {
+      setCollectionFilesPageJumpInput(String(collectionFilesPage));
+      return;
+    }
+
+    const targetPage = Math.min(Math.max(parsed, 1), collectionFilesTotalPages);
+    setCollectionFilesPageJumpInput(String(targetPage));
+    handleCollectionFilesPageChange(targetPage);
+  };
+
+  const renderCollectionFilesPagination = (showLoadingState = false) => {
     if (collectionFilesTotalPages <= 1) {
       return null;
     }
 
     return (
-      <div className="pagination-wrap">
-        <button
-          type="button"
-          className="pagination-btn"
-          onClick={() => handleCollectionFilesPageChange(collectionFilesPage - 1)}
-          disabled={isCollectionFilesLoading || collectionFilesPage <= 1}
-        >
-          Prev
-        </button>
-        <span className="pagination-state">Page {collectionFilesPage} / {collectionFilesTotalPages}</span>
-        <button
-          type="button"
-          className="pagination-btn"
-          onClick={() => handleCollectionFilesPageChange(collectionFilesPage + 1)}
-          disabled={isCollectionFilesLoading || collectionFilesPage >= collectionFilesTotalPages}
-        >
-          Next
-        </button>
+      <div className="media-pagination-wrap">
+        <div className="media-pagination">
+          <button
+            type="button"
+            onClick={() => handleCollectionFilesPageChange(collectionFilesPage - 1)}
+            disabled={isCollectionFilesLoading || collectionFilesPage <= 1}
+          >
+            Prev
+          </button>
+          <p>Page {collectionFilesPage} of {collectionFilesTotalPages}</p>
+          <button
+            type="button"
+            onClick={() => handleCollectionFilesPageChange(collectionFilesPage + 1)}
+            disabled={isCollectionFilesLoading || collectionFilesPage >= collectionFilesTotalPages}
+          >
+            Next
+          </button>
+          <form className="media-pagination-jump" onSubmit={handleCollectionFilesPageJumpSubmit}>
+            <input
+              type="number"
+              min={1}
+              max={Math.max(collectionFilesTotalPages, 1)}
+              step={1}
+              inputMode="numeric"
+              value={collectionFilesPageJumpInput}
+              onChange={(event) => setCollectionFilesPageJumpInput(event.target.value)}
+              disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0}
+              aria-label="Go to collection page"
+            />
+            <button type="submit" disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0}>
+              Go
+            </button>
+          </form>
+        </div>
+        {showLoadingState ? (
+          <p className="media-pagination-status" aria-live="polite">
+            {isCollectionFilesLoading ? "Loading collection files..." : "\u00A0"}
+          </p>
+        ) : null}
       </div>
     );
   };
@@ -210,7 +253,7 @@ export default function CollectionsContainer() {
               ) : null}
               {!collectionFilesError && collectionFilesTotalCount > 0 ? (
                 <>
-                  {renderCollectionFilesPagination()}
+                  {renderCollectionFilesPagination(true)}
                   <div className="media-grid">
                     {visibleCollectionFiles.map((file) => (
                       <article
@@ -241,7 +284,7 @@ export default function CollectionsContainer() {
                       </article>
                     ))}
                   </div>
-                  {renderCollectionFilesPagination()}
+                  {renderCollectionFilesPagination(false)}
                 </>
               ) : null}
             </div>
