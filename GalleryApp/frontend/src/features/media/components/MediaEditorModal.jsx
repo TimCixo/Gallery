@@ -1,14 +1,21 @@
 import { useEffect } from "react";
+import { useMediaEditorContext } from "../context/MediaEditorContext";
 
 function MediaEditorModal({ isOpen, onClose, onNavigate, initialData, children }) {
+  const context = useMediaEditorContext();
+  const isModalOpen = context.isOpen ?? isOpen;
+  const closeHandler = context.onClose ?? onClose;
+  const navigateHandler = context.onNavigate ?? onNavigate;
+  const canNavigate = context.canNavigate ?? initialData?.canNavigate;
+
   useEffect(() => {
-    if (!isOpen) {
+    if (!isModalOpen) {
       return undefined;
     }
 
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
-        onClose?.();
+        closeHandler?.();
         return;
       }
 
@@ -24,24 +31,24 @@ function MediaEditorModal({ isOpen, onClose, onNavigate, initialData, children }
         return;
       }
 
-      if (!initialData?.canNavigate) {
+      if (!canNavigate) {
         return;
       }
 
       event.preventDefault();
-      onNavigate?.(event.key === "ArrowRight" ? 1 : -1);
+      navigateHandler?.(event.key === "ArrowRight" ? 1 : -1);
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose, onNavigate, initialData?.canNavigate]);
+  }, [isModalOpen, closeHandler, navigateHandler, canNavigate]);
 
-  if (!isOpen) {
+  if (!isModalOpen) {
     return null;
   }
 
   return (
-    <div className="media-modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
+    <div className="media-modal-overlay" role="dialog" aria-modal="true" onClick={closeHandler}>
       {children}
     </div>
   );

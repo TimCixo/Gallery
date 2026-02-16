@@ -1,28 +1,34 @@
 import { useEffect } from "react";
+import { useMediaEditorContext } from "../context/MediaEditorContext";
 
-function MediaRelationPickerModal({ isOpen, onClose, onSelect, onSubmit, initialData, children }) {
+function MediaRelationPickerModal({ isOpen, onClose, initialData, children }) {
+  const context = useMediaEditorContext();
+  const isModalOpen = context.isRelationPickerOpen ?? isOpen;
+  const closeHandler = context.onCloseRelationPicker ?? onClose;
+  const mode = context.relationPickerMode ?? initialData?.mode ?? "parent";
+
   useEffect(() => {
-    if (!isOpen) {
+    if (!isModalOpen) {
       return undefined;
     }
 
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose?.();
+        closeHandler?.();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isModalOpen, closeHandler]);
 
-  if (!isOpen) {
+  if (!isModalOpen) {
     return null;
   }
 
   return (
-    <div className="media-confirm-overlay" onClick={onClose} data-mode={initialData?.mode || "parent"}>
+    <div className="media-confirm-overlay" onClick={closeHandler} data-mode={mode}>
       {children}
     </div>
   );
