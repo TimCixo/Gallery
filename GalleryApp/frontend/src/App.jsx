@@ -4,6 +4,10 @@ import GalleryPage from "./features/gallery/GalleryPage";
 import FavoritesPage from "./features/favorites/FavoritesPage";
 import CollectionsPage from "./features/collections/CollectionsPage";
 import TagsPage from "./features/tags/TagsPage";
+import { useTagsManager } from "./hooks/useTagsManager";
+import { useUploadManager } from "./hooks/useUploadManager";
+import { useCollectionsManager } from "./hooks/useCollectionsManager";
+import { useMediaEditor } from "./hooks/useMediaEditor";
 
 function App() {
   const PAGE_SIZE = 36;
@@ -30,77 +34,136 @@ function App() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isSlideMenuOpen, setIsSlideMenuOpen] = useState(false);
   const [activePage, setActivePage] = useState("gallery");
-  const [tagTypeNameInput, setTagTypeNameInput] = useState("");
-  const [tagTypeColorInput, setTagTypeColorInput] = useState("#2563EB");
-  const [tagTypes, setTagTypes] = useState([]);
-  const [isTagTypesLoading, setIsTagTypesLoading] = useState(false);
-  const [isTagTypeSaving, setIsTagTypeSaving] = useState(false);
-  const [editingTagTypeId, setEditingTagTypeId] = useState(null);
-  const [editingTagTypeName, setEditingTagTypeName] = useState("");
-  const [editingTagTypeColor, setEditingTagTypeColor] = useState("#2563EB");
-  const [isTagTypeUpdating, setIsTagTypeUpdating] = useState(false);
-  const [tagsByTagTypeId, setTagsByTagTypeId] = useState({});
-  const [tagSearchQueryByTagTypeId, setTagSearchQueryByTagTypeId] = useState({});
-  const [tagTableStateByTagTypeId, setTagTableStateByTagTypeId] = useState({});
-  const [newTagDraftByTagTypeId, setNewTagDraftByTagTypeId] = useState({});
-  const [editingTagByTagTypeId, setEditingTagByTagTypeId] = useState({});
-  const [editingTagDraftById, setEditingTagDraftById] = useState({});
-  const [savingTagByTagTypeId, setSavingTagByTagTypeId] = useState({});
-  const [tagTypesError, setTagTypesError] = useState("");
-  const [isTagMoveInProgress, setIsTagMoveInProgress] = useState(false);
-  const [draggedTag, setDraggedTag] = useState(null);
-  const [dragTargetTagTypeId, setDragTargetTagTypeId] = useState(null);
-  const [tagTypeCalloutOpenById, setTagTypeCalloutOpenById] = useState({});
-  const [uploadItems, setUploadItems] = useState([]);
-  const [uploadStep, setUploadStep] = useState("queue");
-  const [activeUploadIndex, setActiveUploadIndex] = useState(0);
-  const [uploadState, setUploadState] = useState({ type: "", message: "" });
-  const [isGroupUploadEnabled, setIsGroupUploadEnabled] = useState(false);
-  const [uploadCollectionIds, setUploadCollectionIds] = useState([]);
-  const [uploadCollections, setUploadCollections] = useState([]);
-  const [isUploadCollectionsLoading, setIsUploadCollectionsLoading] = useState(false);
-  const [uploadCollectionsError, setUploadCollectionsError] = useState("");
-  const [isUploadCollectionPickerOpen, setIsUploadCollectionPickerOpen] = useState(false);
-  const [isUploadQueueDragOver, setIsUploadQueueDragOver] = useState(false);
-  const [isDragOverPage, setIsDragOverPage] = useState(false);
-  const [backgroundUploadState, setBackgroundUploadState] = useState({
-    total: 0,
-    queued: 0,
-    completed: 0,
-    failed: 0,
-    isProcessing: false,
-    activeFileName: "",
-    activePercent: 0
-  });
-  const [uploadTaskStatuses, setUploadTaskStatuses] = useState([]);
+  const {
+    tagTypeNameInput,
+    setTagTypeNameInput,
+    tagTypeColorInput,
+    setTagTypeColorInput,
+    tagTypes,
+    setTagTypes,
+    isTagTypesLoading,
+    setIsTagTypesLoading,
+    isTagTypeSaving,
+    setIsTagTypeSaving,
+    editingTagTypeId,
+    setEditingTagTypeId,
+    editingTagTypeName,
+    setEditingTagTypeName,
+    editingTagTypeColor,
+    setEditingTagTypeColor,
+    isTagTypeUpdating,
+    setIsTagTypeUpdating,
+    tagsByTagTypeId,
+    setTagsByTagTypeId,
+    tagSearchQueryByTagTypeId,
+    setTagSearchQueryByTagTypeId,
+    tagTableStateByTagTypeId,
+    setTagTableStateByTagTypeId,
+    newTagDraftByTagTypeId,
+    setNewTagDraftByTagTypeId,
+    editingTagByTagTypeId,
+    setEditingTagByTagTypeId,
+    editingTagDraftById,
+    setEditingTagDraftById,
+    savingTagByTagTypeId,
+    setSavingTagByTagTypeId,
+    tagTypesError,
+    setTagTypesError,
+    isTagMoveInProgress,
+    setIsTagMoveInProgress,
+    draggedTag,
+    setDraggedTag,
+    dragTargetTagTypeId,
+    setDragTargetTagTypeId,
+    tagTypeCalloutOpenById,
+    setTagTypeCalloutOpenById,
+    activeTagTypeDropdownId,
+    setActiveTagTypeDropdownId,
+    tagTypeQueryById,
+    setTagTypeQueryById
+  } = useTagsManager();
+  const {
+    uploadItems,
+    setUploadItems,
+    uploadStep,
+    setUploadStep,
+    activeUploadIndex,
+    setActiveUploadIndex,
+    uploadState,
+    setUploadState,
+    isGroupUploadEnabled,
+    setIsGroupUploadEnabled,
+    uploadCollectionIds,
+    setUploadCollectionIds,
+    uploadCollections,
+    setUploadCollections,
+    isUploadCollectionsLoading,
+    setIsUploadCollectionsLoading,
+    uploadCollectionsError,
+    setUploadCollectionsError,
+    isUploadCollectionPickerOpen,
+    setIsUploadCollectionPickerOpen,
+    isUploadQueueDragOver,
+    setIsUploadQueueDragOver,
+    isDragOverPage,
+    setIsDragOverPage,
+    backgroundUploadState,
+    setBackgroundUploadState,
+    uploadTaskStatuses,
+    setUploadTaskStatuses
+  } = useUploadManager();
   const [mediaFiles, setMediaFiles] = useState([]);
   const [isMediaLoading, setIsMediaLoading] = useState(true);
   const [mediaError, setMediaError] = useState("");
   const [favoritesFiles, setFavoritesFiles] = useState([]);
   const [isFavoritesLoading, setIsFavoritesLoading] = useState(false);
   const [favoritesError, setFavoritesError] = useState("");
-  const [collections, setCollections] = useState([]);
-  const [isCollectionsLoading, setIsCollectionsLoading] = useState(false);
-  const [collectionsError, setCollectionsError] = useState("");
-  const [collectionsSearchQuery, setCollectionsSearchQuery] = useState("");
-  const [collectionFormLabel, setCollectionFormLabel] = useState("");
-  const [collectionFormDescription, setCollectionFormDescription] = useState("");
-  const [collectionFormCover, setCollectionFormCover] = useState("");
-  const [editingCollectionId, setEditingCollectionId] = useState(null);
-  const [isCollectionSaving, setIsCollectionSaving] = useState(false);
-  const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
-  const [collectionPreviewMedia, setCollectionPreviewMedia] = useState(null);
-  const [isCollectionPreviewLoading, setIsCollectionPreviewLoading] = useState(false);
-  const [selectedCollection, setSelectedCollection] = useState(null);
-  const [collectionFiles, setCollectionFiles] = useState([]);
-  const [isCollectionFilesLoading, setIsCollectionFilesLoading] = useState(false);
-  const [collectionFilesError, setCollectionFilesError] = useState("");
-  const [collectionFilesPage, setCollectionFilesPage] = useState(1);
-  const [collectionFilesTotalPages, setCollectionFilesTotalPages] = useState(0);
-  const [collectionFilesTotalCount, setCollectionFilesTotalCount] = useState(0);
-  const [collectionFilesPageJumpInput, setCollectionFilesPageJumpInput] = useState("1");
-  const [pendingCollectionDelete, setPendingCollectionDelete] = useState(null);
-  const [isCollectionDeleting, setIsCollectionDeleting] = useState(false);
+  const {
+    collections,
+    setCollections,
+    isCollectionsLoading,
+    setIsCollectionsLoading,
+    collectionsError,
+    setCollectionsError,
+    collectionsSearchQuery,
+    setCollectionsSearchQuery,
+    collectionFormLabel,
+    setCollectionFormLabel,
+    collectionFormDescription,
+    setCollectionFormDescription,
+    collectionFormCover,
+    setCollectionFormCover,
+    editingCollectionId,
+    setEditingCollectionId,
+    isCollectionSaving,
+    setIsCollectionSaving,
+    isCollectionModalOpen,
+    setIsCollectionModalOpen,
+    collectionPreviewMedia,
+    setCollectionPreviewMedia,
+    isCollectionPreviewLoading,
+    setIsCollectionPreviewLoading,
+    selectedCollection,
+    setSelectedCollection,
+    collectionFiles,
+    setCollectionFiles,
+    isCollectionFilesLoading,
+    setIsCollectionFilesLoading,
+    collectionFilesError,
+    setCollectionFilesError,
+    collectionFilesPage,
+    setCollectionFilesPage,
+    collectionFilesTotalPages,
+    setCollectionFilesTotalPages,
+    collectionFilesTotalCount,
+    setCollectionFilesTotalCount,
+    collectionFilesPageJumpInput,
+    setCollectionFilesPageJumpInput,
+    pendingCollectionDelete,
+    setPendingCollectionDelete,
+    isCollectionDeleting,
+    setIsCollectionDeleting
+  } = useCollectionsManager();
   const [favoritesPage, setFavoritesPage] = useState(1);
   const [favoritesTotalPages, setFavoritesTotalPages] = useState(0);
   const [favoritesTotalFiles, setFavoritesTotalFiles] = useState(0);
@@ -110,48 +173,68 @@ function App() {
   const [favoritesPageJumpInput, setFavoritesPageJumpInput] = useState("1");
   const [totalFiles, setTotalFiles] = useState(0);
   const [failedPreviewPaths, setFailedPreviewPaths] = useState(new Set());
-  const [selectedMedia, setSelectedMedia] = useState(null);
-  const [isEditingMedia, setIsEditingMedia] = useState(false);
-  const [isSavingMedia, setIsSavingMedia] = useState(false);
-  const [isDeletingMedia, setIsDeletingMedia] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [pendingTagDelete, setPendingTagDelete] = useState(null);
-  const [isDeletingTagEntity, setIsDeletingTagEntity] = useState(false);
-  const [mediaModalError, setMediaModalError] = useState("");
-  const [isFavoriteUpdating, setIsFavoriteUpdating] = useState(false);
-  const [isCollectionPickerOpen, setIsCollectionPickerOpen] = useState(false);
-  const [collectionPickerItems, setCollectionPickerItems] = useState([]);
-  const [isCollectionPickerLoading, setIsCollectionPickerLoading] = useState(false);
-  const [collectionPickerError, setCollectionPickerError] = useState("");
-  const [isAddingMediaToCollection, setIsAddingMediaToCollection] = useState(false);
-  const [mediaTagCatalog, setMediaTagCatalog] = useState([]);
-  const [isMediaTagCatalogLoading, setIsMediaTagCatalogLoading] = useState(false);
-  const [mediaTagCatalogError, setMediaTagCatalogError] = useState("");
-  const [activeTagManagerTagTypeId, setActiveTagManagerTagTypeId] = useState(null);
-  const [mediaDraft, setMediaDraft] = useState({
-    title: "",
-    description: "",
-    source: "",
-    tagsByType: {},
-    parent: "",
-    child: ""
-  });
-  const [isMediaRelationPickerOpen, setIsMediaRelationPickerOpen] = useState(false);
-  const [mediaRelationPickerMode, setMediaRelationPickerMode] = useState("parent");
-  const [mediaRelationPickerContext, setMediaRelationPickerContext] = useState("media");
-  const [mediaRelationPickerQuery, setMediaRelationPickerQuery] = useState("");
-  const [mediaRelationPickerPage, setMediaRelationPickerPage] = useState(1);
-  const [mediaRelationPickerItems, setMediaRelationPickerItems] = useState([]);
-  const [mediaRelationPickerTotalPages, setMediaRelationPickerTotalPages] = useState(0);
-  const [mediaRelationPickerTotalCount, setMediaRelationPickerTotalCount] = useState(0);
-  const [isMediaRelationPickerLoading, setIsMediaRelationPickerLoading] = useState(false);
-  const [mediaRelationPickerError, setMediaRelationPickerError] = useState("");
-  const [mediaRelationPreviewByMode, setMediaRelationPreviewByMode] = useState({
-    parent: { item: null, isLoading: false, error: "" },
-    child: { item: null, isLoading: false, error: "" }
-  });
-  const [activeTagTypeDropdownId, setActiveTagTypeDropdownId] = useState(null);
-  const [tagTypeQueryById, setTagTypeQueryById] = useState({});
+  const {
+    selectedMedia,
+    setSelectedMedia,
+    isEditingMedia,
+    setIsEditingMedia,
+    isMediaSaving: isSavingMedia,
+    setIsMediaSaving: setIsSavingMedia,
+    isMediaDeleting: isDeletingMedia,
+    setIsMediaDeleting: setIsDeletingMedia,
+    showDeleteConfirm,
+    setShowDeleteConfirm,
+    pendingTagDelete,
+    setPendingTagDelete,
+    isTagDeleting: isDeletingTagEntity,
+    setIsTagDeleting: setIsDeletingTagEntity,
+    mediaModalError,
+    setMediaModalError,
+    isFavoriteUpdating,
+    setIsFavoriteUpdating,
+    isCollectionPickerOpen,
+    setIsCollectionPickerOpen,
+    collectionPickerItems,
+    setCollectionPickerItems,
+    isCollectionPickerLoading,
+    setIsCollectionPickerLoading,
+    collectionPickerError,
+    setCollectionPickerError,
+    isAddingMediaToCollection,
+    setIsAddingMediaToCollection,
+    mediaTagCatalog,
+    setMediaTagCatalog,
+    isMediaTagCatalogLoading,
+    setIsMediaTagCatalogLoading,
+    mediaTagCatalogError,
+    setMediaTagCatalogError,
+    activeTagManagerTagTypeId,
+    setActiveTagManagerTagTypeId,
+    mediaDraft,
+    setMediaDraft,
+    isMediaRelationPickerOpen,
+    setIsMediaRelationPickerOpen,
+    mediaRelationPickerMode,
+    setMediaRelationPickerMode,
+    mediaRelationPickerContext,
+    setMediaRelationPickerContext,
+    mediaRelationPickerQuery,
+    setMediaRelationPickerQuery,
+    mediaRelationPickerPage,
+    setMediaRelationPickerPage,
+    mediaRelationPickerItems,
+    setMediaRelationPickerItems,
+    mediaRelationPickerTotalPages,
+    setMediaRelationPickerTotalPages,
+    mediaRelationPickerTotalCount,
+    setMediaRelationPickerTotalCount,
+    isMediaRelationPickerLoading,
+    setIsMediaRelationPickerLoading,
+    mediaRelationPickerError,
+    setMediaRelationPickerError,
+    mediaRelationPreviewByMode,
+    setMediaRelationPreviewByMode
+  } = useMediaEditor();
   const imageExtensions = new Set([".jpg", ".jpeg", ".jfif", ".png", ".webp", ".bmp"]);
   const videoExtensions = new Set([".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v"]);
   const backgroundUploadQueueRef = useRef([]);
@@ -5427,7 +5510,6 @@ function App() {
 }
 
 export default App;
-
 
 
 
