@@ -1,35 +1,16 @@
-import { createFieldReducer } from "./useFieldReducer";
+import { useReducer } from "react";
+import {
+  COLLECTIONS_ACTIONS,
+  collectionsInitialState,
+  collectionsReducer
+} from "../features/collections/state/collectionsReducer";
 
-const initialCollectionsState = {
-  collections: [],
-  isCollectionsLoading: false,
-  collectionsError: "",
-  collectionsSearchQuery: "",
-  collectionFormLabel: "",
-  collectionFormDescription: "",
-  collectionFormCover: "",
-  editingCollectionId: null,
-  isCollectionSaving: false,
-  isCollectionModalOpen: false,
-  collectionPreviewMedia: null,
-  isCollectionPreviewLoading: false,
-  selectedCollection: null,
-  collectionFiles: [],
-  isCollectionFilesLoading: false,
-  collectionFilesError: "",
-  collectionFilesPage: 1,
-  collectionFilesTotalPages: 0,
-  collectionFilesTotalCount: 0,
-  collectionFilesPageJumpInput: "1",
-  pendingCollectionDelete: null,
-  isCollectionDeleting: false
-};
+export function useCollectionsManager() {
+  const [state, dispatch] = useReducer(collectionsReducer, collectionsInitialState);
 
-/**
- * Collections state domain.
- * - Initial state: list/details data, modal form draft, pagination, delete confirmations.
- * - Actions: SET_FIELD/SET_FIELDS and generated setters.
- * - Reducer: immutable field reducer.
- * - Side-effects: fetch/save/delete collection API calls and preview loading are coordinated from App via setters.
- */
-export const useCollectionsManager = createFieldReducer(initialCollectionsState);
+  return {
+    ...state,
+    dispatch,
+    actions: COLLECTIONS_ACTIONS
+  };
+}
