@@ -14,3 +14,7 @@ export function useUploadContext() {
 
   return context;
 }
+
+export function useOptionalUploadContext() {
+  return useContext(UploadContext);
+}

@@ -1,5 +1,3 @@
-import { useTagsContext } from "./context/TagsContext";
-
 const hexToRgba = (hexColor, alpha) => {
   const value = String(hexColor || "").trim();
   if (!/^#[0-9A-Fa-f]{6}$/.test(value)) {
@@ -14,14 +12,6 @@ const hexToRgba = (hexColor, alpha) => {
 
 export default function TagsPage(props) {
   const {
-    tagTypes,
-    tagsByTagTypeId,
-    tagTableStateByTagTypeId,
-    isTagTypesLoading,
-    tagTypesError
-  } = props;
-
-  const {
     handleCreateTagType,
     tagTypeColorInput,
     setTagTypeColorInput,
@@ -29,6 +19,7 @@ export default function TagsPage(props) {
     setTagTypeNameInput,
     isTagTypeSaving,
     handleClearTagTypeForm,
+    tagTypes,
     editingTagTypeId,
     dragTargetTagTypeId,
     draggedTag,
@@ -60,8 +51,12 @@ export default function TagsPage(props) {
     handleEditTagDraftChange,
     handleSaveTag,
     handleCancelEditTag,
-    handleStartEditTag
-  } = useTagsContext();
+    handleStartEditTag,
+    tagsByTagTypeId,
+    tagTableStateByTagTypeId,
+    isTagTypesLoading,
+    tagTypesError
+  } = props;
 
   return (
     <section className="tags-page">

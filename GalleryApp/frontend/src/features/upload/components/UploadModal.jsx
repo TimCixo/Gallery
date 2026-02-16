@@ -1,12 +1,12 @@
 import { useEffect } from "react";
-import { useUploadContext } from "../context/UploadContext";
+import { useOptionalUploadContext } from "../context/UploadContext";
 
 function UploadModal({ isOpen, onClose, initialData, children }) {
-  const context = useUploadContext();
-  const isModalOpen = context.isOpen ?? isOpen;
-  const closeHandler = context.onClose ?? onClose;
-  const prevHandler = context.onPrev ?? initialData?.onPrev;
-  const nextHandler = context.onNext ?? initialData?.onNext;
+  const context = useOptionalUploadContext();
+  const isModalOpen = context?.isOpen ?? isOpen;
+  const closeHandler = context?.onClose ?? onClose;
+  const prevHandler = context?.onPrev ?? initialData?.onPrev;
+  const nextHandler = context?.onNext ?? initialData?.onNext;
 
   useEffect(() => {
     if (!isModalOpen) {
