@@ -4,6 +4,12 @@ import GalleryPage from "./features/gallery/GalleryPage";
 import FavoritesPage from "./features/favorites/FavoritesPage";
 import CollectionsPage from "./features/collections/CollectionsPage";
 import TagsPage from "./features/tags/TagsPage";
+import MediaEditorModal from "./features/media/components/MediaEditorModal";
+import MediaRelationPickerModal from "./features/media/components/MediaRelationPickerModal";
+import UploadModal from "./features/upload/components/UploadModal";
+import { TagsContextProvider } from "./features/tags/context/TagsContext";
+import { MediaEditorContextProvider } from "./features/media/context/MediaEditorContext";
+import { UploadContextProvider } from "./features/upload/context/UploadContext";
 
 function App() {
   const PAGE_SIZE = 36;
@@ -4053,56 +4059,57 @@ function App() {
     }
 
     return (
-      <TagsPage
-        handleCreateTagType={handleCreateTagType}
-        tagTypeColorInput={tagTypeColorInput}
-        setTagTypeColorInput={setTagTypeColorInput}
-        tagTypeNameInput={tagTypeNameInput}
-        setTagTypeNameInput={setTagTypeNameInput}
-        isTagTypeSaving={isTagTypeSaving}
-        handleClearTagTypeForm={handleClearTagTypeForm}
-        tagTypesError={tagTypesError}
-        isTagTypesLoading={isTagTypesLoading}
-        tagTypes={tagTypes}
-        editingTagTypeId={editingTagTypeId}
-        dragTargetTagTypeId={dragTargetTagTypeId}
-        tagTypeCalloutOpenById={tagTypeCalloutOpenById}
-        handleTagTypeCalloutToggle={handleTagTypeCalloutToggle}
-        handleTagTypeDragOver={handleTagTypeDragOver}
-        handleTagTypeDragLeave={handleTagTypeDragLeave}
-        handleTagTypeDrop={handleTagTypeDrop}
-        draggedTag={draggedTag}
-        handleTagDragStart={handleTagDragStart}
-        handleTagDragEnd={handleTagDragEnd}
-        editingTagTypeColor={editingTagTypeColor}
-        setEditingTagTypeColor={setEditingTagTypeColor}
-        editingTagTypeName={editingTagTypeName}
-        setEditingTagTypeName={setEditingTagTypeName}
-        isTagTypeUpdating={isTagTypeUpdating}
-        handleSaveTagType={handleSaveTagType}
-        handleCancelEditTagType={handleCancelEditTagType}
-        handleStartEditTagType={handleStartEditTagType}
-        openTagDeleteConfirm={openTagDeleteConfirm}
-        tagSearchQueryByTagTypeId={tagSearchQueryByTagTypeId}
-        setTagSearchQueryByTagTypeId={setTagSearchQueryByTagTypeId}
-        newTagDraftByTagTypeId={newTagDraftByTagTypeId}
-        handleNewTagDraftChange={handleNewTagDraftChange}
-        handleCreateTag={handleCreateTag}
-        savingTagByTagTypeId={savingTagByTagTypeId}
-        handleClearNewTagDraft={handleClearNewTagDraft}
-        editingTagByTagTypeId={editingTagByTagTypeId}
-        editingTagDraftById={editingTagDraftById}
-        handleEditTagDraftChange={handleEditTagDraftChange}
-        handleSaveTag={handleSaveTag}
-        handleCancelEditTag={handleCancelEditTag}
-        handleStartEditTag={handleStartEditTag}
-        activeTagManagerTagTypeId={activeTagManagerTagTypeId}
-        setActiveTagManagerTagTypeId={setActiveTagManagerTagTypeId}
-        tagManagerCloseButtonRef={tagManagerCloseButtonRef}
-        tagManagerTriggerButtonRef={tagManagerTriggerButtonRef}
-        tagsByTagTypeId={tagsByTagTypeId}
-        tagTableStateByTagTypeId={tagTableStateByTagTypeId}
-      />
+      <TagsContextProvider
+        value={{
+          handleCreateTagType,
+          tagTypeColorInput,
+          setTagTypeColorInput,
+          tagTypeNameInput,
+          setTagTypeNameInput,
+          isTagTypeSaving,
+          handleClearTagTypeForm,
+          editingTagTypeId,
+          dragTargetTagTypeId,
+          tagTypeCalloutOpenById,
+          handleTagTypeCalloutToggle,
+          handleTagTypeDragOver,
+          handleTagTypeDragLeave,
+          handleTagTypeDrop,
+          draggedTag,
+          handleTagDragStart,
+          handleTagDragEnd,
+          editingTagTypeColor,
+          setEditingTagTypeColor,
+          editingTagTypeName,
+          setEditingTagTypeName,
+          isTagTypeUpdating,
+          handleSaveTagType,
+          handleCancelEditTagType,
+          handleStartEditTagType,
+          openTagDeleteConfirm,
+          tagSearchQueryByTagTypeId,
+          setTagSearchQueryByTagTypeId,
+          newTagDraftByTagTypeId,
+          handleNewTagDraftChange,
+          handleCreateTag,
+          savingTagByTagTypeId,
+          handleClearNewTagDraft,
+          editingTagByTagTypeId,
+          editingTagDraftById,
+          handleEditTagDraftChange,
+          handleSaveTag,
+          handleCancelEditTag,
+          handleStartEditTag
+        }}
+      >
+        <TagsPage
+          tagTypes={tagTypes}
+          tagsByTagTypeId={tagsByTagTypeId}
+          tagTableStateByTagTypeId={tagTableStateByTagTypeId}
+          isTagTypesLoading={isTagTypesLoading}
+          tagTypesError={tagTypesError}
+        />
+      </TagsContextProvider>
     );
   };
   return (
@@ -4355,12 +4362,21 @@ function App() {
         {submittedText ? <p>Last submitted: {submittedText}</p> : null}
       </footer>
 
-      {isUploadOpen ? (
-        <div
-          className="media-modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          onClick={closeUploadModal}
+      <UploadContextProvider
+        value={{
+          isOpen: isUploadOpen,
+          onClose: closeUploadModal,
+          onPrev: () => setActiveUploadIndex((current) => Math.max(current - 1, 0)),
+          onNext: () => setActiveUploadIndex((current) => Math.min(current + 1, uploadItems.length - 1))
+        }}
+      >
+        <UploadModal
+          isOpen={isUploadOpen}
+          onClose={closeUploadModal}
+          initialData={{
+            onPrev: () => setActiveUploadIndex((current) => Math.max(current - 1, 0)),
+            onNext: () => setActiveUploadIndex((current) => Math.min(current + 1, uploadItems.length - 1))
+          }}
         >
           <div
             className={`media-modal${uploadStep === "queue" ? " media-modal-upload-queue" : " media-modal-editing"}`}
@@ -4592,8 +4608,8 @@ function App() {
               </>
             )}
           </div>
-        </div>
-      ) : null}
+        </UploadModal>
+      </UploadContextProvider>
 
       {isUploadOpen && isUploadCollectionPickerOpen ? (
         <div
@@ -4835,12 +4851,22 @@ function App() {
         </div>
       ) : null}
 
-      {selectedMedia ? (
-        <div
-          className="media-modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setSelectedMedia(null)}
+      <MediaEditorContextProvider
+        value={{
+          isOpen: Boolean(selectedMedia),
+          onClose: () => setSelectedMedia(null),
+          onNavigate: handleNavigateSelectedMedia,
+          canNavigate: canNavigateSelectedMedia,
+          isRelationPickerOpen: isMediaRelationPickerOpen,
+          onCloseRelationPicker: closeMediaRelationPicker,
+          relationPickerMode: mediaRelationPickerMode
+        }}
+      >
+        <MediaEditorModal
+          isOpen={Boolean(selectedMedia)}
+          onClose={() => setSelectedMedia(null)}
+          onNavigate={handleNavigateSelectedMedia}
+          initialData={{ canNavigate: canNavigateSelectedMedia }}
         >
           <div
             className={`media-modal${isEditingMedia ? " media-modal-editing" : ""}`}
@@ -5103,12 +5129,12 @@ function App() {
               </div>
             </div>
           ) : null}
-        </div>
-      ) : null}
-      {isMediaRelationPickerOpen ? (
-        <div
-          className="media-confirm-overlay"
-          onClick={closeMediaRelationPicker}
+        </MediaEditorModal>
+
+        <MediaRelationPickerModal
+          isOpen={isMediaRelationPickerOpen}
+          onClose={closeMediaRelationPicker}
+          initialData={{ mode: mediaRelationPickerMode }}
         >
           <div
             className="collection-picker-dialog media-relation-picker-dialog"
@@ -5209,8 +5235,8 @@ function App() {
               </div>
             </div>
           </div>
-        </div>
-      ) : null}
+        </MediaRelationPickerModal>
+      </MediaEditorContextProvider>
       {activeTagManagerTagTypeId !== null ? (
         <div
           className="media-confirm-overlay"
@@ -5427,7 +5453,6 @@ function App() {
 }
 
 export default App;
-
 
 
 
