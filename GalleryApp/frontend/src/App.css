@@ -1551,7 +1551,7 @@
   table-layout: fixed;
   border: 1px solid #d5dbe1;
   border-radius: 0.55rem;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .media-meta-table tr:not(:last-child) th,
@@ -1577,6 +1577,8 @@
 .media-meta-table td {
   color: #0f172a;
   word-break: break-word;
+  position: relative;
+  overflow: visible;
 }
 
 .media-id-link {
@@ -1777,6 +1779,11 @@
 
 .media-tagtype-edit-wrap {
   position: relative;
+  z-index: 1;
+}
+
+.media-tagtype-edit-wrap:focus-within {
+  z-index: 6;
 }
 
 .media-tagtype-field {
@@ -2001,6 +2008,8 @@
 }
 
 .media-action-row-spaced {
+  position: relative;
+  z-index: 0;
   margin-left: 0;
   margin-right: 0;
   margin-bottom: 0;
