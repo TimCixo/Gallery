@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { collectionsApi } from "../../api/collectionsApi";
 import { mediaApi } from "../../api/mediaApi";
 import { tagsApi } from "../../api/tagsApi";
@@ -18,7 +18,7 @@ const getDisplayName = (value) => {
   return normalized.replace(/\.[^./]+$/, "") || normalized;
 };
 
-export default function GalleryContainer({ searchQuery = "" }) {
+export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0 }) {
   const [mediaFiles, setMediaFiles] = useState([]);
   const [totalFiles, setTotalFiles] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
@@ -55,6 +55,7 @@ export default function GalleryContainer({ searchQuery = "" }) {
   const [mediaRelationPickerTotalCount, setMediaRelationPickerTotalCount] = useState(0);
   const [isMediaRelationPickerLoading, setIsMediaRelationPickerLoading] = useState(false);
   const [mediaRelationPickerError, setMediaRelationPickerError] = useState("");
+  const lastHandledSearchSubmitSeqRef = useRef(searchSubmitSeq);
 
   const refreshTagCatalog = useCallback(async () => {
     setIsTagCatalogLoading(true);
@@ -104,6 +105,19 @@ export default function GalleryContainer({ searchQuery = "" }) {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery]);
+
+  useEffect(() => {
+    if (searchSubmitSeq === lastHandledSearchSubmitSeqRef.current) {
+      return;
+    }
+    lastHandledSearchSubmitSeqRef.current = searchSubmitSeq;
+
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+      return;
+    }
+    void loadMedia(1, searchQuery);
+  }, [currentPage, loadMedia, searchQuery, searchSubmitSeq]);
 
   useEffect(() => {
     setPageJumpInput(String(currentPage));
