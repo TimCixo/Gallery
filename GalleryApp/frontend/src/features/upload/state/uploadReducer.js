@@ -57,7 +57,13 @@ export function uploadReducer(state, action) {
     case UPLOAD_ACTIONS.SET_DRAG_AND_DROP:
       return { ...state, dragAndDrop: { ...state.dragAndDrop, ...action.payload } };
     case UPLOAD_ACTIONS.SET_BACKGROUND:
-      return { ...state, background: { ...state.background, ...action.payload } };
+      return {
+        ...state,
+        background: {
+          ...state.background,
+          ...(typeof action.payload === "function" ? action.payload(state.background) : action.payload)
+        }
+      };
     case UPLOAD_ACTIONS.RESET:
       return uploadInitialState;
     default:

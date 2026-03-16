@@ -28,6 +28,7 @@ export default function AppShell() {
   const [searchTagTypes, setSearchTagTypes] = useState([]);
   const [searchTagCatalog, setSearchTagCatalog] = useState([]);
   const [searchSubmitSeq, setSearchSubmitSeq] = useState(0);
+  const [openMediaRequest, setOpenMediaRequest] = useState({ token: 0, media: null });
   const searchInputRef = useRef(null);
   const searchHighlightRef = useRef(null);
   const prevActivePageRef = useRef("gallery");
@@ -203,6 +204,20 @@ export default function AppShell() {
     setIsSearchSuggestionExplicitlyActive(false);
   }, [activeSearchSuggestionIndex, searchSuggestions.length]);
 
+  useEffect(() => {
+    const handleOpenMedia = (event) => {
+      setOpenMediaRequest({
+        token: Date.now(),
+        media: event.detail?.media || null
+      });
+      setActivePage("gallery");
+      setIsSlideMenuOpen(false);
+    };
+
+    window.addEventListener("gallery:open-media", handleOpenMedia);
+    return () => window.removeEventListener("gallery:open-media", handleOpenMedia);
+  }, []);
+
   const openGalleryPage = (event) => {
     event.preventDefault();
     setActivePage("gallery");
@@ -359,7 +374,7 @@ export default function AppShell() {
         </div>
       ) : null}
 
-      {activePage === "gallery" ? <GalleryContainer searchQuery={submittedText} searchSubmitSeq={searchSubmitSeq} /> : null}
+      {activePage === "gallery" ? <GalleryContainer searchQuery={submittedText} searchSubmitSeq={searchSubmitSeq} openMediaRequest={openMediaRequest} /> : null}
       {activePage === "favorites" ? <FavoritesContainer /> : null}
       {activePage === "collections" ? <CollectionsContainer searchQuery={submittedText} /> : null}
       {activePage === "tags" ? <TagsContainer /> : null}

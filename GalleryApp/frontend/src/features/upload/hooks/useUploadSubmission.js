@@ -3,6 +3,10 @@ import { collectionsApi } from "../../../api/collectionsApi";
 import { uploadApi } from "../../../api/uploadApi";
 import { uploadSingleFileWithProgress } from "../../../services/upload/uploadWorkerController";
 import { ALLOWED_MEDIA_EXTENSIONS, getExtensionFromPath } from "../../../utils/mediaIdentity";
+import {
+  summarizeBackgroundItems,
+  updateBackgroundItem
+} from "../utils/backgroundUploadState";
 import { parseNullableId } from "../utils/uploadHelpers";
 
 export function useUploadSubmission({
@@ -11,23 +15,49 @@ export function useUploadSubmission({
   setUiState,
   setIsUploading,
   setQueueState,
+  setBackgroundState,
   closeModal
 }) {
-  const uploadTask = useCallback(async ({ file, draft, collectionIds }) => {
-    const result = await uploadSingleFileWithProgress(file, () => {});
-    const uploadedFiles = Array.isArray(result?.files) ? result.files : [];
-    const uploaded = uploadedFiles[0];
-    if (!uploaded?.id) {
-      throw new Error(`Upload completed without media id for "${file.name}".`);
-    }
+  const uploadTask = useCallback(async ({ item, draft, collectionIds }) => {
+      setBackgroundState((current) => summarizeBackgroundItems(updateBackgroundItem(current?.items, item.key, {
+        status: "uploading",
+        progress: 0,
+        fileName: item.file.name
+      })));
 
-    await uploadApi.updateUploadedMedia(uploaded.id, draft);
-    for (const collectionId of collectionIds) {
-      await collectionsApi.addMediaToCollection(collectionId, uploaded.id);
-    }
+    try {
+      const result = await uploadSingleFileWithProgress(item.file, (percent) => {
+        setBackgroundState((current) => summarizeBackgroundItems(updateBackgroundItem(current?.items, item.key, {
+          status: "uploading",
+          progress: percent,
+          fileName: item.file.name
+        })));
+      });
+      const uploadedFiles = Array.isArray(result?.files) ? result.files : [];
+      const uploaded = uploadedFiles[0];
+      if (!uploaded?.id) {
+        throw new Error(`Upload completed without media id for "${item.file.name}".`);
+      }
 
-    window.dispatchEvent(new CustomEvent("gallery:media-updated"));
-  }, []);
+      await uploadApi.updateUploadedMedia(uploaded.id, draft);
+      for (const collectionId of collectionIds) {
+        await collectionsApi.addMediaToCollection(collectionId, uploaded.id);
+      }
+
+      setBackgroundState((current) => summarizeBackgroundItems(updateBackgroundItem(current?.items, item.key, {
+        status: "uploaded",
+        progress: 100,
+        fileName: item.file.name
+      })));
+      window.dispatchEvent(new CustomEvent("gallery:media-updated"));
+    } catch (error) {
+      setBackgroundState((current) => summarizeBackgroundItems(updateBackgroundItem(current?.items, item.key, {
+        status: "error",
+        fileName: item.file.name
+      })));
+      throw error;
+    }
+  }, [setBackgroundState]);
 
   const normalizeDraft = useCallback((item) => {
     const title = String(item?.draft?.title || "").trim();
@@ -102,7 +132,7 @@ export function useUploadSubmission({
 
         for (const item of queue.items) {
           await uploadTask({
-            file: item.file,
+            item,
             draft: normalizedDraft,
             collectionIds: normalizedCollectionIds
           });
@@ -113,7 +143,7 @@ export function useUploadSubmission({
       }
 
       await uploadTask({
-        file: activeItem.file,
+        item: activeItem,
         draft: normalizedDraft,
         collectionIds: normalizedCollectionIds
       });
@@ -156,6 +186,7 @@ export function useUploadSubmission({
     setUiState,
     setIsUploading,
     setQueueState,
+    setBackgroundState,
     closeModal
   ]);
 

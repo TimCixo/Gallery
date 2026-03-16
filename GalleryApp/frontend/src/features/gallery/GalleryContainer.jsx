@@ -18,7 +18,7 @@ const getDisplayName = (value) => {
   return normalized.replace(/\.[^./]+$/, "") || normalized;
 };
 
-export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0 }) {
+export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0, openMediaRequest = null }) {
   const [mediaFiles, setMediaFiles] = useState([]);
   const [totalFiles, setTotalFiles] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
@@ -118,6 +118,14 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
     }
     void loadMedia(1, searchQuery);
   }, [currentPage, loadMedia, searchQuery, searchSubmitSeq]);
+
+  useEffect(() => {
+    if (!openMediaRequest?.media) {
+      return;
+    }
+
+    setSelectedMedia(openMediaRequest.media);
+  }, [openMediaRequest]);
 
   useEffect(() => {
     setPageJumpInput(String(currentPage));
