@@ -22,6 +22,10 @@ export default function CollectionsContainer({ searchQuery = "" }) {
   const [collections, setCollections] = useState([]);
   const [isCollectionsLoading, setIsCollectionsLoading] = useState(true);
   const [collectionsError, setCollectionsError] = useState("");
+  const [isCreateCollectionModalOpen, setIsCreateCollectionModalOpen] = useState(false);
+  const [createCollectionDraft, setCreateCollectionDraft] = useState({ label: "", description: "", cover: "" });
+  const [createCollectionError, setCreateCollectionError] = useState("");
+  const [isSavingCollection, setIsSavingCollection] = useState(false);
   const [selectedCollection, setSelectedCollection] = useState(null);
   const [collectionFiles, setCollectionFiles] = useState([]);
   const [collectionFilesPage, setCollectionFilesPage] = useState(1);
@@ -139,6 +143,21 @@ export default function CollectionsContainer({ searchQuery = "" }) {
     setSelectedCollection(item);
     setSelectedMedia(null);
     await loadCollectionMedia(item.id, 1);
+  };
+
+  const openCreateCollectionModal = () => {
+    setCreateCollectionDraft({ label: "", description: "", cover: "" });
+    setCreateCollectionError("");
+    setIsCreateCollectionModalOpen(true);
+  };
+
+  const closeCreateCollectionModal = () => {
+    if (isSavingCollection) {
+      return;
+    }
+
+    setIsCreateCollectionModalOpen(false);
+    setCreateCollectionError("");
   };
 
   const visibleCollectionFiles = useMemo(() => collectionFiles, [collectionFiles]);
@@ -368,6 +387,48 @@ export default function CollectionsContainer({ searchQuery = "" }) {
     return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
   };
 
+  const handleCreateCollection = async (event) => {
+    event.preventDefault();
+    if (isSavingCollection) {
+      return;
+    }
+
+    const label = String(createCollectionDraft.label || "").trim();
+    if (!label) {
+      setCreateCollectionError("Collection name is required.");
+      return;
+    }
+
+    setIsSavingCollection(true);
+    setCreateCollectionError("");
+    try {
+      const payload = {
+        label,
+        description: String(createCollectionDraft.description || "").trim() || null,
+        cover: toNullableId(createCollectionDraft.cover)
+      };
+      const created = await collectionsApi.saveCollection(null, payload);
+      setIsCreateCollectionModalOpen(false);
+      setCreateCollectionDraft({ label: "", description: "", cover: "" });
+      await loadCollections();
+
+      if (created?.id) {
+        const createdItem = {
+          id: created.id,
+          label: created.label ?? payload.label,
+          description: created.description ?? payload.description,
+          cover: created.cover ?? payload.cover,
+          coverMedia: null
+        };
+        await handleOpenCollection(createdItem);
+      }
+    } catch (error) {
+      setCreateCollectionError(error instanceof Error ? error.message : "Failed to create collection.");
+    } finally {
+      setIsSavingCollection(false);
+    }
+  };
+
   const findMediaById = useCallback(async (mediaId) => {
     const normalizedId = Number(mediaId);
     if (!Number.isSafeInteger(normalizedId) || normalizedId <= 0) {
@@ -576,12 +637,67 @@ export default function CollectionsContainer({ searchQuery = "" }) {
 
   return (
     <CollectionsPage
-      openCreateCollectionModal={() => {}}
+      openCreateCollectionModal={openCreateCollectionModal}
       isCollectionsLoading={isCollectionsLoading}
       collections={collections}
       handleOpenCollection={handleOpenCollection}
     >
       {collectionsError ? <p className="collections-error">{collectionsError}</p> : null}
+      {isCreateCollectionModalOpen ? (
+        <div className="media-confirm-overlay" role="dialog" aria-modal="true" onClick={closeCreateCollectionModal}>
+          <div className="collection-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="media-modal-header">
+              <h2 className="upload-modal-title">New collection</h2>
+              <button type="button" className="media-action-btn" onClick={closeCreateCollectionModal} disabled={isSavingCollection}>
+                Close
+              </button>
+            </div>
+            <form className="collection-modal-body" onSubmit={handleCreateCollection}>
+              <div className="collections-preview">
+                <p className="collections-preview-title">Collection details</p>
+                <div className="collections-form">
+                  <input
+                    type="text"
+                    className="collections-input"
+                    value={createCollectionDraft.label}
+                    onChange={(event) => setCreateCollectionDraft((current) => ({ ...current, label: event.target.value }))}
+                    placeholder="Collection name"
+                    autoFocus
+                  />
+                  <textarea
+                    className="collections-input"
+                    value={createCollectionDraft.description}
+                    onChange={(event) => setCreateCollectionDraft((current) => ({ ...current, description: event.target.value }))}
+                    placeholder="Description"
+                    rows={5}
+                  />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    className="collections-input"
+                    value={createCollectionDraft.cover}
+                    onChange={(event) => setCreateCollectionDraft((current) => ({ ...current, cover: event.target.value }))}
+                    placeholder="Cover media id (optional)"
+                  />
+                </div>
+                {createCollectionError ? <p className="collections-error">{createCollectionError}</p> : null}
+              </div>
+              <div className="collections-preview">
+                <p className="collections-preview-title">How it works</p>
+                <p className="collections-state">Enter a name, optionally add a description and an existing media id for the cover.</p>
+                <div className="collections-form-actions">
+                  <button type="button" className="collections-btn" onClick={closeCreateCollectionModal} disabled={isSavingCollection}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="collections-btn collections-btn-primary" disabled={isSavingCollection}>
+                    {isSavingCollection ? "Creating..." : "Create collection"}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
       {selectedCollection ? (
         <div className="media-modal-overlay" role="dialog" aria-modal="true" onClick={() => setSelectedCollection(null)}>
           <div className="collection-view-modal" onClick={(event) => event.stopPropagation()}>

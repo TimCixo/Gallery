@@ -30,7 +30,7 @@ export const collectionsApi = {
     try {
       const endpoint = collectionId ? `/api/collections/${collectionId}` : "/api/collections";
       return await requestJson(endpoint, {
-        method: collectionId ? "PATCH" : "POST",
+        method: collectionId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
