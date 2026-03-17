@@ -1,5 +1,14 @@
-import { useReducer, useState } from "react";
-import { tagsApi } from "../../../services/tagsApi";
+import { useCallback, useReducer, useState } from "react";
+import { tagsApi } from "../../../api/tagsApi";
+import {
+  createTagItemsState,
+  moveTagItem,
+  prependTagItem,
+  removeTagItem,
+  removeTagTypeEntry,
+  replaceTagItem,
+  shouldLoadTagItems
+} from "../state/tagItemsState";
 
 const initialDragState = { status: "idle", draggedTag: null, targetTagTypeId: null, error: "" };
 function dragReducer(state, action) {
@@ -20,23 +29,57 @@ export function useTagItemsManager({ setTagTypesError }) {
   const [editingTagByTagTypeId, setEditingTagByTagTypeId] = useState({});
   const [editingTagDraftById, setEditingTagDraftById] = useState({});
   const [savingTagByTagTypeId, setSavingTagByTagTypeId] = useState({});
-  const [tagTableStateByTagTypeId, setTagTableStateByTagTypeId] = useState({});
+  const [tagItemsStateByTypeId, setTagItemsStateByTypeId] = useState({});
   const [dragState, dispatchDrag] = useReducer(dragReducer, initialDragState);
 
-  const ensureNewTagDraft = (tagTypeId) => setNewTagDraftByTagTypeId((c) => (c[tagTypeId] ? c : { ...c, [tagTypeId]: { name: "", description: "" } }));
+  const ensureNewTagDraft = useCallback(
+    (tagTypeId) => setNewTagDraftByTagTypeId((current) => (
+      current[tagTypeId] ? current : { ...current, [tagTypeId]: { name: "", description: "" } }
+    )),
+    []
+  );
 
-  const loadTagsForTagType = async (tagTypeId) => {
-    setTagTableStateByTagTypeId((c) => ({ ...c, [tagTypeId]: { loading: true, error: "" } }));
+  const loadTagsForTagType = useCallback(async (tagTypeId, { force = false } = {}) => {
+    let shouldFetch = true;
+    setTagItemsStateByTypeId((current) => {
+      const nextState = current[tagTypeId] || createTagItemsState();
+      shouldFetch = force || shouldLoadTagItems(nextState);
+      return shouldFetch
+        ? { ...current, [tagTypeId]: createTagItemsState({ ...nextState, loading: true, error: "" }) }
+        : current;
+    });
+
+    if (!shouldFetch) {
+      return;
+    }
+
     try {
       const result = await tagsApi.listTagsByTagType(tagTypeId);
       const items = Array.isArray(result?.items) ? result.items : [];
-      setTagsByTagTypeId((c) => ({ ...c, [tagTypeId]: items }));
-      setTagTableStateByTagTypeId((c) => ({ ...c, [tagTypeId]: { loading: false, error: "" } }));
+      setTagsByTagTypeId((current) => ({ ...current, [tagTypeId]: items }));
+      setTagItemsStateByTypeId((current) => ({
+        ...current,
+        [tagTypeId]: createTagItemsState({ loading: false, error: "", hasLoaded: true })
+      }));
     } catch (error) {
-      setTagsByTagTypeId((c) => ({ ...c, [tagTypeId]: [] }));
-      setTagTableStateByTagTypeId((c) => ({ ...c, [tagTypeId]: { loading: false, error: error instanceof Error ? error.message : "Failed to fetch tags." } }));
+      setTagsByTagTypeId((current) => ({ ...current, [tagTypeId]: [] }));
+      setTagItemsStateByTypeId((current) => ({
+        ...current,
+        [tagTypeId]: createTagItemsState({
+          loading: false,
+          error: error instanceof Error ? error.message : "Failed to fetch tags.",
+          hasLoaded: true
+        })
+      }));
     }
-  };
+  }, []);
+
+  const handleNewTagDraftChange = useCallback((tagTypeId, patch) => {
+    setNewTagDraftByTagTypeId((current) => ({
+      ...current,
+      [tagTypeId]: { ...(current[tagTypeId] || { name: "", description: "" }), ...patch }
+    }));
+  }, []);
 
   const handleCreateTag = async (tagTypeId) => {
     const draft = newTagDraftByTagTypeId[tagTypeId] ?? { name: "", description: "" };
@@ -45,11 +88,38 @@ export function useTagItemsManager({ setTagTypesError }) {
     setSavingTagByTagTypeId((c) => ({ ...c, [tagTypeId]: true })); setTagTypesError("");
     try {
       const result = await tagsApi.createTag(tagTypeId, { name: normalizedName, description: String(draft.description || "").trim() || null });
-      setTagsByTagTypeId((c) => ({ ...c, [tagTypeId]: [result, ...(c[tagTypeId] ?? [])] }));
-      setNewTagDraftByTagTypeId((c) => ({ ...c, [tagTypeId]: { name: "", description: "" } }));
+      setTagsByTagTypeId((current) => prependTagItem(current, tagTypeId, result));
+      setNewTagDraftByTagTypeId((current) => ({ ...current, [tagTypeId]: { name: "", description: "" } }));
+      setTagItemsStateByTypeId((current) => ({
+        ...current,
+        [tagTypeId]: createTagItemsState({ ...(current[tagTypeId] || {}), hasLoaded: true })
+      }));
     } catch (error) { setTagTypesError(error instanceof Error ? error.message : "Failed to create tag."); }
     finally { setSavingTagByTagTypeId((c) => ({ ...c, [tagTypeId]: false })); }
   };
+
+  const handleClearNewTagDraft = useCallback((tagTypeId) => {
+    setNewTagDraftByTagTypeId((current) => ({ ...current, [tagTypeId]: { name: "", description: "" } }));
+  }, []);
+
+  const handleStartEditTag = useCallback((tagTypeId, tag) => {
+    setEditingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: tag.id }));
+    setEditingTagDraftById((current) => ({
+      ...current,
+      [tag.id]: { name: tag.name || "", description: tag.description || "" }
+    }));
+  }, []);
+
+  const handleCancelEditTag = useCallback((tagTypeId) => {
+    setEditingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: null }));
+  }, []);
+
+  const handleEditTagDraftChange = useCallback((tagId, patch) => {
+    setEditingTagDraftById((current) => ({
+      ...current,
+      [tagId]: { ...(current[tagId] || { name: "", description: "" }), ...patch }
+    }));
+  }, []);
 
   const handleSaveTag = async (tagTypeId, tagId) => {
     const draft = editingTagDraftById[tagId] ?? { name: "", description: "" };
@@ -58,7 +128,7 @@ export function useTagItemsManager({ setTagTypesError }) {
     setSavingTagByTagTypeId((c) => ({ ...c, [tagTypeId]: true })); setTagTypesError("");
     try {
       const result = await tagsApi.updateTag(tagId, { name: normalizedName, description: String(draft.description || "").trim() || null });
-      setTagsByTagTypeId((c) => ({ ...c, [tagTypeId]: (c[tagTypeId] ?? []).map((item) => (item.id === tagId ? result : item)) }));
+      setTagsByTagTypeId((current) => replaceTagItem(current, tagTypeId, tagId, result));
       setEditingTagByTagTypeId((c) => ({ ...c, [tagTypeId]: null }));
     } catch (error) { setTagTypesError(error instanceof Error ? error.message : "Failed to update tag."); }
     finally { setSavingTagByTagTypeId((c) => ({ ...c, [tagTypeId]: false })); }
@@ -68,7 +138,7 @@ export function useTagItemsManager({ setTagTypesError }) {
     setSavingTagByTagTypeId((c) => ({ ...c, [tagTypeId]: true })); setTagTypesError("");
     try {
       await tagsApi.deleteTag(tagId);
-      setTagsByTagTypeId((c) => ({ ...c, [tagTypeId]: (c[tagTypeId] ?? []).filter((item) => item.id !== tagId) }));
+      setTagsByTagTypeId((current) => removeTagItem(current, tagTypeId, tagId));
       return true;
     } catch (error) { setTagTypesError(error instanceof Error ? error.message : "Failed to delete tag."); return false; }
     finally { setSavingTagByTagTypeId((c) => ({ ...c, [tagTypeId]: false })); }
@@ -83,8 +153,18 @@ export function useTagItemsManager({ setTagTypesError }) {
     if (!draggedTag || draggedTag.sourceTagTypeId === targetTagTypeId || dragState.status === "dropping") return dispatchDrag({ type: "DRAG_CANCEL" });
     dispatchDrag({ type: "DROP_START" }); setTagTypesError("");
     try {
-      await tagsApi.moveTagToType(draggedTag.id, targetTagTypeId);
-      await Promise.all([loadTagsForTagType(draggedTag.sourceTagTypeId), loadTagsForTagType(targetTagTypeId)]);
+      const movedTag = await tagsApi.moveTagToType(draggedTag.id, targetTagTypeId);
+      setTagsByTagTypeId((current) => moveTagItem(current, {
+        sourceTagTypeId: draggedTag.sourceTagTypeId,
+        targetTagTypeId,
+        tagId: draggedTag.id,
+        nextTagItem: movedTag
+      }));
+      setTagItemsStateByTypeId((current) => ({
+        ...current,
+        [draggedTag.sourceTagTypeId]: createTagItemsState({ ...(current[draggedTag.sourceTagTypeId] || {}), hasLoaded: true }),
+        [targetTagTypeId]: createTagItemsState({ ...(current[targetTagTypeId] || {}), hasLoaded: true })
+      }));
       dispatchDrag({ type: "DROP_SUCCESS" });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to move tag.";
@@ -93,7 +173,37 @@ export function useTagItemsManager({ setTagTypesError }) {
   };
 
   const clearDragState = () => dispatchDrag({ type: "DRAG_CANCEL" });
-  const removeTagTypeData = (tagTypeId) => setTagsByTagTypeId((c) => { const n = { ...c }; delete n[tagTypeId]; return n; });
+  const removeTagTypeData = useCallback((tagTypeId) => {
+    setTagsByTagTypeId((current) => removeTagTypeEntry(current, tagTypeId));
+    setNewTagDraftByTagTypeId((current) => removeTagTypeEntry(current, tagTypeId));
+    setEditingTagByTagTypeId((current) => removeTagTypeEntry(current, tagTypeId));
+    setSavingTagByTagTypeId((current) => removeTagTypeEntry(current, tagTypeId));
+    setTagItemsStateByTypeId((current) => removeTagTypeEntry(current, tagTypeId));
+  }, []);
 
-  return { tagsByTagTypeId, newTagDraftByTagTypeId, setNewTagDraftByTagTypeId, editingTagByTagTypeId, setEditingTagByTagTypeId, editingTagDraftById, setEditingTagDraftById, savingTagByTagTypeId, tagTableStateByTagTypeId, dragState, ensureNewTagDraft, loadTagsForTagType, handleCreateTag, handleSaveTag, handleDeleteTag, handleTagDragStart, handleTagDragEnter, handleTagDragLeave, handleTagDrop, clearDragState, removeTagTypeData };
+  return {
+    tagsByTagTypeId,
+    newTagDraftByTagTypeId,
+    editingTagByTagTypeId,
+    editingTagDraftById,
+    savingTagByTagTypeId,
+    tagItemsStateByTypeId,
+    dragState,
+    ensureNewTagDraft,
+    loadTagsForTagType,
+    handleNewTagDraftChange,
+    handleCreateTag,
+    handleClearNewTagDraft,
+    handleStartEditTag,
+    handleCancelEditTag,
+    handleEditTagDraftChange,
+    handleSaveTag,
+    handleDeleteTag,
+    handleTagDragStart,
+    handleTagDragEnter,
+    handleTagDragLeave,
+    handleTagDrop,
+    clearDragState,
+    removeTagTypeData
+  };
 }

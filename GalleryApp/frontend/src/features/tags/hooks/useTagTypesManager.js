@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { tagsApi } from "../../../services/tagsApi";
+import { tagsApi } from "../../../api/tagsApi";
 
 const DEFAULT_COLOR = "#2563EB";
 

@@ -1,162 +1,106 @@
-import { useEffect, useState } from "react";
-import { tagsApi } from "../../api/tagsApi";
-import TagDeleteConfirmModal from "./components/TagDeleteConfirmModal";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TagsPage from "./TagsPage";
+import TagDeleteConfirmModal from "./components/TagDeleteConfirmModal";
+import { useTagItemsManager } from "./hooks/useTagItemsManager";
+import { useTagTypesManager } from "./hooks/useTagTypesManager";
 
 export default function TagsContainer() {
-  const [tagTypeNameInput, setTagTypeNameInput] = useState("");
-  const [tagTypeColorInput, setTagTypeColorInput] = useState("#2563EB");
-  const [tagTypes, setTagTypes] = useState([]);
-  const [isTagTypesLoading, setIsTagTypesLoading] = useState(true);
-  const [isTagTypeSaving, setIsTagTypeSaving] = useState(false);
-  const [editingTagTypeId, setEditingTagTypeId] = useState(null);
-  const [editingTagTypeName, setEditingTagTypeName] = useState("");
-  const [editingTagTypeColor, setEditingTagTypeColor] = useState("#2563EB");
-  const [isTagTypeUpdating, setIsTagTypeUpdating] = useState(false);
-  const [tagsByTagTypeId, setTagsByTagTypeId] = useState({});
-  const [tagSearchQueryByTagTypeId, setTagSearchQueryByTagTypeId] = useState({});
-  const [tagTableStateByTagTypeId] = useState({});
-  const [newTagDraftByTagTypeId, setNewTagDraftByTagTypeId] = useState({});
-  const [editingTagByTagTypeId, setEditingTagByTagTypeId] = useState({});
-  const [editingTagDraftById, setEditingTagDraftById] = useState({});
-  const [savingTagByTagTypeId, setSavingTagByTagTypeId] = useState({});
-  const [tagTypesError, setTagTypesError] = useState("");
-  const [draggedTag, setDraggedTag] = useState(null);
-  const [dragTargetTagTypeId, setDragTargetTagTypeId] = useState(null);
-  const [tagTypeCalloutOpenById, setTagTypeCalloutOpenById] = useState({});
+  const dragCollapseTimeoutRef = useRef(null);
+  const tagTypesState = useTagTypesManager();
+  const tagItemsState = useTagItemsManager({ setTagTypesError: tagTypesState.setTagTypesError });
+  const [activeTagTypeId, setActiveTagTypeId] = useState(null);
+  const [searchQueryByTagTypeId, setSearchQueryByTagTypeId] = useState({});
   const [pendingTagDelete, setPendingTagDelete] = useState(null);
   const [isDeletingTagEntity, setIsDeletingTagEntity] = useState(false);
 
-  const loadTagTypes = async () => {
-    setIsTagTypesLoading(true);
-    setTagTypesError("");
-    try {
-      const response = await tagsApi.listTagTypes();
-      const items = Array.isArray(response?.items) ? response.items : [];
-      setTagTypes(items);
-
-      const tagsEntries = await Promise.all(items.map(async (item) => {
-        const tagResponse = await tagsApi.listTagsByTagType(item.id);
-        return [item.id, Array.isArray(tagResponse?.items) ? tagResponse.items : []];
-      }));
-
-      setTagsByTagTypeId(Object.fromEntries(tagsEntries));
-    } catch (error) {
-      setTagTypesError(error instanceof Error ? error.message : "Failed to load tag types.");
-    } finally {
-      setIsTagTypesLoading(false);
+  useEffect(() => {
+    if (activeTagTypeId === null) {
+      return;
     }
-  };
+
+    if (!tagTypesState.tagTypes.some((item) => item.id === activeTagTypeId)) {
+      setActiveTagTypeId(null);
+    }
+  }, [activeTagTypeId, tagTypesState.tagTypes]);
 
   useEffect(() => {
-    void loadTagTypes();
-  }, []);
-
-  const handleCreateTagType = async (event) => {
-    event.preventDefault();
-    setIsTagTypeSaving(true);
-    try {
-      await tagsApi.createTagType({ name: tagTypeNameInput.trim(), color: tagTypeColorInput });
-      setTagTypeNameInput("");
-      await loadTagTypes();
-    } catch (error) {
-      setTagTypesError(error instanceof Error ? error.message : "Failed to create tag type.");
-    } finally {
-      setIsTagTypeSaving(false);
+    if (activeTagTypeId === null) {
+      return;
     }
-  };
 
-  const handleClearTagTypeForm = () => {
-    setTagTypeNameInput("");
-    setTagTypeColorInput("#2563EB");
-  };
+    tagItemsState.ensureNewTagDraft(activeTagTypeId);
+    void tagItemsState.loadTagsForTagType(activeTagTypeId);
+  }, [activeTagTypeId, tagItemsState.ensureNewTagDraft, tagItemsState.loadTagsForTagType]);
 
-  const handleStartEditTagType = (item) => {
-    setEditingTagTypeId(item.id);
-    setEditingTagTypeName(String(item.name || ""));
-    setEditingTagTypeColor(String(item.color || "#2563EB"));
-  };
+  const tagTypeForm = useMemo(() => ({
+    name: tagTypesState.tagTypeNameInput,
+    color: tagTypesState.tagTypeColorInput,
+    isSaving: tagTypesState.isTagTypeSaving
+  }), [tagTypesState.isTagTypeSaving, tagTypesState.tagTypeColorInput, tagTypesState.tagTypeNameInput]);
 
-  const handleCancelEditTagType = () => {
-    setEditingTagTypeId(null);
-    setEditingTagTypeName("");
-    setEditingTagTypeColor("#2563EB");
-  };
-
-  const handleSaveTagType = async (tagTypeId) => {
-    setIsTagTypeUpdating(true);
-    try {
-      await tagsApi.updateTagType(tagTypeId, { name: editingTagTypeName.trim(), color: editingTagTypeColor });
-      handleCancelEditTagType();
-      await loadTagTypes();
-    } finally {
-      setIsTagTypeUpdating(false);
-    }
-  };
-
-  const handleTagTypeCalloutToggle = (id, isOpen) => {
-    setTagTypeCalloutOpenById((current) => ({ ...current, [id]: isOpen }));
-  };
-
-  const handleNewTagDraftChange = (tagTypeId, patch) => {
-    setNewTagDraftByTagTypeId((current) => ({
-      ...current,
-      [tagTypeId]: { ...current[tagTypeId], ...patch }
-    }));
-  };
-
-  const handleCreateTag = async (tagTypeId) => {
-    const draft = newTagDraftByTagTypeId[tagTypeId] || {};
-    setSavingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: true }));
-    try {
-      await tagsApi.createTag(tagTypeId, { name: String(draft.name || "").trim(), description: String(draft.description || "") });
-      setNewTagDraftByTagTypeId((current) => ({ ...current, [tagTypeId]: { name: "", description: "" } }));
-      await loadTagTypes();
-    } finally {
-      setSavingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: false }));
-    }
-  };
-
-  const handleClearNewTagDraft = (tagTypeId) => {
-    setNewTagDraftByTagTypeId((current) => ({ ...current, [tagTypeId]: { name: "", description: "" } }));
-  };
-
-  const handleStartEditTag = (tagTypeId, tag) => {
-    setEditingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: tag.id }));
-    setEditingTagDraftById((current) => ({ ...current, [tag.id]: { name: tag.name || "", description: tag.description || "" } }));
-  };
-
-  const handleCancelEditTag = (tagTypeId) => {
-    setEditingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: null }));
-  };
-
-  const handleEditTagDraftChange = (tagId, patch) => {
-    setEditingTagDraftById((current) => ({ ...current, [tagId]: { ...current[tagId], ...patch } }));
-  };
-
-  const handleSaveTag = async (tagTypeId, tagId) => {
-    const draft = editingTagDraftById[tagId] || {};
-    setSavingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: true }));
-    try {
-      await tagsApi.updateTag(tagId, { name: String(draft.name || "").trim(), description: String(draft.description || "") });
-      setEditingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: null }));
-      await loadTagTypes();
-    } finally {
-      setSavingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: false }));
-    }
-  };
+  const tagEditState = useMemo(() => ({
+    pageError: tagTypesState.tagTypesError,
+    editingTagTypeId: tagTypesState.editingTagTypeId,
+    editingTagTypeName: tagTypesState.editingTagTypeName,
+    editingTagTypeColor: tagTypesState.editingTagTypeColor,
+    isTagTypeUpdating: tagTypesState.isTagTypeUpdating,
+    newTagDraftByTypeId: tagItemsState.newTagDraftByTagTypeId,
+    editingTagByTypeId: tagItemsState.editingTagByTagTypeId,
+    editingTagDraftById: tagItemsState.editingTagDraftById,
+    savingTagByTypeId: tagItemsState.savingTagByTagTypeId,
+    dragState: tagItemsState.dragState
+  }), [
+    tagItemsState.dragState,
+    tagItemsState.editingTagByTagTypeId,
+    tagItemsState.editingTagDraftById,
+    tagItemsState.newTagDraftByTagTypeId,
+    tagItemsState.savingTagByTagTypeId,
+    tagTypesState.editingTagTypeColor,
+    tagTypesState.editingTagTypeId,
+    tagTypesState.editingTagTypeName,
+    tagTypesState.isTagTypeUpdating,
+    tagTypesState.tagTypesError
+  ]);
 
   const openTagDeleteConfirm = (payload) => {
     setPendingTagDelete(payload);
   };
 
   const closeTagDeleteConfirm = () => {
-    if (isDeletingTagEntity) {
-      return;
+    if (!isDeletingTagEntity) {
+      setPendingTagDelete(null);
     }
-
-    setPendingTagDelete(null);
   };
+
+  const clearPendingDragCollapse = useCallback(() => {
+    if (dragCollapseTimeoutRef.current !== null) {
+      window.clearTimeout(dragCollapseTimeoutRef.current);
+      dragCollapseTimeoutRef.current = null;
+    }
+  }, []);
+
+  const handleTagDragStart = useCallback((event, sourceTagTypeId, tagItem) => {
+    clearPendingDragCollapse();
+    tagItemsState.handleTagDragStart(event, sourceTagTypeId, tagItem);
+    dragCollapseTimeoutRef.current = window.setTimeout(() => {
+      setActiveTagTypeId(null);
+      dragCollapseTimeoutRef.current = null;
+    }, 90);
+  }, [clearPendingDragCollapse, tagItemsState]);
+
+  const handleTagDrop = useCallback(async (targetTagTypeId) => {
+    clearPendingDragCollapse();
+    await tagItemsState.handleTagDrop(targetTagTypeId);
+  }, [clearPendingDragCollapse, tagItemsState]);
+
+  const handleTagDragEnd = useCallback(() => {
+    clearPendingDragCollapse();
+    tagItemsState.clearDragState();
+  }, [clearPendingDragCollapse, tagItemsState]);
+
+  useEffect(() => () => {
+    clearPendingDragCollapse();
+  }, [clearPendingDragCollapse]);
 
   const handleConfirmTagDelete = async () => {
     if (!pendingTagDelete) {
@@ -166,91 +110,68 @@ export default function TagsContainer() {
     setIsDeletingTagEntity(true);
     try {
       if (pendingTagDelete.kind === "tagType") {
-        await tagsApi.deleteTagType(pendingTagDelete.id);
+        const deleted = await tagTypesState.handleDeleteTagType(pendingTagDelete.id);
+        if (deleted) {
+          tagItemsState.removeTagTypeData(pendingTagDelete.id);
+          setSearchQueryByTagTypeId((current) => {
+            const next = { ...current };
+            delete next[pendingTagDelete.id];
+            return next;
+          });
+          if (activeTagTypeId === pendingTagDelete.id) {
+            setActiveTagTypeId(null);
+          }
+          setPendingTagDelete(null);
+        }
       } else {
-        await tagsApi.deleteTag(pendingTagDelete.id);
+        const deleted = await tagItemsState.handleDeleteTag(pendingTagDelete.tagTypeId, pendingTagDelete.id);
+        if (deleted) {
+          setPendingTagDelete(null);
+        }
       }
-      setPendingTagDelete(null);
-      await loadTagTypes();
     } catch (error) {
-      setTagTypesError(error instanceof Error ? error.message : "Delete failed.");
+      tagTypesState.setTagTypesError(error instanceof Error ? error.message : "Delete failed.");
     } finally {
       setIsDeletingTagEntity(false);
     }
   };
 
-  const handleTagDragStart = (_event, sourceTagTypeId, tagItem) => {
-    setDraggedTag({ id: tagItem.id, sourceTagTypeId });
-  };
-  const handleTagDragEnd = () => {
-    setDraggedTag(null);
-    setDragTargetTagTypeId(null);
-  };
-  const handleTagTypeDragOver = (event, targetTagTypeId) => {
-    event.preventDefault();
-    setDragTargetTagTypeId(targetTagTypeId);
-  };
-  const handleTagTypeDragLeave = () => setDragTargetTagTypeId(null);
-  const handleTagTypeDrop = async (event, targetTagTypeId) => {
-    event.preventDefault();
-    if (!draggedTag || draggedTag.sourceTagTypeId === targetTagTypeId) {
-      setDragTargetTagTypeId(null);
-      return;
-    }
-
-    await tagsApi.moveTagToType(draggedTag.id, targetTagTypeId);
-    setDraggedTag(null);
-    setDragTargetTagTypeId(null);
-    await loadTagTypes();
-  };
-
   return (
     <>
       <TagsPage
-        handleCreateTagType={handleCreateTagType}
-        tagTypeColorInput={tagTypeColorInput}
-        setTagTypeColorInput={setTagTypeColorInput}
-        tagTypeNameInput={tagTypeNameInput}
-        setTagTypeNameInput={setTagTypeNameInput}
-        isTagTypeSaving={isTagTypeSaving}
-        handleClearTagTypeForm={handleClearTagTypeForm}
-        tagTypesError={tagTypesError}
-        isTagTypesLoading={isTagTypesLoading}
-        tagTypes={tagTypes}
-        editingTagTypeId={editingTagTypeId}
-        dragTargetTagTypeId={dragTargetTagTypeId}
-        tagTypeCalloutOpenById={tagTypeCalloutOpenById}
-        handleTagTypeCalloutToggle={handleTagTypeCalloutToggle}
-        handleTagTypeDragOver={handleTagTypeDragOver}
-        handleTagTypeDragLeave={handleTagTypeDragLeave}
-        handleTagTypeDrop={handleTagTypeDrop}
-        draggedTag={draggedTag}
-        handleTagDragStart={handleTagDragStart}
-        handleTagDragEnd={handleTagDragEnd}
-        editingTagTypeColor={editingTagTypeColor}
-        setEditingTagTypeColor={setEditingTagTypeColor}
-        editingTagTypeName={editingTagTypeName}
-        setEditingTagTypeName={setEditingTagTypeName}
-        isTagTypeUpdating={isTagTypeUpdating}
-        handleSaveTagType={handleSaveTagType}
-        handleCancelEditTagType={handleCancelEditTagType}
-        handleStartEditTagType={handleStartEditTagType}
-        openTagDeleteConfirm={openTagDeleteConfirm}
-        tagSearchQueryByTagTypeId={tagSearchQueryByTagTypeId}
-        setTagSearchQueryByTagTypeId={setTagSearchQueryByTagTypeId}
-        newTagDraftByTagTypeId={newTagDraftByTagTypeId}
-        handleNewTagDraftChange={handleNewTagDraftChange}
-        handleCreateTag={handleCreateTag}
-        savingTagByTagTypeId={savingTagByTagTypeId}
-        handleClearNewTagDraft={handleClearNewTagDraft}
-        editingTagByTagTypeId={editingTagByTagTypeId}
-        editingTagDraftById={editingTagDraftById}
-        handleEditTagDraftChange={handleEditTagDraftChange}
-        handleSaveTag={handleSaveTag}
-        handleCancelEditTag={handleCancelEditTag}
-        handleStartEditTag={handleStartEditTag}
-        tagsByTagTypeId={tagsByTagTypeId}
-        tagTableStateByTagTypeId={tagTableStateByTagTypeId}
+        tagTypeForm={tagTypeForm}
+        tagEditState={tagEditState}
+        isTagTypesLoading={tagTypesState.isTagTypesLoading}
+        activeTagTypeId={activeTagTypeId}
+        tagTypes={tagTypesState.tagTypes}
+        tagItemsByTypeId={tagItemsState.tagsByTagTypeId}
+        tagItemsStateByTypeId={tagItemsState.tagItemsStateByTypeId}
+        searchQueryByTagTypeId={searchQueryByTagTypeId}
+        onTagTypeNameChange={tagTypesState.setTagTypeNameInput}
+        onTagTypeColorChange={tagTypesState.setTagTypeColorInput}
+        onSubmitTagType={tagTypesState.handleCreateTagType}
+        onClearTagTypeForm={tagTypesState.handleClearTagTypeForm}
+        onToggleTagType={setActiveTagTypeId}
+        onStartEditTagType={tagTypesState.handleStartEditTagType}
+        onEditTagTypeNameChange={tagTypesState.setEditingTagTypeName}
+        onEditTagTypeColorChange={tagTypesState.setEditingTagTypeColor}
+        onSaveTagType={tagTypesState.handleSaveTagType}
+        onCancelEditTagType={tagTypesState.handleCancelEditTagType}
+        onOpenDeleteConfirm={openTagDeleteConfirm}
+        onTagSearchChange={(tagTypeId, value) => setSearchQueryByTagTypeId((current) => ({ ...current, [tagTypeId]: value }))}
+        onNewTagDraftChange={tagItemsState.handleNewTagDraftChange}
+        onCreateTag={tagItemsState.handleCreateTag}
+        onClearNewTagDraft={tagItemsState.handleClearNewTagDraft}
+        onStartEditTag={tagItemsState.handleStartEditTag}
+        onEditTagDraftChange={tagItemsState.handleEditTagDraftChange}
+        onSaveTag={tagItemsState.handleSaveTag}
+        onCancelEditTag={tagItemsState.handleCancelEditTag}
+        onDeleteTag={(tagTypeId, tagId, name) => openTagDeleteConfirm({ kind: "tag", id: tagId, tagTypeId, name })}
+        onTagDragStart={handleTagDragStart}
+        onTagDragEnter={tagItemsState.handleTagDragEnter}
+        onTagDragLeave={tagItemsState.handleTagDragLeave}
+        onTagDrop={handleTagDrop}
+        onTagDragEnd={handleTagDragEnd}
       />
       <TagDeleteConfirmModal
         pendingTagDelete={pendingTagDelete}
