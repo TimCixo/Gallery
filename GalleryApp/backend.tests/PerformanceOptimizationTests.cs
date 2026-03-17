@@ -122,6 +122,23 @@ public sealed class PerformanceOptimizationTests : IDisposable
         Assert.Single(Directory.GetFiles(_previewCachePath, "*.jpg"));
     }
 
+    [Fact]
+    public async Task PreviewCache_GetOrCreateAsync_IsSafeForConcurrentCalls()
+    {
+        const string relativePath = "2026-03-17/concurrent-source.jpg";
+        var absolutePath = CreateImageFile(relativePath, saveAsJpeg: true);
+        var modifiedTicks = File.GetLastWriteTimeUtc(absolutePath).Ticks;
+        var previewCache = new PreviewCacheService(
+            new MediaStorageOptions(_mediaRoot, _previewCachePath),
+            new MediaProcessingService(NullLogger<MediaProcessingService>.Instance));
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => previewCache.GetOrCreateAsync(relativePath, absolutePath, ".jpg", modifiedTicks)));
+
+        Assert.Single(results.Select(result => result.Path).Distinct(StringComparer.OrdinalIgnoreCase));
+        var cacheFile = Assert.Single(Directory.GetFiles(_previewCachePath, "*.jpg"));
+        Assert.True(new FileInfo(cacheFile).Length > 0);
+    }
+
     public void Dispose()
     {
         _serviceProvider.Dispose();
