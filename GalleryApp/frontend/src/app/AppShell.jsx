@@ -12,6 +12,7 @@ import {
   parseSearchSegments
 } from "../features/shared/utils/searchUtils";
 import { buildSearchTagTypeOptions } from "../features/shared/utils/tagUtils";
+import { createGalleryBrandNavigationState, getSubmittedSearchText } from "./utils/searchState";
 
 const BASE_SEARCH_TAG_OPTIONS = ["path", "title", "description", "id", "source"];
 const BASE_SEARCH_TAG_NAMES = new Set(BASE_SEARCH_TAG_OPTIONS);
@@ -220,7 +221,10 @@ export default function AppShell() {
 
   const openGalleryPage = (event) => {
     event.preventDefault();
-    setActivePage("gallery");
+    const nextState = createGalleryBrandNavigationState();
+    setActivePage(nextState.activePage);
+    setSubmittedText(nextState.submittedText);
+    setSearchSubmitSeq((value) => value + 1);
     setIsSlideMenuOpen(false);
   };
 
@@ -241,7 +245,7 @@ export default function AppShell() {
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    const nextSubmittedText = inputValue.trim();
+    const nextSubmittedText = getSubmittedSearchText(inputValue);
     setSubmittedText(nextSubmittedText);
     setActivePage("gallery");
     setSearchSubmitSeq((value) => value + 1);
