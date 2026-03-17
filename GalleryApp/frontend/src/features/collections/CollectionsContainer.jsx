@@ -6,6 +6,7 @@ import { normalizePageJumpInput } from "../shared/utils/pagination";
 import CollectionPickerModal from "./components/CollectionPickerModal";
 import MediaViewerModal from "../media/components/MediaViewerModal";
 import CollectionsPage from "./CollectionsPage";
+import AppIcon from "../shared/components/AppIcon";
 
 const PAGE_SIZE = 36;
 
@@ -299,20 +300,24 @@ export default function CollectionsContainer({ searchQuery = "" }) {
         <div className="media-pagination">
           <button
             type="button"
+            className="media-action-btn app-button-icon-only"
             onClick={() => handleCollectionFilesPageChange(collectionFilesPage - 1)}
             disabled={isCollectionFilesLoading || collectionFilesPage <= 1 || collectionFilesTotalPages === 0}
+            aria-label="Previous page"
           >
-            Prev
+            <AppIcon name="arrowLeft" alt="" aria-hidden="true" />
           </button>
           <p>
             Page {collectionFilesTotalPages === 0 ? 0 : collectionFilesPage} of {collectionFilesTotalPages}
           </p>
           <button
             type="button"
+            className="media-action-btn app-button-icon-only"
             onClick={() => handleCollectionFilesPageChange(collectionFilesPage + 1)}
             disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0 || collectionFilesPage >= collectionFilesTotalPages}
+            aria-label="Next page"
           >
-            Next
+            <AppIcon name="arrowRight" alt="" aria-hidden="true" />
           </button>
           <form className="media-pagination-jump" onSubmit={handleCollectionFilesPageJumpSubmit}>
             <input
@@ -326,8 +331,8 @@ export default function CollectionsContainer({ searchQuery = "" }) {
               disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0}
               aria-label="Go to collection media page"
             />
-            <button type="submit" disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0}>
-              Go
+            <button type="submit" className="media-action-btn app-button-icon-only" disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0} aria-label="Go to collection media page">
+              <AppIcon name="confirm" alt="" aria-hidden="true" />
             </button>
           </form>
         </div>

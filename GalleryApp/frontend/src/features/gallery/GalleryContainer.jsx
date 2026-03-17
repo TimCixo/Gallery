@@ -6,6 +6,7 @@ import { normalizePageJumpInput } from "../shared/utils/pagination";
 import CollectionPickerModal from "../collections/components/CollectionPickerModal";
 import MediaViewerModal from "../media/components/MediaViewerModal";
 import GalleryPage from "./GalleryPage";
+import AppIcon from "../shared/components/AppIcon";
 
 const PAGE_SIZE = 36;
 
@@ -267,20 +268,24 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
         <div className="media-pagination">
           <button
             type="button"
+            className="media-action-btn app-button-icon-only"
             onClick={() => handlePageChange(currentPage - 1)}
             disabled={isMediaLoading || currentPage <= 1 || totalPages === 0}
+            aria-label="Previous page"
           >
-            Prev
+            <AppIcon name="arrowLeft" alt="" aria-hidden="true" />
           </button>
           <p>
             Page {totalPages === 0 ? 0 : currentPage} of {totalPages}
           </p>
           <button
             type="button"
+            className="media-action-btn app-button-icon-only"
             onClick={() => handlePageChange(currentPage + 1)}
             disabled={isMediaLoading || totalPages === 0 || currentPage >= totalPages}
+            aria-label="Next page"
           >
-            Next
+            <AppIcon name="arrowRight" alt="" aria-hidden="true" />
           </button>
           <form className="media-pagination-jump" onSubmit={handlePageJumpSubmit}>
             <input
@@ -294,8 +299,8 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
               disabled={isMediaLoading || totalPages === 0}
               aria-label="Go to page"
             />
-            <button type="submit" disabled={isMediaLoading || totalPages === 0}>
-              Go
+            <button type="submit" className="media-action-btn app-button-icon-only" disabled={isMediaLoading || totalPages === 0} aria-label="Go to page">
+              <AppIcon name="confirm" alt="" aria-hidden="true" />
             </button>
           </form>
         </div>

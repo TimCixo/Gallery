@@ -5,6 +5,7 @@ import FavoritesContainer from "../features/favorites/FavoritesContainer";
 import CollectionsContainer from "../features/collections/CollectionsContainer";
 import TagsContainer from "../features/tags/TagsContainer";
 import UploadManagerContainer from "../features/upload/UploadManagerContainer";
+import AppIcon from "../features/shared/components/AppIcon";
 import {
   buildSearchSuggestions,
   formatSearchTagValue,
@@ -270,9 +271,7 @@ export default function AppShell() {
             aria-expanded={isSlideMenuOpen}
             aria-controls="app-slide-menu"
           >
-            <span />
-            <span />
-            <span />
+            <AppIcon name="menu" alt="" aria-hidden="true" />
           </button>
           <a className="top-brand" href="/" onClick={openGalleryPage}>
             Gallery
@@ -344,8 +343,8 @@ export default function AppShell() {
               </ul>
             ) : null}
           </div>
-          <button type="submit" className="media-action-btn">
-            Search
+          <button type="submit" className="media-action-btn app-button-icon-only top-search-submit-btn" aria-label="Search" title="Search">
+            <AppIcon name="search" alt="" aria-hidden="true" />
           </button>
         </form>
 
@@ -369,13 +368,16 @@ export default function AppShell() {
             </div>
             <nav className="slide-menu-nav">
               <button type="button" className="slide-menu-item" onClick={openFavoritesPage}>
-                Favorite
+                <AppIcon name="favoriteEnabled" alt="" aria-hidden="true" />
+                <span>Favorite</span>
               </button>
               <button type="button" className="slide-menu-item" onClick={openTagsPage}>
-                Tags
+                <AppIcon name="tag" alt="" aria-hidden="true" />
+                <span>Tags</span>
               </button>
               <button type="button" className="slide-menu-item" onClick={openCollectionsPage}>
-                Collections
+                <AppIcon name="collection" alt="" aria-hidden="true" />
+                <span>Collections</span>
               </button>
             </nav>
           </aside>

@@ -1,3 +1,5 @@
+import AppIcon from "../shared/components/AppIcon";
+
 export default function CollectionsPage({
   openCreateCollectionModal,
   isCollectionsLoading,
@@ -11,10 +13,11 @@ export default function CollectionsPage({
         <div className="collections-toolbar">
           <button
             type="button"
-            className="collections-btn collections-btn-primary"
+            className="collections-btn collections-btn-primary app-button-with-icon"
             onClick={openCreateCollectionModal}
           >
-            New collection
+            <AppIcon name="create" alt="" aria-hidden="true" />
+            <span>New collection</span>
           </button>
         </div>
 

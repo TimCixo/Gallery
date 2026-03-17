@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { tagsApi } from "../../../api/tagsApi";
 import { formatFileSize, formatMediaDate } from "../../shared/utils/mediaFormatters";
 import { isVideoFile, resolveOriginalMediaUrl, resolvePreviewMediaUrl } from "../../shared/utils/mediaPredicates";
+import AppIcon from "../../shared/components/AppIcon";
 import MediaCoreMetadataRows from "./MediaCoreMetadataRows";
 import MediaEditActions from "./MediaEditActions";
 
@@ -324,7 +325,7 @@ export default function MediaEditorPanel({
                 aria-label="Add to collection"
                 title="Add to collection"
               >
-                {"\uD83D\uDCC1"}
+                <AppIcon name="collection" alt="" aria-hidden="true" />
               </button>
             ) : null}
             {showFavoriteButton ? (
@@ -337,7 +338,7 @@ export default function MediaEditorPanel({
                 title={isFavorite ? "Remove from favorites" : "Add to favorites"}
                 aria-pressed={isFavorite}
               >
-                {"\u2764"}
+                <AppIcon name={isFavorite ? "favoriteEnabled" : "favoriteDisabled"} alt="" aria-hidden="true" />
               </button>
             ) : null}
             {showCloseButton ? (
@@ -348,7 +349,7 @@ export default function MediaEditorPanel({
                 aria-label="Close media modal"
                 title="Close media modal"
               >
-                {"\u274C"}
+                <AppIcon name="close" alt="" aria-hidden="true" />
               </button>
             ) : null}
           </div>
@@ -648,26 +649,30 @@ export default function MediaEditorPanel({
               <div className="media-action-row">
                 <button
                   type="button"
-                  className="media-action-btn"
+                  className="media-action-btn app-button-icon-only"
                   onClick={onMediaRelationPickerPrev}
                   disabled={isMediaRelationPickerLoading || mediaRelationPickerPage <= 1}
+                  aria-label="Previous page"
                 >
-                  Prev
+                  <AppIcon name="arrowLeft" alt="" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
-                  className="media-action-btn"
+                  className="media-action-btn app-button-icon-only"
                   onClick={onMediaRelationPickerNext}
                   disabled={isMediaRelationPickerLoading || (mediaRelationPickerTotalPages > 0 && mediaRelationPickerPage >= mediaRelationPickerTotalPages)}
+                  aria-label="Next page"
                 >
-                  Next
+                  <AppIcon name="arrowRight" alt="" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
-                  className="media-action-btn"
+                  className="media-action-btn app-button-icon-only"
                   onClick={onCloseMediaRelationPicker}
+                  aria-label="Close picker"
+                  title="Close picker"
                 >
-                  Close
+                  <AppIcon name="close" alt="" aria-hidden="true" />
                 </button>
               </div>
             </div>
@@ -690,11 +695,13 @@ export default function MediaEditorPanel({
               <h3>Manage tags</h3>
               <button
                 type="button"
-                className="media-action-btn"
+                className="media-action-btn app-button-icon-only"
                 onClick={() => setActiveTagManagerTagTypeId(null)}
                 disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]}
+                aria-label="Close tag manager"
+                title="Close tag manager"
               >
-                Close
+                <AppIcon name="close" alt="" aria-hidden="true" />
               </button>
             </div>
             <table className="tag-table">
@@ -727,7 +734,7 @@ export default function MediaEditorPanel({
                         disabled={!String(newTagDraftByTagTypeId[activeTagManagerTagTypeId]?.name || "").trim() || !!savingTagByTagTypeId[activeTagManagerTagTypeId]}
                         title="Create tag"
                       >
-                        {"\u2714"}
+                        <AppIcon name="create" alt="" aria-hidden="true" />
                       </button>
                       <button
                         type="button"
@@ -736,7 +743,7 @@ export default function MediaEditorPanel({
                         disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]}
                         title="Clear new tag"
                       >
-                        {"\u274C"}
+                        <AppIcon name="cancel" alt="" aria-hidden="true" />
                       </button>
                     </div>
                   </td>
@@ -777,7 +784,7 @@ export default function MediaEditorPanel({
                                 disabled={!String(editingDraft.name || "").trim() || !!savingTagByTagTypeId[activeTagManagerTagTypeId]}
                                 title="Save tag"
                               >
-                                {"\u2714"}
+                                <AppIcon name="confirm" alt="" aria-hidden="true" />
                               </button>
                               <button
                                 type="button"
@@ -786,7 +793,7 @@ export default function MediaEditorPanel({
                                 disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]}
                                 title="Cancel edit"
                               >
-                                {"\u274C"}
+                                <AppIcon name="cancel" alt="" aria-hidden="true" />
                               </button>
                             </>
                           ) : (
@@ -800,7 +807,7 @@ export default function MediaEditorPanel({
                                 }}
                                 title="Edit tag"
                               >
-                                {"\u2699"}
+                                <AppIcon name="edit" alt="" aria-hidden="true" />
                               </button>
                               <button
                                 type="button"
@@ -809,7 +816,7 @@ export default function MediaEditorPanel({
                                 disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]}
                                 title="Delete tag"
                               >
-                                {"\uD83D\uDDD1"}
+                                <AppIcon name="delete" alt="" aria-hidden="true" />
                               </button>
                             </>
                           )}

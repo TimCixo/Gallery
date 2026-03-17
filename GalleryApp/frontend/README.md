@@ -1,5 +1,10 @@
 # Frontend
 
+## Static Icons
+
+- PNG icons live in `public/icons/`.
+- UI icon references are centralized in `src/features/shared/utils/iconPaths.js` and rendered through `src/features/shared/components/AppIcon.jsx`.
+
 Frontend частина Gallery - це React/Vite клієнт, який відповідає за UI галереї, обраного, колекцій, тегів, upload manager і пошук медіа.
 
 ## Стек

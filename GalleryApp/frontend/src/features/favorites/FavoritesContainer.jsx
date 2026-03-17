@@ -6,6 +6,7 @@ import { normalizePageJumpInput } from "../shared/utils/pagination";
 import CollectionPickerModal from "../collections/components/CollectionPickerModal";
 import MediaViewerModal from "../media/components/MediaViewerModal";
 import FavoritesPage from "./FavoritesPage";
+import AppIcon from "../shared/components/AppIcon";
 
 const PAGE_SIZE = 36;
 
@@ -235,20 +236,24 @@ export default function FavoritesContainer() {
         <div className="media-pagination">
           <button
             type="button"
+            className="media-action-btn app-button-icon-only"
             onClick={() => handleFavoritesPageChange(favoritesPage - 1)}
             disabled={isFavoritesLoading || favoritesPage <= 1 || favoritesTotalPages === 0}
+            aria-label="Previous page"
           >
-            Prev
+            <AppIcon name="arrowLeft" alt="" aria-hidden="true" />
           </button>
           <p>
             Page {favoritesTotalPages === 0 ? 0 : favoritesPage} of {favoritesTotalPages}
           </p>
           <button
             type="button"
+            className="media-action-btn app-button-icon-only"
             onClick={() => handleFavoritesPageChange(favoritesPage + 1)}
             disabled={isFavoritesLoading || favoritesTotalPages === 0 || favoritesPage >= favoritesTotalPages}
+            aria-label="Next page"
           >
-            Next
+            <AppIcon name="arrowRight" alt="" aria-hidden="true" />
           </button>
           <form className="media-pagination-jump" onSubmit={handleFavoritesPageJumpSubmit}>
             <input
@@ -262,8 +267,8 @@ export default function FavoritesContainer() {
               disabled={isFavoritesLoading || favoritesTotalPages === 0}
               aria-label="Go to favorites page"
             />
-            <button type="submit" disabled={isFavoritesLoading || favoritesTotalPages === 0}>
-              Go
+            <button type="submit" className="media-action-btn app-button-icon-only" disabled={isFavoritesLoading || favoritesTotalPages === 0} aria-label="Go to favorites page">
+              <AppIcon name="confirm" alt="" aria-hidden="true" />
             </button>
           </form>
         </div>

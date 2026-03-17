@@ -4,6 +4,7 @@ import { formatFileSize, formatMediaDate } from "../../shared/utils/mediaFormatt
 import { isVideoFile, resolveOriginalMediaUrl, resolvePreviewMediaUrl } from "../../shared/utils/mediaPredicates";
 import { createPendingMediaDelete } from "../../shared/utils/deleteConfirm";
 import TagDeleteConfirmModal from "../../tags/components/TagDeleteConfirmModal";
+import AppIcon from "../../shared/components/AppIcon";
 import MediaEditorPanel from "./MediaEditorPanel";
 import MediaDeleteConfirmModal from "./MediaDeleteConfirmModal";
 
@@ -424,7 +425,7 @@ export default function MediaViewerModal({
               aria-label="Previous media"
               title="Previous media"
             >
-              {"<"}
+              <AppIcon name="arrowLeft" alt="" aria-hidden="true" />
             </button>
             {isVideoFile(file) ? (
               <video
@@ -445,7 +446,7 @@ export default function MediaViewerModal({
               aria-label="Next media"
               title="Next media"
             >
-              {">"}
+              <AppIcon name="arrowRight" alt="" aria-hidden="true" />
             </button>
           </div>
         ) : null}
@@ -459,7 +460,7 @@ export default function MediaViewerModal({
               aria-label="Add to collection"
               title="Add to collection"
             >
-              {"\uD83D\uDCC1"}
+              <AppIcon name="collection" alt="" aria-hidden="true" />
             </button>
             <button
               type="button"
@@ -470,7 +471,7 @@ export default function MediaViewerModal({
               title={isFavorite ? "Remove from favorites" : "Add to favorites"}
               aria-pressed={isFavorite}
             >
-              {"\u2764"}
+              <AppIcon name={isFavorite ? "favoriteEnabled" : "favoriteDisabled"} alt="" aria-hidden="true" />
             </button>
             <button
               type="button"
@@ -479,7 +480,7 @@ export default function MediaViewerModal({
               aria-label="Close media modal"
               title="Close media modal"
             >
-              {"\u274C"}
+              <AppIcon name="close" alt="" aria-hidden="true" />
             </button>
           </div>
 
@@ -719,38 +720,46 @@ export default function MediaViewerModal({
               <>
                 <button
                   type="button"
-                  className="media-action-btn media-action-primary"
+                  className="media-action-btn media-action-primary app-button-icon-only"
                   onClick={onSaveEdit}
                   disabled={isSavingMedia || isDeletingMedia}
+                  aria-label={isSavingMedia ? "Saving media" : "Save media"}
+                  title={isSavingMedia ? "Saving media" : "Save media"}
                 >
-                  {isSavingMedia ? "Saving..." : "Save"}
+                  <AppIcon name="confirm" alt="" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
-                  className="media-action-btn"
+                  className="media-action-btn app-button-icon-only"
                   onClick={onCancelEdit}
                   disabled={isSavingMedia || isDeletingMedia}
+                  aria-label="Cancel edit"
+                  title="Cancel edit"
                 >
-                  Cancel
+                  <AppIcon name="cancel" alt="" aria-hidden="true" />
                 </button>
               </>
             ) : (
               <>
                 <button
                   type="button"
-                  className="media-action-btn media-action-primary"
+                  className="media-action-btn media-action-primary app-button-icon-only"
                   onClick={onStartEdit}
                   disabled={isSavingMedia || isDeletingMedia}
+                  aria-label="Edit media"
+                  title="Edit media"
                 >
-                  Edit
+                  <AppIcon name="edit" alt="" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
-                  className="media-action-btn media-action-danger"
+                  className="media-action-btn media-action-danger app-button-icon-only"
                   onClick={() => setPendingMediaDelete(createPendingMediaDelete(file))}
                   disabled={isSavingMedia || isDeletingMedia}
+                  aria-label={isDeletingMedia ? "Deleting media" : "Delete media"}
+                  title={isDeletingMedia ? "Deleting media" : "Delete media"}
                 >
-                  {isDeletingMedia ? "Deleting..." : "Delete"}
+                  <AppIcon name="delete" alt="" aria-hidden="true" />
                 </button>
               </>
             )}
@@ -858,26 +867,30 @@ export default function MediaViewerModal({
               <div className="media-action-row">
                 <button
                   type="button"
-                  className="media-action-btn"
+                  className="media-action-btn app-button-icon-only"
                   onClick={onMediaRelationPickerPrev}
                   disabled={isMediaRelationPickerLoading || mediaRelationPickerPage <= 1}
+                  aria-label="Previous page"
                 >
-                  Prev
+                  <AppIcon name="arrowLeft" alt="" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
-                  className="media-action-btn"
+                  className="media-action-btn app-button-icon-only"
                   onClick={onMediaRelationPickerNext}
                   disabled={isMediaRelationPickerLoading || (mediaRelationPickerTotalPages > 0 && mediaRelationPickerPage >= mediaRelationPickerTotalPages)}
+                  aria-label="Next page"
                 >
-                  Next
+                  <AppIcon name="arrowRight" alt="" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
-                  className="media-action-btn"
+                  className="media-action-btn app-button-icon-only"
                   onClick={onCloseMediaRelationPicker}
+                  aria-label="Close picker"
+                  title="Close picker"
                 >
-                  Close
+                  <AppIcon name="close" alt="" aria-hidden="true" />
                 </button>
               </div>
             </div>
@@ -900,11 +913,13 @@ export default function MediaViewerModal({
               <h3>Manage tags</h3>
               <button
                 type="button"
-                className="media-action-btn"
+                className="media-action-btn app-button-icon-only"
                 onClick={() => setActiveTagManagerTagTypeId(null)}
                 disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]}
+                aria-label="Close tag manager"
+                title="Close tag manager"
               >
-                Close
+                <AppIcon name="close" alt="" aria-hidden="true" />
               </button>
             </div>
             <table className="tag-table">
@@ -937,7 +952,7 @@ export default function MediaViewerModal({
                         disabled={!String(newTagDraftByTagTypeId[activeTagManagerTagTypeId]?.name || "").trim() || !!savingTagByTagTypeId[activeTagManagerTagTypeId]}
                         title="Create tag"
                       >
-                        {"\u2714"}
+                        <AppIcon name="create" alt="" aria-hidden="true" />
                       </button>
                       <button
                         type="button"
@@ -946,7 +961,7 @@ export default function MediaViewerModal({
                         disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]}
                         title="Clear new tag"
                       >
-                        {"\u274C"}
+                        <AppIcon name="cancel" alt="" aria-hidden="true" />
                       </button>
                     </div>
                   </td>
@@ -987,7 +1002,7 @@ export default function MediaViewerModal({
                                 disabled={!String(editingDraft.name || "").trim() || !!savingTagByTagTypeId[activeTagManagerTagTypeId]}
                                 title="Save tag"
                               >
-                                {"\u2714"}
+                                <AppIcon name="confirm" alt="" aria-hidden="true" />
                               </button>
                               <button
                                 type="button"
@@ -996,7 +1011,7 @@ export default function MediaViewerModal({
                                 disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]}
                                 title="Cancel edit"
                               >
-                                {"\u274C"}
+                                <AppIcon name="cancel" alt="" aria-hidden="true" />
                               </button>
                             </>
                           ) : (
@@ -1010,7 +1025,7 @@ export default function MediaViewerModal({
                                 }}
                                 title="Edit tag"
                               >
-                                {"\u2699"}
+                                <AppIcon name="edit" alt="" aria-hidden="true" />
                               </button>
                               <button
                                 type="button"
@@ -1019,7 +1034,7 @@ export default function MediaViewerModal({
                                 disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]}
                                 title="Delete tag"
                               >
-                                {"\uD83D\uDDD1"}
+                                <AppIcon name="delete" alt="" aria-hidden="true" />
                               </button>
                             </>
                           )}

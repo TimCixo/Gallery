@@ -1,3 +1,5 @@
+import AppIcon from "../../shared/components/AppIcon";
+
 export function TagTypesBoard({ tagTypesState, tagItemsState, onDeleteTagType }) {
   const {
     tagTypes,
@@ -51,8 +53,8 @@ export function TagTypesBoard({ tagTypesState, tagItemsState, onDeleteTagType })
           <input type="color" className="tags-color-input" value={tagTypeColorInput} onChange={(e) => setTagTypeColorInput(e.target.value.toUpperCase())} />
           <input type="text" className="tags-name-input" value={tagTypeNameInput} onChange={(e) => setTagTypeNameInput(e.target.value)} placeholder="TagType name" />
           <div className="tags-callout-actions">
-            <button type="submit" className="tags-action-btn tags-action-create" disabled={!tagTypeNameInput.trim() || isTagTypeSaving}>{"\u2714"}</button>
-            <button type="button" className="tags-action-btn tags-action-clear" onClick={handleClearTagTypeForm}>{"\u274C"}</button>
+            <button type="submit" className="tags-action-btn tags-action-create" disabled={!tagTypeNameInput.trim() || isTagTypeSaving} aria-label="Create tag type" title="Create tag type"><AppIcon name="create" alt="" aria-hidden="true" /></button>
+            <button type="button" className="tags-action-btn tags-action-clear" onClick={handleClearTagTypeForm} aria-label="Clear tag type form" title="Clear tag type form"><AppIcon name="cancel" alt="" aria-hidden="true" /></button>
           </div>
         </form>
         {tagTypesError ? <p className="tags-error">{tagTypesError}</p> : null}
@@ -77,6 +79,12 @@ export function TagTypesBoard({ tagTypesState, tagItemsState, onDeleteTagType })
                 }
               }}>
                 <summary
+                  className="tag-type-summary"
+                  onClick={(e) => {
+                    if (e.target instanceof HTMLElement && e.target.closest("button, input")) {
+                      e.preventDefault();
+                    }
+                  }}
                   onDragEnter={(e) => {
                     e.preventDefault();
                     handleTagDragEnter(item.id);
@@ -90,16 +98,22 @@ export function TagTypesBoard({ tagTypesState, tagItemsState, onDeleteTagType })
                 >
                   {isEditing ? (
                     <>
-                      <input value={editingTagTypeName} onChange={(e) => setEditingTagTypeName(e.target.value)} />
-                      <input type="color" value={editingTagTypeColor} onChange={(e) => setEditingTagTypeColor(e.target.value.toUpperCase())} />
-                      <button type="button" onClick={() => void handleSaveTagType(item.id)} disabled={isTagTypeUpdating}>{"\u2714"}</button>
-                      <button type="button" onClick={handleCancelEditTagType} disabled={isTagTypeUpdating}>{"\u274C"}</button>
+                      <div className="tag-type-edit-row">
+                        <input className="tag-type-edit-name" value={editingTagTypeName} onChange={(e) => setEditingTagTypeName(e.target.value)} />
+                        <input className="tags-color-input tag-type-edit-color" type="color" value={editingTagTypeColor} onChange={(e) => setEditingTagTypeColor(e.target.value.toUpperCase())} />
+                      </div>
+                      <div className="tag-type-summary-actions">
+                        <button type="button" className="tags-action-btn tags-action-create" onClick={() => void handleSaveTagType(item.id)} disabled={isTagTypeUpdating} aria-label={`Save ${item.name}`} title="Save tag type"><AppIcon name="confirm" alt="" aria-hidden="true" /></button>
+                        <button type="button" className="tags-action-btn tags-action-clear" onClick={handleCancelEditTagType} disabled={isTagTypeUpdating} aria-label={`Cancel editing ${item.name}`} title="Cancel edit"><AppIcon name="cancel" alt="" aria-hidden="true" /></button>
+                      </div>
                     </>
                   ) : (
                     <>
-                      <span>{item.name}</span>
-                      <button type="button" onClick={() => handleStartEditTagType(item)}>{"\u2699"}</button>
-                      <button type="button" onClick={() => void onDeleteTagType(item.id)}>{"\uD83D\uDDD1"}</button>
+                      <span className="tag-type-summary-name">{item.name}</span>
+                      <div className="tag-type-summary-actions">
+                        <button type="button" className="tags-action-btn" onClick={() => handleStartEditTagType(item)} aria-label={`Edit ${item.name}`} title="Edit tag type"><AppIcon name="edit" alt="" aria-hidden="true" /></button>
+                        <button type="button" className="tags-action-btn tags-action-delete" onClick={() => void onDeleteTagType(item.id)} aria-label={`Delete ${item.name}`} title="Delete tag type"><AppIcon name="delete" alt="" aria-hidden="true" /></button>
+                      </div>
                     </>
                   )}
                 </summary>
@@ -109,7 +123,7 @@ export function TagTypesBoard({ tagTypesState, tagItemsState, onDeleteTagType })
                     <tr>
                       <td><input value={draft.name} onChange={(e) => setNewTagDraftByTagTypeId((c) => ({ ...c, [item.id]: { ...draft, name: e.target.value } }))} placeholder="Tag name" /></td>
                       <td><input value={draft.description} onChange={(e) => setNewTagDraftByTagTypeId((c) => ({ ...c, [item.id]: { ...draft, description: e.target.value } }))} placeholder="Description" /></td>
-                      <td><button type="button" onClick={() => void handleCreateTag(item.id)} disabled={isDropping || savingTagByTagTypeId[item.id]}>{"\u2714"}</button></td>
+                      <td><button type="button" className="tags-action-btn tags-action-create" onClick={() => void handleCreateTag(item.id)} disabled={isDropping || savingTagByTagTypeId[item.id]} aria-label={`Create tag in ${item.name}`} title="Create tag"><AppIcon name="confirm" alt="" aria-hidden="true" /></button></td>
                     </tr>
                     {(tagsByTagTypeId[item.id] ?? []).map((tag) => {
                       const isEditingTag = editingTagByTagTypeId[item.id] === tag.id;
@@ -121,16 +135,16 @@ export function TagTypesBoard({ tagTypesState, tagItemsState, onDeleteTagType })
                           <td>
                             {isEditingTag ? (
                               <>
-                                <button type="button" onClick={() => void handleSaveTag(item.id, tag.id)}>{"\u2714"}</button>
-                                <button type="button" onClick={() => setEditingTagByTagTypeId((c) => ({ ...c, [item.id]: null }))}>{"\u274C"}</button>
+                                <button type="button" className="tags-action-btn tags-action-create" onClick={() => void handleSaveTag(item.id, tag.id)} aria-label={`Save ${tag.name}`} title="Save tag"><AppIcon name="confirm" alt="" aria-hidden="true" /></button>
+                                <button type="button" className="tags-action-btn tags-action-clear" onClick={() => setEditingTagByTagTypeId((c) => ({ ...c, [item.id]: null }))} aria-label={`Cancel editing ${tag.name}`} title="Cancel edit"><AppIcon name="cancel" alt="" aria-hidden="true" /></button>
                               </>
                             ) : (
                               <>
-                                <button type="button" onClick={() => {
+                                <button type="button" className="tags-action-btn" onClick={() => {
                                   setEditingTagByTagTypeId((c) => ({ ...c, [item.id]: tag.id }));
                                   setEditingTagDraftById((c) => ({ ...c, [tag.id]: { name: tag.name || "", description: tag.description || "" } }));
-                                }}>{"\u2699"}</button>
-                                <button type="button" onClick={() => void handleDeleteTag(item.id, tag.id)}>{"\uD83D\uDDD1"}</button>
+                                }} aria-label={`Edit ${tag.name}`} title="Edit tag"><AppIcon name="edit" alt="" aria-hidden="true" /></button>
+                                <button type="button" className="tags-action-btn tags-action-delete" onClick={() => void handleDeleteTag(item.id, tag.id)} aria-label={`Delete ${tag.name}`} title="Delete tag"><AppIcon name="delete" alt="" aria-hidden="true" /></button>
                               </>
                             )}
                           </td>

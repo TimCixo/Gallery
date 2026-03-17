@@ -14,6 +14,7 @@ import { useUploadCollections } from "./hooks/useUploadCollections";
 import { useUploadEditorData } from "./hooks/useUploadEditorData";
 import { useUploadQueue } from "./hooks/useUploadQueue";
 import { parseNullableId } from "./utils/uploadHelpers";
+import AppIcon from "../shared/components/AppIcon";
 
 export default function UploadManagerContainer() {
   const { queue, state, settings, collections, dragAndDrop, background, actions, dispatch } = useUploadManager();
@@ -538,8 +539,8 @@ export default function UploadManagerContainer() {
       />
       {hasUploadHistory ? (
         <details className="top-upload-dropdown">
-          <summary className="top-upload-dropdown-summary">
-            {uploadDropdownSummary}
+          <summary className="top-upload-dropdown-summary top-upload-dropdown-summary-icon" aria-label={uploadDropdownSummary} title={uploadDropdownSummary}>
+            <AppIcon name="process" alt="" aria-hidden="true" />
           </summary>
           <div className="top-upload-dropdown-menu">
             {uploadTaskStatuses.length === 0 ? (
@@ -598,8 +599,8 @@ export default function UploadManagerContainer() {
           </div>
         </details>
       ) : null}
-      <button type="button" className="top-upload-btn" onClick={openUploadModal}>
-        Upload
+      <button type="button" className="top-upload-btn top-upload-btn-icon" onClick={openUploadModal} aria-label="Upload files" title="Upload files">
+        <AppIcon name="upload" alt="" aria-hidden="true" />
       </button>
 
       <UploadContextProvider value={uploadModalContextValue}>
@@ -620,21 +621,21 @@ export default function UploadManagerContainer() {
                 <div className="media-upload-nav">
                   <button
                     type="button"
-                    className="media-action-btn"
+                    className="media-action-btn app-button-icon-only"
                     onClick={() => setQueueState({ activeUploadIndex: Math.max(queue.activeUploadIndex - 1, 0) })}
                     disabled={queue.items.length === 0 || queue.activeUploadIndex === 0 || isUploading}
                     aria-label="Previous upload item"
                   >
-                    {"<"}
+                    <AppIcon name="arrowLeft" alt="" aria-hidden="true" />
                   </button>
                   <button
                     type="button"
-                    className="media-action-btn"
+                    className="media-action-btn app-button-icon-only"
                     onClick={() => setQueueState({ activeUploadIndex: Math.min(queue.activeUploadIndex + 1, queue.items.length - 1) })}
                     disabled={queue.items.length === 0 || queue.activeUploadIndex >= queue.items.length - 1 || isUploading}
                     aria-label="Next upload item"
                   >
-                    {">"}
+                    <AppIcon name="arrowRight" alt="" aria-hidden="true" />
                   </button>
                 </div>
               ) : null}
@@ -650,8 +651,8 @@ export default function UploadManagerContainer() {
                 </button>
               ) : null}
 
-              <button type="button" className="media-action-btn" onClick={() => closeModal()} disabled={isUploading}>
-                Close
+              <button type="button" className="media-action-btn app-button-icon-only" onClick={() => closeModal()} disabled={isUploading} aria-label="Close upload dialog" title="Close upload dialog">
+                <AppIcon name="close" alt="" aria-hidden="true" />
               </button>
             </div>
 

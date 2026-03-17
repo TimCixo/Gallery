@@ -1,4 +1,5 @@
 import { getMediaDeleteConfirmMessage } from "../../shared/utils/deleteConfirm";
+import AppIcon from "../../shared/components/AppIcon";
 
 function MediaDeleteConfirmModal({ pendingMediaDelete, isDeletingMedia, onConfirm, onClose }) {
   if (!pendingMediaDelete) {
@@ -12,14 +13,23 @@ function MediaDeleteConfirmModal({ pendingMediaDelete, isDeletingMedia, onConfir
         <div className="media-delete-buttons">
           <button
             type="button"
-            className="media-action-btn media-action-danger"
+            className="media-action-btn media-action-danger app-button-icon-only"
             onClick={onConfirm}
             disabled={isDeletingMedia}
+            aria-label={isDeletingMedia ? "Deleting media" : "Confirm delete"}
+            title={isDeletingMedia ? "Deleting media" : "Confirm delete"}
           >
-            {isDeletingMedia ? "Deleting..." : "Yes"}
+            <AppIcon name="confirm" alt="" aria-hidden="true" />
           </button>
-          <button type="button" className="media-action-btn" onClick={onClose} disabled={isDeletingMedia}>
-            No
+          <button
+            type="button"
+            className="media-action-btn app-button-icon-only"
+            onClick={onClose}
+            disabled={isDeletingMedia}
+            aria-label="Cancel delete"
+            title="Cancel delete"
+          >
+            <AppIcon name="cancel" alt="" aria-hidden="true" />
           </button>
         </div>
       </div>
