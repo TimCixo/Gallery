@@ -12,7 +12,11 @@ import {
   parseSearchSegments
 } from "../features/shared/utils/searchUtils";
 import { buildSearchTagTypeOptions } from "../features/shared/utils/tagUtils";
-import { createGalleryBrandNavigationState, getSubmittedSearchText } from "./utils/searchState";
+import {
+  createGalleryBrandNavigationState,
+  getSearchSuggestionSelection,
+  getSubmittedSearchText
+} from "./utils/searchState";
 
 const BASE_SEARCH_TAG_OPTIONS = ["path", "title", "description", "id", "source"];
 const BASE_SEARCH_TAG_NAMES = new Set(BASE_SEARCH_TAG_OPTIONS);
@@ -167,7 +171,7 @@ export default function AppShell() {
 
     if (event.key === "Tab") {
       event.preventDefault();
-      const selectedSuggestion = searchSuggestions[Math.max(0, Math.min(activeSearchSuggestionIndex, searchSuggestions.length - 1))];
+      const selectedSuggestion = getSearchSuggestionSelection(searchSuggestions, activeSearchSuggestionIndex);
       if (selectedSuggestion) {
         applySearchSuggestion(selectedSuggestion);
       }
@@ -175,12 +179,12 @@ export default function AppShell() {
     }
 
     if (event.key === "Enter") {
-      if (!isSearchSuggestionExplicitlyActive) {
+      const selectedSuggestion = getSearchSuggestionSelection(searchSuggestions, activeSearchSuggestionIndex);
+      if (!selectedSuggestion) {
         return;
       }
 
       event.preventDefault();
-      const selectedSuggestion = searchSuggestions[Math.max(0, Math.min(activeSearchSuggestionIndex, searchSuggestions.length - 1))];
       if (selectedSuggestion) {
         applySearchSuggestion(selectedSuggestion);
       }
