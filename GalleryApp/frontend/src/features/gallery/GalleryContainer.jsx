@@ -6,6 +6,7 @@ import { normalizePageJumpInput } from "../shared/utils/pagination";
 import CollectionPickerModal from "../collections/components/CollectionPickerModal";
 import MediaViewerModal from "../media/components/MediaViewerModal";
 import { buildRelatedMediaChain } from "../media/utils/relatedMediaChain";
+import { loadGalleryViewState, persistGalleryViewState } from "./utils/galleryViewState";
 import GalleryPage from "./GalleryPage";
 import AppIcon from "../shared/components/AppIcon";
 
@@ -22,14 +23,20 @@ const getDisplayName = (value) => {
 };
 
 export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0, openMediaRequest = null }) {
+  const initialViewState = useMemo(() => loadGalleryViewState(), []);
   const [mediaFiles, setMediaFiles] = useState([]);
   const [totalFiles, setTotalFiles] = useState(0);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(
+    initialViewState.searchQuery === searchQuery ? initialViewState.page : 1
+  );
   const [totalPages, setTotalPages] = useState(0);
   const [isMediaLoading, setIsMediaLoading] = useState(true);
   const [mediaError, setMediaError] = useState("");
   const [failedPreviewPaths, setFailedPreviewPaths] = useState(new Set());
   const [selectedMedia, setSelectedMedia] = useState(null);
+  const [persistedSelectedMediaId, setPersistedSelectedMediaId] = useState(
+    initialViewState.searchQuery === searchQuery ? initialViewState.selectedMediaId : null
+  );
   const [pageJumpInput, setPageJumpInput] = useState("1");
   const [mediaModalError, setMediaModalError] = useState("");
   const [isFavoriteUpdating, setIsFavoriteUpdating] = useState(false);
@@ -60,6 +67,12 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
   const [isMediaRelationPickerLoading, setIsMediaRelationPickerLoading] = useState(false);
   const [mediaRelationPickerError, setMediaRelationPickerError] = useState("");
   const lastHandledSearchSubmitSeqRef = useRef(searchSubmitSeq);
+  const previousSearchQueryRef = useRef(searchQuery);
+
+  const closeSelectedMedia = useCallback(() => {
+    setPersistedSelectedMediaId(null);
+    setSelectedMedia(null);
+  }, []);
 
   const refreshTagCatalog = useCallback(async () => {
     setIsTagCatalogLoading(true);
@@ -107,7 +120,14 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
   }, [currentPage, loadMedia, searchQuery]);
 
   useEffect(() => {
+    if (previousSearchQueryRef.current === searchQuery) {
+      return;
+    }
+
+    previousSearchQueryRef.current = searchQuery;
     setCurrentPage(1);
+    setSelectedMedia(null);
+    setPersistedSelectedMediaId(null);
   }, [searchQuery]);
 
   useEffect(() => {
@@ -129,7 +149,16 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
     }
 
     setSelectedMedia(openMediaRequest.media);
+    setPersistedSelectedMediaId(Number(openMediaRequest.media.id) || null);
   }, [openMediaRequest]);
+
+  useEffect(() => {
+    persistGalleryViewState({
+      page: currentPage,
+      selectedMediaId: selectedMedia?.id ?? persistedSelectedMediaId,
+      searchQuery
+    });
+  }, [currentPage, persistedSelectedMediaId, searchQuery, selectedMedia]);
 
   useEffect(() => {
     setPageJumpInput(String(currentPage));
@@ -162,7 +191,7 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
 
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
-        setSelectedMedia(null);
+        closeSelectedMedia();
       }
       if (event.key === "ArrowLeft") {
         event.preventDefault();
@@ -176,7 +205,7 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedMedia, handleNavigateSelectedMedia]);
+  }, [closeSelectedMedia, selectedMedia, handleNavigateSelectedMedia]);
 
   useEffect(() => {
     if (!selectedMedia) {
@@ -408,6 +437,50 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
     const items = Array.isArray(response?.items) ? response.items : [];
     return items.find((item) => Number(item?.id) === normalizedId) || null;
   }, [mediaFiles]);
+
+  useEffect(() => {
+    if (selectedMedia) {
+      setPersistedSelectedMediaId(Number(selectedMedia.id) || null);
+      return;
+    }
+
+    const selectedMediaId = Number(persistedSelectedMediaId);
+    if (!Number.isSafeInteger(selectedMediaId) || selectedMediaId <= 0 || isMediaLoading) {
+      return;
+    }
+
+    const localCandidate = mediaFiles.find((item) => Number(item?.id) === selectedMediaId) || null;
+    if (localCandidate) {
+      setSelectedMedia(localCandidate);
+      return;
+    }
+
+    let cancelled = false;
+    const restoreSelectedMedia = async () => {
+      try {
+        const candidate = await findMediaById(selectedMediaId);
+        if (cancelled) {
+          return;
+        }
+
+        if (candidate) {
+          setSelectedMedia(candidate);
+          return;
+        }
+
+        setPersistedSelectedMediaId(null);
+      } catch {
+        if (!cancelled) {
+          setPersistedSelectedMediaId(null);
+        }
+      }
+    };
+
+    void restoreSelectedMedia();
+    return () => {
+      cancelled = true;
+    };
+  }, [findMediaById, isMediaLoading, mediaFiles, persistedSelectedMediaId, selectedMedia]);
 
   useEffect(() => {
     if (!selectedMedia) {
@@ -645,7 +718,7 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
       {selectedMedia ? (
         <MediaViewerModal
           file={selectedMedia}
-          onClose={() => setSelectedMedia(null)}
+          onClose={closeSelectedMedia}
           onPrev={() => handleNavigateSelectedMedia(-1)}
           onNext={() => handleNavigateSelectedMedia(1)}
           canNavigate={canNavigateSelectedMedia}

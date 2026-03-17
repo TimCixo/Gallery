@@ -18,15 +18,17 @@ import {
   getSearchSuggestionSelection,
   getSubmittedSearchText
 } from "./utils/searchState";
+import { loadPersistedShellState, persistShellState } from "./utils/persistedShellState";
 
 const BASE_SEARCH_TAG_OPTIONS = ["path", "title", "description", "id", "source"];
 const BASE_SEARCH_TAG_NAMES = new Set(BASE_SEARCH_TAG_OPTIONS);
 
 export default function AppShell() {
-  const [activePage, setActivePage] = useState("gallery");
+  const initialShellState = useMemo(() => loadPersistedShellState(), []);
+  const [activePage, setActivePage] = useState(initialShellState.activePage);
   const [isSlideMenuOpen, setIsSlideMenuOpen] = useState(false);
-  const [inputValue, setInputValue] = useState("");
-  const [submittedText, setSubmittedText] = useState("");
+  const [inputValue, setInputValue] = useState(initialShellState.inputValue);
+  const [submittedText, setSubmittedText] = useState(initialShellState.submittedText);
   const [searchCaretPosition, setSearchCaretPosition] = useState(0);
   const [isSearchInputFocused, setIsSearchInputFocused] = useState(false);
   const [activeSearchSuggestionIndex, setActiveSearchSuggestionIndex] = useState(0);
@@ -56,6 +58,14 @@ export default function AppShell() {
   useEffect(() => {
     void loadSearchMetadata();
   }, [loadSearchMetadata]);
+
+  useEffect(() => {
+    persistShellState({
+      activePage,
+      inputValue,
+      submittedText
+    });
+  }, [activePage, inputValue, submittedText]);
 
   useEffect(() => {
     const previousPage = prevActivePageRef.current;
@@ -226,10 +236,14 @@ export default function AppShell() {
 
   const openGalleryPage = (event) => {
     event.preventDefault();
-    const nextState = createGalleryBrandNavigationState();
+    const nextState = createGalleryBrandNavigationState({ inputValue, submittedText });
+    const shouldRefreshGallery = activePage !== "gallery";
     setActivePage(nextState.activePage);
+    setInputValue(nextState.inputValue);
     setSubmittedText(nextState.submittedText);
-    setSearchSubmitSeq((value) => value + 1);
+    if (shouldRefreshGallery) {
+      setSearchSubmitSeq((value) => value + 1);
+    }
     setIsSlideMenuOpen(false);
   };
 

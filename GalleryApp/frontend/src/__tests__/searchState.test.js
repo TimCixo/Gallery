@@ -10,10 +10,14 @@ test("getSubmittedSearchText trims user input", () => {
   assert.equal(getSubmittedSearchText("  title:cat id:42  "), "title:cat id:42");
 });
 
-test("createGalleryBrandNavigationState clears submitted filter but keeps gallery target", () => {
-  assert.deepEqual(createGalleryBrandNavigationState(), {
+test("createGalleryBrandNavigationState keeps current search state and targets gallery", () => {
+  assert.deepEqual(createGalleryBrandNavigationState({
+    inputValue: "title:cat",
+    submittedText: "title:cat"
+  }), {
     activePage: "gallery",
-    submittedText: ""
+    inputValue: "title:cat",
+    submittedText: "title:cat"
   });
 });
 

@@ -2,10 +2,11 @@ export function getSubmittedSearchText(inputValue) {
   return String(inputValue || "").trim();
 }
 
-export function createGalleryBrandNavigationState() {
+export function createGalleryBrandNavigationState(currentState = {}) {
   return {
     activePage: "gallery",
-    submittedText: ""
+    inputValue: String(currentState.inputValue || ""),
+    submittedText: String(currentState.submittedText || "")
   };
 }
 
