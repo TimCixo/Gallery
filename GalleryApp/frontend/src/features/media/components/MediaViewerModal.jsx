@@ -304,18 +304,34 @@ export default function MediaViewerModal({
       return undefined;
     }
 
+    const centerActiveRelatedMedia = () => {
+      const stripRect = stripElement.getBoundingClientRect();
+      const activeRect = activeElement.getBoundingClientRect();
+      const targetLeft =
+        stripElement.scrollLeft +
+        (activeRect.left - stripRect.left) -
+        ((stripRect.width - activeRect.width) / 2);
+      const maxScrollLeft = Math.max(0, stripElement.scrollWidth - stripElement.clientWidth);
+
+      stripElement.scrollTo({
+        left: Math.max(0, Math.min(targetLeft, maxScrollLeft)),
+        behavior: "auto",
+      });
+    };
+
     let innerFrameId = 0;
     const frameId = window.requestAnimationFrame(() => {
       innerFrameId = window.requestAnimationFrame(() => {
-        const targetLeft = activeElement.offsetLeft - ((stripElement.clientWidth - activeElement.clientWidth) / 2);
-        const maxScrollLeft = Math.max(0, stripElement.scrollWidth - stripElement.clientWidth);
-        stripElement.scrollLeft = Math.max(0, Math.min(targetLeft, maxScrollLeft));
+        centerActiveRelatedMedia();
       });
     });
+
+    window.addEventListener("resize", centerActiveRelatedMedia);
 
     return () => {
       window.cancelAnimationFrame(frameId);
       window.cancelAnimationFrame(innerFrameId);
+      window.removeEventListener("resize", centerActiveRelatedMedia);
     };
   }, [file?.id, relatedMediaItems]);
 

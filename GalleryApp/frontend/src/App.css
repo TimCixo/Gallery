@@ -1286,7 +1286,9 @@
 }
 
 .media-related-strip {
-  --media-related-thumb-size: clamp(3rem, 8dvh, 5.25rem);
+  --media-related-card-size: clamp(3.4rem, 9dvh, 6rem);
+  --media-related-card-padding: clamp(0.18rem, 0.5dvh, 0.4rem);
+  --media-related-thumb-size: calc(var(--media-related-card-size) - (var(--media-related-card-padding) * 2));
   display: flex;
   gap: 0.6rem;
   justify-content: flex-start;
@@ -1297,7 +1299,7 @@
   scrollbar-width: none;
   -ms-overflow-style: none;
   box-sizing: border-box;
-  padding: 0.2rem calc(50% - (var(--media-related-thumb-size) / 2) - 0.4rem);
+  padding: 0.2rem calc(50% - (var(--media-related-card-size) / 2) - 0.4rem);
 }
 
 .media-related-strip::-webkit-scrollbar {
@@ -1305,25 +1307,28 @@
 }
 
 .media-related-card {
-  border: 1px solid rgba(226, 232, 240, 0.4);
+  border: 1px solid transparent;
   border-radius: 0.6rem;
   background: rgba(255, 255, 255, 0.08);
-  padding: clamp(0.18rem, 0.5dvh, 0.4rem);
+  padding: var(--media-related-card-padding);
   display: inline-flex;
   cursor: pointer;
   backdrop-filter: blur(6px);
   flex: 0 0 auto;
+  box-sizing: border-box;
+  min-width: var(--media-related-card-size);
+  min-height: var(--media-related-card-size);
 }
 
 .media-related-card:hover {
-  border-color: rgba(147, 197, 253, 0.8);
+  border-color: transparent;
   background: rgba(219, 234, 254, 0.14);
 }
 
 .media-related-card.is-current {
-  border-color: #f8fafc;
-  background: rgba(248, 250, 252, 0.28);
-  box-shadow: 0 0 0 2px rgba(248, 250, 252, 0.85);
+  border-color: transparent;
+  background: rgba(248, 250, 252, 0.22);
+  box-shadow: none;
   cursor: default;
 }
 
@@ -2475,14 +2480,15 @@
 
   .media-related-strip {
     width: 100%;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 0.4rem;
-    --media-related-thumb-size: clamp(2.75rem, 6dvh, 4rem);
+    --media-related-card-size: clamp(3rem, 7dvh, 4.5rem);
+    --media-related-card-padding: 0.25rem;
+    --media-related-thumb-size: calc(var(--media-related-card-size) - (var(--media-related-card-padding) * 2));
   }
 
   .media-related-card {
     flex: 0 0 auto;
-    padding: 0.25rem;
     border-radius: 0.5rem;
   }
 
