@@ -2468,8 +2468,9 @@
 
   .media-modal {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(220px, 60vh) minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
     border-radius: 0.55rem;
+    overflow-y: auto;
   }
 
   .media-modal-overlay {
@@ -2500,7 +2501,7 @@
   .media-modal-content {
     grid-column: 1;
     grid-row: 2;
-    min-height: 220px;
+    min-height: clamp(220px, 60vh, 32rem);
   }
 
   .media-modal.media-modal-editing {
@@ -2513,6 +2514,8 @@
     grid-row: 3;
     border-left: none;
     border-top: 1px solid #e2e8f0;
+    min-height: auto;
+    overflow-y: visible;
   }
 
   .media-modal.media-modal-editing .media-modal-meta {

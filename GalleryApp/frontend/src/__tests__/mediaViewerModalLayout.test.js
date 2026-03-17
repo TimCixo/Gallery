@@ -41,10 +41,14 @@ test("media viewer defines related media strip styles", () => {
   assert.match(appCss, /box-shadow:\s*none/);
   assert.match(appCss, /justify-content:\s*flex-start/);
   assert.match(appCss, /padding-top:\s*calc\(0\.75rem \+ env\(safe-area-inset-top, 0px\)\)/);
-  assert.doesNotMatch(mobileMediaViewerStyles[0], /overflow-y:\s*auto/);
+  assert.doesNotMatch(mobileMediaViewerStyles[0], /\.media-modal-meta[\s\S]*?overflow-y:\s*auto/);
   assert.match(mobileMediaViewerStyles[0], /justify-content:\s*flex-start/);
   assert.match(mobileMediaViewerStyles[0], /--media-related-card-size:\s*clamp\(3rem, 7dvh, 4\.5rem\)/);
   assert.match(mobileMediaViewerStyles[0], /--media-related-card-padding:\s*0\.25rem/);
+  assert.match(mobileMediaViewerStyles[0], /grid-template-rows:\s*auto auto auto/);
+  assert.match(mobileMediaViewerStyles[0], /overflow-y:\s*auto/);
+  assert.match(mobileMediaViewerStyles[0], /overflow-y:\s*visible/);
+  assert.match(mobileMediaViewerStyles[0], /min-height:\s*clamp\(220px, 60vh, 32rem\)/);
   assert.match(mobileMediaViewerStyles[0], /width:\s*var\(--media-related-thumb-size\)/);
   assert.match(mobileMediaViewerStyles[0], /height:\s*var\(--media-related-thumb-size\)/);
 });
