@@ -4,6 +4,8 @@ using Microsoft.Extensions.FileProviders;
 using GalleryApp.Api.Data;
 using GalleryApp.Api.Endpoints;
 using GalleryApp.Api.Services;
+using GalleryApp.Api.Data.Repositories;
+using GalleryApp.Api.Services.MediaProcessing;
 
 namespace GalleryApp.Api;
 
@@ -26,6 +28,8 @@ public class Program
 
         var mediaRootPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "Media");
         Directory.CreateDirectory(mediaRootPath);
+        var previewCachePath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "PreviewCache");
+        Directory.CreateDirectory(previewCachePath);
 
         var connectionString = new SqliteConnectionStringBuilder
         {
@@ -33,9 +37,11 @@ public class Program
         }.ToString();
 
         builder.Services.AddSingleton(connectionString);
-        builder.Services.AddSingleton(new MediaStorageOptions(mediaRootPath));
-        builder.Services.AddSingleton<MediaProcessingService>();
+        builder.Services.AddSingleton(new MediaStorageOptions(mediaRootPath, previewCachePath));
+        builder.Services.AddSingleton<MediaRepository>();
+        builder.Services.AddSingleton<IMediaProcessingService, MediaProcessingService>();
         builder.Services.AddSingleton<MediaQueryService>();
+        builder.Services.AddSingleton<PreviewCacheService>();
         builder.Services.AddSingleton<CollectionService>();
 
         builder.Services.AddCors(options =>

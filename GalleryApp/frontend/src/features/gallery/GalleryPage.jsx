@@ -1,3 +1,5 @@
+import GalleryMediaTile from "./GalleryMediaTile";
+
 export default function GalleryPage({
   mediaError,
   isMediaLoading,
@@ -29,34 +31,16 @@ export default function GalleryPage({
           {renderPagination()}
           <div className="media-grid">
             {visibleMediaFiles.map((file) => (
-              <article
+              <GalleryMediaTile
                 key={file.relativePath}
-                className="media-tile"
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelectedMedia(file)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    setSelectedMedia(file);
-                  }
+                file={file}
+                alt={getDisplayName(file.name)}
+                hasPreviewError={failedPreviewPaths.has(file.relativePath)}
+                onSelect={setSelectedMedia}
+                onPreviewError={(relativePath) => {
+                  setFailedPreviewPaths((prev) => new Set(prev).add(relativePath));
                 }}
-              >
-                <div className="media-preview">
-                  {file._tileUrl && !failedPreviewPaths.has(file.relativePath) ? (
-                    <img
-                      src={file._tileUrl}
-                      alt={getDisplayName(file.name)}
-                      loading="lazy"
-                      onError={() => {
-                        setFailedPreviewPaths((prev) => new Set(prev).add(file.relativePath));
-                      }}
-                    />
-                  ) : (
-                    <div className="media-fallback">Preview unavailable</div>
-                  )}
-                </div>
-              </article>
+              />
             ))}
           </div>
           {renderPagination()}

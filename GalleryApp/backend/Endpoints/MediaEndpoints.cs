@@ -1,8 +1,10 @@
 using GalleryApp.Api;
+using GalleryApp.Api.Data.Search;
 using GalleryApp.Api.Infrastructure.Pagination;
 using GalleryApp.Api.Models.Pagination;
 using GalleryApp.Api.Models.Requests;
 using GalleryApp.Api.Services;
+using GalleryApp.Api.Services.MediaProcessing;
 using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
@@ -37,66 +39,71 @@ public static class MediaEndpoints
 
 app.MapGet("/api/media", (int? page, int? pageSize, string? search) =>
 {
-    var searchCriteria = ParseMediaSearchCriteria(search);
-    var allFiles = LoadMediaItems(connectionString, mediaRootPath, searchCriteria, favoritesOnly: false);
-    var pagedResult = PaginationHelper.CreatePagedResult(allFiles, new PagedRequest(page, pageSize));
-
+    var mediaQueryService = app.ServiceProvider.GetRequiredService<MediaQueryService>();
+    var searchCriteria = MediaSearchParser.ParseMediaSearchCriteria(search);
+    var pagedResult = mediaQueryService.GetPagedMedia(searchCriteria, favoritesOnly: false, new PagedRequest(page, pageSize));
+    mediaQueryService.WarmPagePreviews(pagedResult.Items.Select(item => item.RelativePath));
     return Results.Ok(pagedResult);
 });
 
 app.MapGet("/api/favorites", (int? page, int? pageSize) =>
 {
-    var allFiles = LoadMediaItems(connectionString, mediaRootPath, criteria: null, favoritesOnly: true);
-    var pagedResult = PaginationHelper.CreatePagedResult(allFiles, new PagedRequest(page, pageSize));
-
+    var mediaQueryService = app.ServiceProvider.GetRequiredService<MediaQueryService>();
+    var pagedResult = mediaQueryService.GetPagedMedia(criteria: null, favoritesOnly: true, new PagedRequest(page, pageSize));
+    mediaQueryService.WarmPagePreviews(pagedResult.Items.Select(item => item.RelativePath));
     return Results.Ok(pagedResult);
 });
 
-app.MapGet("/api/media/preview", (string path) =>
+app.MapGet("/api/media/preview", async (HttpContext httpContext, string path, PreviewCacheService previewCacheService) =>
 {
-    if (!TryResolveMediaFilePath(mediaRootPath, path, out var absolutePath, out var extension))
+    if (!MediaFileHelper.TryResolveMediaFilePath(mediaRootPath, path, out var absolutePath, out var extension))
     {
         return Results.NotFound(new { error = "Media file not found." });
     }
 
+    var modifiedTicks = File.GetLastWriteTimeUtc(absolutePath).Ticks;
     try
     {
-        if (IsImageFile(extension) && !IsGifFile(extension))
+        var cacheEntry = await previewCacheService.GetOrCreateAsync(path, absolutePath, extension, modifiedTicks, httpContext.RequestAborted);
+        if (HasMatchingEntityTag(httpContext.Request, cacheEntry.ETag))
         {
-            var bytes = GenerateImagePreviewJpeg(absolutePath);
-            return Results.File(bytes, "image/jpeg");
+            httpContext.Response.Headers.ETag = cacheEntry.ETag;
+            httpContext.Response.Headers.CacheControl = "public,max-age=31536000,immutable";
+            return Results.StatusCode(StatusCodes.Status304NotModified);
         }
 
-        if (IsVideoFile(extension))
-        {
-            var bytes = GenerateVideoPreviewJpeg(absolutePath);
-            return Results.File(bytes, "image/jpeg");
-        }
-
-        if (IsGifFile(extension))
-        {
-            var bytes = GenerateGifPreviewJpeg(absolutePath);
-            return Results.File(bytes, "image/jpeg");
-        }
+        httpContext.Response.Headers.ETag = cacheEntry.ETag;
+        httpContext.Response.Headers.CacheControl = "public,max-age=31536000,immutable";
+        return Results.File(cacheEntry.Path, cacheEntry.ContentType, lastModified: cacheEntry.LastModifiedUtc);
     }
-    catch (MediaConversionException ex)
+    catch (GalleryApp.Api.Services.MediaProcessing.MediaConversionException ex)
     {
         return Results.BadRequest(new { error = ex.Message });
     }
-
-    return Results.NotFound(new { error = "Preview is not available for this media type." });
 });
 
-app.MapGet("/api/media/view", (string path) =>
+app.MapGet("/api/media/view", (HttpContext httpContext, string path) =>
 {
-    if (!TryResolveMediaFilePath(mediaRootPath, path, out var absolutePath, out var extension))
+    if (!MediaFileHelper.TryResolveMediaFilePath(mediaRootPath, path, out var absolutePath, out var extension))
     {
         return Results.NotFound(new { error = "Media file not found." });
     }
 
-    if (!IsImageFile(extension) || IsGifFile(extension))
+    var modifiedAtUtc = File.GetLastWriteTimeUtc(absolutePath);
+    var entityTag = MediaFileHelper.BuildEntityTag("view", path, modifiedAtUtc.Ticks);
+    if (HasMatchingEntityTag(httpContext.Request, entityTag))
     {
-        return Results.File(absolutePath, GetImageContentType(extension));
+        httpContext.Response.Headers.ETag = entityTag;
+        httpContext.Response.Headers.CacheControl = "public,max-age=3600";
+        return Results.StatusCode(StatusCodes.Status304NotModified);
+    }
+
+    httpContext.Response.Headers.ETag = entityTag;
+    httpContext.Response.Headers.CacheControl = "public,max-age=3600";
+
+    if (!MediaFileHelper.IsImageFile(extension) || MediaFileHelper.IsGifFile(extension))
+    {
+        return Results.File(absolutePath, GetImageContentType(extension), lastModified: modifiedAtUtc);
     }
 
     try
@@ -109,7 +116,7 @@ app.MapGet("/api/media/view", (string path) =>
 
         if (!BrowserSafeImageHelper.RequiresBrowserSafeViewTranscode(extension, info.Width, info.Height))
         {
-            return Results.File(absolutePath, GetImageContentType(extension));
+            return Results.File(absolutePath, GetImageContentType(extension), lastModified: modifiedAtUtc);
         }
 
         using var image = Image.Load(absolutePath);
@@ -117,7 +124,7 @@ app.MapGet("/api/media/view", (string path) =>
 
         using var stream = new MemoryStream();
         image.Save(stream, new JpegEncoder { Quality = 92 });
-        return Results.File(stream.ToArray(), "image/jpeg");
+        return Results.File(stream.ToArray(), "image/jpeg", lastModified: modifiedAtUtc);
     }
     catch (UnknownImageFormatException ex)
     {
@@ -471,7 +478,7 @@ app.MapDelete("/api/media/{id:long}", (long id) =>
     return Results.Ok(new { id });
 });
 
-var uploadEndpoint = app.MapPost("/api/upload", async (HttpRequest request) =>
+var uploadEndpoint = app.MapPost("/api/upload", async (HttpRequest request, PreviewCacheService previewCacheService) =>
 {
     var maxRequestBodySizeFeature = request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
     if (maxRequestBodySizeFeature is not null && !maxRequestBodySizeFeature.IsReadOnly)
@@ -551,8 +558,9 @@ var uploadEndpoint = app.MapPost("/api/upload", async (HttpRequest request) =>
 
             relativePath = Path.Combine(dateFolderName, uniqueName).Replace("\\", "/");
             UpdateMediaPath(dbConnection, mediaId, relativePath);
+            await previewCacheService.WarmAsync(relativePath, destinationPath, Path.GetExtension(destinationPath).ToLowerInvariant(), request.HttpContext.RequestAborted);
         }
-        catch (MediaConversionException ex)
+        catch (LegacyHelpers.MediaConversionException ex)
         {
             if (mediaId > 0)
             {
@@ -584,5 +592,19 @@ uploadEndpoint.WithMetadata(new RequestFormLimitsAttribute
 });
 
         return app;
+    }
+
+    static bool HasMatchingEntityTag(HttpRequest request, string entityTag)
+    {
+        var rawHeader = request.Headers.IfNoneMatch.ToString();
+        if (string.IsNullOrWhiteSpace(rawHeader))
+        {
+            return false;
+        }
+
+        return rawHeader
+            .Split(',')
+            .Select(value => value.Trim())
+            .Any(value => string.Equals(value, entityTag, StringComparison.Ordinal));
     }
 }

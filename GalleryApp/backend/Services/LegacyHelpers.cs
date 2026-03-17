@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using GalleryApp.Api.Data.Search;
 using GalleryApp.Api.Models.Domain;
 using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Http;

@@ -1,3 +1,3 @@
 namespace GalleryApp.Api;
 
-public sealed record MediaStorageOptions(string RootPath);
+public sealed record MediaStorageOptions(string RootPath, string PreviewCachePath);

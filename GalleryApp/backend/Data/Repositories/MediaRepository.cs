@@ -1,4 +1,5 @@
 using GalleryApp.Api.Data.Search;
+using GalleryApp.Api.Models.Domain;
 using Microsoft.Data.Sqlite;
 
 namespace GalleryApp.Api.Data.Repositories;
@@ -6,6 +7,7 @@ namespace GalleryApp.Api.Data.Repositories;
 public sealed class MediaRepository(string connectionString)
 {
     public sealed record MediaRow(long Id, string Path, string? Title, string? Description, string? Source, long? Parent, long? Child, bool IsFavorite);
+    public sealed record PagedMediaRows(int Page, int PageSize, int TotalCount, int TotalPages, List<MediaRow> Rows);
 
     public List<MediaRow> GetMedia(MediaSearchCriteria? criteria, bool favoritesOnly)
     {
@@ -41,6 +43,64 @@ public sealed class MediaRepository(string connectionString)
         return ReadMediaRows(command);
     }
 
+    public PagedMediaRows GetPagedMedia(MediaSearchCriteria? criteria, bool favoritesOnly, int page, int pageSize)
+    {
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+
+        using var countCommand = connection.CreateCommand();
+        var whereClauses = MediaSearchSqlBuilder.BuildMediaSearchWhereClauses(countCommand, criteria, favoritesOnly);
+        var whereSql = whereClauses.Count == 0
+            ? string.Empty
+            : $"{Environment.NewLine}WHERE {string.Join($"{Environment.NewLine}  AND ", whereClauses)}";
+        countCommand.CommandText = $"""
+            SELECT COUNT(*)
+            FROM Media m
+            {whereSql};
+            """;
+
+        var totalCount = Convert.ToInt32(countCommand.ExecuteScalar());
+        var totalPages = totalCount == 0
+            ? 0
+            : (int)Math.Ceiling(totalCount / (double)pageSize);
+        var effectivePage = totalPages == 0
+            ? 1
+            : Math.Min(page, totalPages);
+        var offset = totalPages == 0
+            ? 0
+            : (effectivePage - 1) * pageSize;
+
+        using var selectCommand = connection.CreateCommand();
+        whereClauses = MediaSearchSqlBuilder.BuildMediaSearchWhereClauses(selectCommand, criteria, favoritesOnly);
+        whereSql = whereClauses.Count == 0
+            ? string.Empty
+            : $"{Environment.NewLine}WHERE {string.Join($"{Environment.NewLine}  AND ", whereClauses)}";
+        selectCommand.CommandText = $"""
+            SELECT
+                m.Id,
+                m.Path,
+                m.Title,
+                m.Description,
+                m.Source,
+                m.Parent,
+                m.Child,
+                EXISTS (
+                    SELECT 1
+                    FROM CollectionsMedia cm
+                    INNER JOIN Collections c ON c.Id = cm.CollectionId
+                    WHERE cm.MediaId = m.Id AND c.Lable = 'Favorites'
+                ) AS IsFavorite
+            FROM Media m
+            {whereSql}
+            ORDER BY m.Id DESC
+            LIMIT $limit OFFSET $offset;
+            """;
+        selectCommand.Parameters.AddWithValue("$limit", pageSize);
+        selectCommand.Parameters.AddWithValue("$offset", offset);
+
+        return new PagedMediaRows(effectivePage, pageSize, totalCount, totalPages, ReadMediaRows(selectCommand));
+    }
+
     public List<MediaRow> GetCollectionMedia(long collectionId)
     {
         using var connection = new SqliteConnection(connectionString);
@@ -69,6 +129,124 @@ public sealed class MediaRepository(string connectionString)
             """;
         command.Parameters.AddWithValue("$collectionId", collectionId);
         return ReadMediaRows(command);
+    }
+
+    public PagedMediaRows GetPagedCollectionMedia(long collectionId, int page, int pageSize)
+    {
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+
+        using var countCommand = connection.CreateCommand();
+        countCommand.CommandText = """
+            SELECT COUNT(*)
+            FROM CollectionsMedia cm
+            INNER JOIN Media m ON m.Id = cm.MediaId
+            WHERE cm.CollectionId = $collectionId;
+            """;
+        countCommand.Parameters.AddWithValue("$collectionId", collectionId);
+        var totalCount = Convert.ToInt32(countCommand.ExecuteScalar());
+        var totalPages = totalCount == 0
+            ? 0
+            : (int)Math.Ceiling(totalCount / (double)pageSize);
+        var effectivePage = totalPages == 0
+            ? 1
+            : Math.Min(page, totalPages);
+        var offset = totalPages == 0
+            ? 0
+            : (effectivePage - 1) * pageSize;
+
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT
+                m.Id,
+                m.Path,
+                m.Title,
+                m.Description,
+                m.Source,
+                m.Parent,
+                m.Child,
+                EXISTS (
+                    SELECT 1
+                    FROM CollectionsMedia cmFav
+                    INNER JOIN Collections cFav ON cFav.Id = cmFav.CollectionId
+                    WHERE cmFav.MediaId = m.Id AND cFav.Lable = 'Favorites'
+                ) AS IsFavorite
+            FROM CollectionsMedia cm
+            INNER JOIN Media m ON m.Id = cm.MediaId
+            WHERE cm.CollectionId = $collectionId
+            ORDER BY m.Id DESC
+            LIMIT $limit OFFSET $offset;
+            """;
+        command.Parameters.AddWithValue("$collectionId", collectionId);
+        command.Parameters.AddWithValue("$limit", pageSize);
+        command.Parameters.AddWithValue("$offset", offset);
+        return new PagedMediaRows(effectivePage, pageSize, totalCount, totalPages, ReadMediaRows(command));
+    }
+
+    public IReadOnlyDictionary<long, IReadOnlyList<MediaTagListItem>> GetMediaTags(IReadOnlyCollection<long> mediaIds)
+    {
+        if (mediaIds.Count == 0)
+        {
+            return new Dictionary<long, IReadOnlyList<MediaTagListItem>>();
+        }
+
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+
+        var mediaIdParams = new List<string>();
+        var index = 0;
+        foreach (var mediaId in mediaIds.Distinct())
+        {
+            var parameterName = $"$mediaId{index++}";
+            mediaIdParams.Add(parameterName);
+            command.Parameters.AddWithValue(parameterName, mediaId);
+        }
+
+        command.CommandText = $"""
+            SELECT
+                mt.MediaId,
+                t.Id,
+                t.Name,
+                t.Description,
+                tt.Id AS TagTypeId,
+                tt.Name AS TagTypeName,
+                tt.Color AS TagTypeColor
+            FROM MediaTags mt
+            INNER JOIN Tags t ON t.Id = mt.TagId
+            INNER JOIN TagTypes tt ON tt.Id = t.TagTypeId
+            WHERE mt.MediaId IN ({string.Join(", ", mediaIdParams)})
+            ORDER BY tt.Name COLLATE NOCASE ASC, t.Name COLLATE NOCASE ASC, t.Id ASC;
+            """;
+
+        using var reader = command.ExecuteReader();
+        var mediaIdOrdinal = reader.GetOrdinal("MediaId");
+        var idOrdinal = reader.GetOrdinal("Id");
+        var nameOrdinal = reader.GetOrdinal("Name");
+        var descriptionOrdinal = reader.GetOrdinal("Description");
+        var tagTypeIdOrdinal = reader.GetOrdinal("TagTypeId");
+        var tagTypeNameOrdinal = reader.GetOrdinal("TagTypeName");
+        var tagTypeColorOrdinal = reader.GetOrdinal("TagTypeColor");
+        var items = new Dictionary<long, List<MediaTagListItem>>();
+        while (reader.Read())
+        {
+            var mediaId = reader.GetInt64(mediaIdOrdinal);
+            if (!items.TryGetValue(mediaId, out var mediaTags))
+            {
+                mediaTags = [];
+                items[mediaId] = mediaTags;
+            }
+
+            mediaTags.Add(new MediaTagListItem(
+                reader.GetInt64(idOrdinal),
+                reader.GetString(nameOrdinal),
+                reader.IsDBNull(descriptionOrdinal) ? null : reader.GetString(descriptionOrdinal),
+                reader.GetInt64(tagTypeIdOrdinal),
+                reader.GetString(tagTypeNameOrdinal),
+                reader.GetString(tagTypeColorOrdinal)));
+        }
+
+        return items.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<MediaTagListItem>)pair.Value);
     }
 
     public bool MediaRecordExists(long id)

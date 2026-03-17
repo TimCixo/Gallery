@@ -50,6 +50,7 @@ dotnet run --urls http://localhost:5000
 
 - SQLite база: `App_Data/gallery.db`
 - Медіафайли: `App_Data/Media`
+- Preview cache: `App_Data/PreviewCache`
 - Static files для медіа: `/media/*`
 - CORS policy для frontend: `http://localhost:5173`
 - Default локальний backend URL: `http://localhost:5000`
@@ -60,6 +61,7 @@ dotnet run --urls http://localhost:5000
 - Під час старту виконується ініціалізація SQLite бази.
 - Upload зберігає файли в піддиректорії `App_Data/Media/<yyyy-MM-dd>/`.
 - Зображення конвертуються у WebP, відео - у MP4, GIF обробляється окремо.
+- Preview cache зберігається в `App_Data/PreviewCache`; нові прев'ю створюються під час upload, а при завантаженні списків media/favorites кеш догрівається фоново.
 - Preview для відео та GIF віддається через окремий API endpoint і залежить від доступності `ffmpeg`.
 - Спискові media endpoint-и повертають `tileUrl` для стисненого preview; повний файл лишається доступним через `originalUrl` і завантажується окремо під час відкриття.
 

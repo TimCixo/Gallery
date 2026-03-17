@@ -212,9 +212,8 @@ app.MapGet("/api/collections/{id:long}/media", (long id, int? page, int? pageSiz
         return Results.BadRequest(new { error = "Invalid collection id." });
     }
 
-    var allFiles = LoadCollectionMediaItems(connectionString, mediaRootPath, id);
-    var pagedResult = PaginationHelper.CreatePagedResult(allFiles, new PagedRequest(page, pageSize));
-
+    var mediaQueryService = app.ServiceProvider.GetRequiredService<MediaQueryService>();
+    var pagedResult = mediaQueryService.GetPagedCollectionMedia(id, new PagedRequest(page, pageSize));
     return Results.Ok(pagedResult);
 });
 
