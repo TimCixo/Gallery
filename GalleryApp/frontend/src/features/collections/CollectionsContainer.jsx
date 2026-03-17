@@ -5,12 +5,17 @@ import { tagsApi } from "../../api/tagsApi";
 import { normalizePageJumpInput } from "../shared/utils/pagination";
 import CollectionPickerModal from "./components/CollectionPickerModal";
 import CollectionPickerDialogContent from "./components/CollectionPickerDialogContent";
+import CollectionDeleteConfirmModal from "./components/CollectionDeleteConfirmModal";
 import MediaViewerModal from "../media/components/MediaViewerModal";
+import MediaRelationPickerDialogContent from "../media/components/MediaRelationPickerDialogContent";
+import MediaRelationPickerModal from "../media/components/MediaRelationPickerModal";
 import { buildRelatedMediaChain } from "../media/utils/relatedMediaChain";
 import CollectionsPage from "./CollectionsPage";
 import AppIcon from "../shared/components/AppIcon";
+import { resolvePreviewMediaUrl } from "../shared/utils/mediaPredicates";
 
 const PAGE_SIZE = 36;
+const EMPTY_COLLECTION_DRAFT = Object.freeze({ label: "", description: "", cover: "" });
 
 const getDisplayName = (value) => {
   const fileName = String(value || "");
@@ -27,9 +32,12 @@ export default function CollectionsContainer({ searchQuery = "" }) {
   const [isCollectionsLoading, setIsCollectionsLoading] = useState(true);
   const [collectionsError, setCollectionsError] = useState("");
   const [isCreateCollectionModalOpen, setIsCreateCollectionModalOpen] = useState(false);
-  const [createCollectionDraft, setCreateCollectionDraft] = useState({ label: "", description: "", cover: "" });
+  const [collectionEditorMode, setCollectionEditorMode] = useState("create");
+  const [createCollectionDraft, setCreateCollectionDraft] = useState(EMPTY_COLLECTION_DRAFT);
   const [createCollectionError, setCreateCollectionError] = useState("");
   const [isSavingCollection, setIsSavingCollection] = useState(false);
+  const [pendingCollectionDelete, setPendingCollectionDelete] = useState(null);
+  const [isCollectionDeleting, setIsCollectionDeleting] = useState(false);
   const [selectedCollection, setSelectedCollection] = useState(null);
   const [collectionFiles, setCollectionFiles] = useState([]);
   const [collectionFilesPage, setCollectionFilesPage] = useState(1);
@@ -68,6 +76,7 @@ export default function CollectionsContainer({ searchQuery = "" }) {
   const [mediaRelationPickerTotalCount, setMediaRelationPickerTotalCount] = useState(0);
   const [isMediaRelationPickerLoading, setIsMediaRelationPickerLoading] = useState(false);
   const [mediaRelationPickerError, setMediaRelationPickerError] = useState("");
+  const [collectionCoverPreview, setCollectionCoverPreview] = useState({ item: null, isLoading: false, error: "" });
 
   const refreshTagCatalog = useCallback(async () => {
     setIsTagCatalogLoading(true);
@@ -91,10 +100,13 @@ export default function CollectionsContainer({ searchQuery = "" }) {
     setCollectionsError("");
     try {
       const response = await collectionsApi.listCollections({ search: searchQuery || undefined });
-      setCollections(Array.isArray(response?.items) ? response.items : []);
+      const items = Array.isArray(response?.items) ? response.items : [];
+      setCollections(items);
+      return items;
     } catch (error) {
       setCollections([]);
       setCollectionsError(error instanceof Error ? error.message : "Failed to load collections.");
+      return [];
     } finally {
       setIsCollectionsLoading(false);
     }
@@ -151,7 +163,23 @@ export default function CollectionsContainer({ searchQuery = "" }) {
   };
 
   const openCreateCollectionModal = () => {
-    setCreateCollectionDraft({ label: "", description: "", cover: "" });
+    setCollectionEditorMode("create");
+    setCreateCollectionDraft(EMPTY_COLLECTION_DRAFT);
+    setCreateCollectionError("");
+    setIsCreateCollectionModalOpen(true);
+  };
+
+  const openEditCollectionModal = () => {
+    if (!selectedCollection || isSavingCollection || isCollectionDeleting) {
+      return;
+    }
+
+    setCollectionEditorMode("edit");
+    setCreateCollectionDraft({
+      label: String(selectedCollection.label || ""),
+      description: String(selectedCollection.description || ""),
+      cover: selectedCollection.cover ? String(selectedCollection.cover) : ""
+    });
     setCreateCollectionError("");
     setIsCreateCollectionModalOpen(true);
   };
@@ -163,6 +191,11 @@ export default function CollectionsContainer({ searchQuery = "" }) {
 
     setIsCreateCollectionModalOpen(false);
     setCreateCollectionError("");
+    setCollectionCoverPreview({ item: null, isLoading: false, error: "" });
+    if (mediaRelationPickerMode === "cover") {
+      setIsMediaRelationPickerOpen(false);
+      setMediaRelationPickerError("");
+    }
   };
 
   const visibleCollectionFiles = useMemo(() => collectionFiles, [collectionFiles]);
@@ -446,25 +479,89 @@ export default function CollectionsContainer({ searchQuery = "" }) {
         description: String(createCollectionDraft.description || "").trim() || null,
         cover: toNullableId(createCollectionDraft.cover)
       };
-      const created = await collectionsApi.saveCollection(null, payload);
+      const collectionId = collectionEditorMode === "edit" ? Number(selectedCollection?.id) || null : null;
+      const saved = await collectionsApi.saveCollection(collectionId, payload);
       setIsCreateCollectionModalOpen(false);
-      setCreateCollectionDraft({ label: "", description: "", cover: "" });
-      await loadCollections();
+      setCreateCollectionDraft(EMPTY_COLLECTION_DRAFT);
+      const items = await loadCollections();
+      const savedCollectionId = Number(saved?.id || collectionId);
+      const refreshedCollection = items.find((item) => Number(item?.id) === savedCollectionId) || null;
 
-      if (created?.id) {
-        const createdItem = {
-          id: created.id,
-          label: created.label ?? payload.label,
-          description: created.description ?? payload.description,
-          cover: created.cover ?? payload.cover,
+      if (collectionEditorMode === "edit" && selectedCollection?.id) {
+        setSelectedCollection((current) => {
+          if (!current || current.id !== selectedCollection.id) {
+            return current;
+          }
+
+          return refreshedCollection || {
+            ...current,
+            label: saved?.label ?? payload.label,
+            description: saved?.description ?? payload.description,
+            cover: saved?.cover ?? payload.cover,
+            coverMedia: refreshedCollection?.coverMedia ?? current.coverMedia ?? null
+          };
+        });
+      }
+
+      if (collectionEditorMode === "create" && (saved?.id || refreshedCollection?.id)) {
+        const createdItem = refreshedCollection || {
+          id: saved.id,
+          label: saved.label ?? payload.label,
+          description: saved.description ?? payload.description,
+          cover: saved.cover ?? payload.cover,
           coverMedia: null
         };
         await handleOpenCollection(createdItem);
       }
     } catch (error) {
-      setCreateCollectionError(error instanceof Error ? error.message : "Failed to create collection.");
+      setCreateCollectionError(error instanceof Error ? error.message : `Failed to ${collectionEditorMode} collection.`);
     } finally {
       setIsSavingCollection(false);
+    }
+  };
+
+  const requestDeleteSelectedCollection = () => {
+    if (!selectedCollection?.id || isCollectionDeleting || isSavingCollection) {
+      return;
+    }
+
+    setPendingCollectionDelete({
+      id: selectedCollection.id,
+      name: String(selectedCollection.label || "")
+    });
+  };
+
+  const closeCollectionDeleteConfirm = () => {
+    if (isCollectionDeleting) {
+      return;
+    }
+
+    setPendingCollectionDelete(null);
+  };
+
+  const handleDeleteCollection = async () => {
+    if (!pendingCollectionDelete?.id || isCollectionDeleting) {
+      return;
+    }
+
+    setIsCollectionDeleting(true);
+    setCollectionsError("");
+    try {
+      await collectionsApi.deleteCollection(pendingCollectionDelete.id);
+      setPendingCollectionDelete(null);
+      setIsCreateCollectionModalOpen(false);
+      setSelectedCollection((current) => (current?.id === pendingCollectionDelete.id ? null : current));
+      setSelectedMedia(null);
+      setCollectionFiles([]);
+      setCollectionFilesPage(1);
+      setCollectionFilesTotalPages(0);
+      setCollectionFilesTotalCount(0);
+      setCollectionFilesError("");
+      await loadCollections();
+    } catch (error) {
+      setCollectionsError(error instanceof Error ? error.message : "Failed to delete collection.");
+    } finally {
+      setIsCollectionDeleting(false);
     }
   };
 
@@ -483,6 +580,51 @@ export default function CollectionsContainer({ searchQuery = "" }) {
     const items = Array.isArray(response?.items) ? response.items : [];
     return items.find((item) => Number(item?.id) === normalizedId) || null;
   }, [collectionFiles]);
+
+  useEffect(() => {
+    if (!isCreateCollectionModalOpen) {
+      return undefined;
+    }
+
+    const rawValue = String(createCollectionDraft.cover || "").trim();
+    if (!rawValue) {
+      setCollectionCoverPreview({ item: null, isLoading: false, error: "" });
+      return undefined;
+    }
+
+    const parsed = Number.parseInt(rawValue, 10);
+    if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+      setCollectionCoverPreview({ item: null, isLoading: false, error: "Invalid media id." });
+      return undefined;
+    }
+
+    let cancelled = false;
+    setCollectionCoverPreview((current) => (
+      current.item?.id === parsed ? current : { item: null, isLoading: true, error: "" }
+    ));
+
+    const resolveCover = async () => {
+      try {
+        const candidate = await findMediaById(parsed);
+        if (cancelled) {
+          return;
+        }
+
+        setCollectionCoverPreview(candidate
+          ? { item: candidate, isLoading: false, error: "" }
+          : { item: null, isLoading: false, error: "Media not found." });
+      } catch (error) {
+        if (!cancelled) {
+          setCollectionCoverPreview({ item: null, isLoading: false, error: error instanceof Error ? error.message : "Failed to resolve media." });
+        }
+      }
+    };
+
+    void resolveCover();
+    return () => {
+      cancelled = true;
+    };
+  }, [isCreateCollectionModalOpen, createCollectionDraft.cover, findMediaById]);
 
   useEffect(() => {
     if (!selectedMedia) {
@@ -583,7 +725,14 @@ export default function CollectionsContainer({ searchQuery = "" }) {
   };
 
   const openMediaRelationPicker = (mode) => {
-    setMediaRelationPickerMode(mode === "child" ? "child" : "parent");
+    if (mode === "cover") {
+      if (tagCatalog.length === 0 && tagTypesCatalog.length === 0) {
+        void refreshTagCatalog();
+      }
+      setMediaRelationPickerMode("cover");
+    } else {
+      setMediaRelationPickerMode(mode === "child" ? "child" : "parent");
+    }
     setMediaRelationPickerQuery("");
     setMediaRelationPickerPage(1);
     setIsMediaRelationPickerOpen(true);
@@ -639,6 +788,13 @@ export default function CollectionsContainer({ searchQuery = "" }) {
   const handleSelectMediaRelationFromPicker = (item) => {
     const selectedId = Number(item?.id);
     if (!Number.isSafeInteger(selectedId) || selectedId <= 0) {
+      return;
+    }
+
+    if (mediaRelationPickerMode === "cover") {
+      setCreateCollectionDraft((current) => ({ ...current, cover: String(selectedId) }));
+      setCollectionCoverPreview({ item, isLoading: false, error: "" });
+      closeMediaRelationPicker();
       return;
     }
 
@@ -716,14 +872,20 @@ export default function CollectionsContainer({ searchQuery = "" }) {
         <div className="media-confirm-overlay" role="dialog" aria-modal="true" onClick={closeCreateCollectionModal}>
           <div className="collection-modal" onClick={(event) => event.stopPropagation()}>
             <div className="media-modal-header">
-              <h2 className="upload-modal-title">New collection</h2>
-              <button type="button" className="media-action-btn" onClick={closeCreateCollectionModal} disabled={isSavingCollection}>
-                Close
+              <h2 className="upload-modal-title">{collectionEditorMode === "edit" ? "Edit collection" : "New collection"}</h2>
+              <button
+                type="button"
+                className="media-icon-btn media-icon-btn-close"
+                onClick={closeCreateCollectionModal}
+                disabled={isSavingCollection}
+                aria-label="Close collection editor"
+                title="Close collection editor"
+              >
+                <AppIcon name="close" alt="" aria-hidden="true" />
               </button>
             </div>
             <form className="collection-modal-body" onSubmit={handleCreateCollection}>
-              <div className="collections-preview">
-                <p className="collections-preview-title">Collection details</p>
+              <div className="collection-modal-form">
                 <div className="collections-form">
                   <input
                     type="text"
@@ -740,28 +902,82 @@ export default function CollectionsContainer({ searchQuery = "" }) {
                     placeholder="Description"
                     rows={5}
                   />
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    className="collections-input"
-                    value={createCollectionDraft.cover}
-                    onChange={(event) => setCreateCollectionDraft((current) => ({ ...current, cover: event.target.value }))}
-                    placeholder="Cover media id (optional)"
-                  />
+                  <div className="collection-modal-cover-field">
+                    <p className="collections-preview-title">Cover</p>
+                    <div className="media-linked-editor">
+                      <div className="media-linked-editor-controls">
+                        <button
+                          type="button"
+                          className={`media-linked-editor-trigger${createCollectionDraft.cover ? "" : " is-empty"}`}
+                          onClick={() => openMediaRelationPicker("cover")}
+                          aria-label={createCollectionDraft.cover ? "Change cover media" : "Select cover media"}
+                          title={createCollectionDraft.cover ? "Change cover media" : "Select cover media"}
+                        >
+                          {collectionCoverPreview.item ? (
+                            <img
+                              src={resolvePreviewMediaUrl(collectionCoverPreview.item)}
+                              alt={collectionCoverPreview.item.title || collectionCoverPreview.item.relativePath || "Cover media"}
+                              className="media-relation-picker-thumb"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <span className="media-linked-editor-placeholder" aria-hidden="true">
+                              <AppIcon name="create" alt="" aria-hidden="true" />
+                            </span>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          className="media-action-btn app-button-icon-only"
+                          onClick={() => {
+                            setCreateCollectionDraft((current) => ({ ...current, cover: "" }));
+                            setCollectionCoverPreview({ item: null, isLoading: false, error: "" });
+                          }}
+                          disabled={!createCollectionDraft.cover}
+                          aria-label="Clear cover media"
+                          title="Clear cover media"
+                        >
+                          <AppIcon name="delete" alt="" aria-hidden="true" />
+                        </button>
+                      </div>
+                      <div className="media-linked-editor-preview">
+                        {createCollectionDraft.cover ? (
+                          collectionCoverPreview.item ? (
+                            <small>#{collectionCoverPreview.item.id} {collectionCoverPreview.item.title || collectionCoverPreview.item.relativePath || ""}</small>
+                          ) : collectionCoverPreview.isLoading ? (
+                            <small>Resolving...</small>
+                          ) : collectionCoverPreview.error ? (
+                            <small className="media-action-error">{collectionCoverPreview.error}</small>
+                          ) : (
+                            <small>Media not found.</small>
+                          )
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 {createCollectionError ? <p className="collections-error">{createCollectionError}</p> : null}
               </div>
-              <div className="collections-preview">
-                <p className="collections-preview-title">How it works</p>
-                <p className="collections-state">Enter a name, optionally add a description and an existing media id for the cover.</p>
-                <div className="collections-form-actions">
-                  <button type="button" className="collections-btn" onClick={closeCreateCollectionModal} disabled={isSavingCollection}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="collections-btn collections-btn-primary" disabled={isSavingCollection}>
-                    {isSavingCollection ? "Creating..." : "Create collection"}
-                  </button>
-                </div>
+              <div className="collection-modal-actions">
+                <button
+                  type="submit"
+                  className="media-action-btn media-action-primary app-button-icon-only"
+                  disabled={isSavingCollection}
+                  aria-label={isSavingCollection ? (collectionEditorMode === "edit" ? "Saving collection" : "Creating collection") : (collectionEditorMode === "edit" ? "Save collection" : "Create collection")}
+                  title={isSavingCollection ? (collectionEditorMode === "edit" ? "Saving collection" : "Creating collection") : (collectionEditorMode === "edit" ? "Save collection" : "Create collection")}
+                >
+                  <AppIcon name="confirm" alt="" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="media-action-btn app-button-icon-only"
+                  onClick={closeCreateCollectionModal}
+                  disabled={isSavingCollection}
+                  aria-label="Cancel collection editor"
+                  title="Cancel collection editor"
+                >
+                  <AppIcon name="cancel" alt="" aria-hidden="true" />
+                </button>
               </div>
             </form>
           </div>
@@ -771,13 +987,57 @@ export default function CollectionsContainer({ searchQuery = "" }) {
         <div className="media-modal-overlay" role="dialog" aria-modal="true" onClick={() => setSelectedCollection(null)}>
           <div className="collection-view-modal" onClick={(event) => event.stopPropagation()}>
             <div className="media-modal-header">
-              <h2 className="upload-modal-title">{selectedCollection.label}</h2>
-              <button type="button" className="media-action-btn" onClick={() => setSelectedCollection(null)}>
-                Close
-              </button>
+              <div className="collection-view-actions-spacer" />
             </div>
-            <div className="collection-view-meta">
-              <p>{selectedCollection.description || "No description."}</p>
+            <div className="collection-view-summary">
+              <div className="collection-view-cover">
+                {selectedCollection.coverMedia?.tileUrl ? (
+                  <img
+                    src={selectedCollection.coverMedia.tileUrl}
+                    alt={String(selectedCollection.label || "Collection cover")}
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="collections-item-cover-fallback">No cover</div>
+                )}
+              </div>
+              <div className="collection-view-info">
+                <div className="collection-view-info-header">
+                  <h2 className="upload-modal-title">{selectedCollection.label}</h2>
+                  <div className="collection-view-actions">
+                    <button
+                      type="button"
+                      className="media-icon-btn collection-view-action-edit"
+                      onClick={openEditCollectionModal}
+                      disabled={isSavingCollection || isCollectionDeleting}
+                      aria-label="Edit collection"
+                      title="Edit collection"
+                    >
+                      <AppIcon name="edit" alt="" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="media-icon-btn collection-view-action-delete"
+                      onClick={requestDeleteSelectedCollection}
+                      disabled={isSavingCollection || isCollectionDeleting}
+                      aria-label={isCollectionDeleting ? "Deleting collection" : "Delete collection"}
+                      title={isCollectionDeleting ? "Deleting collection" : "Delete collection"}
+                    >
+                      <AppIcon name="delete" alt="" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="media-icon-btn media-icon-btn-close"
+                      onClick={() => setSelectedCollection(null)}
+                      aria-label="Close collection modal"
+                      title="Close collection modal"
+                    >
+                      <AppIcon name="close" alt="" aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+                <p>{selectedCollection.description || "No description."}</p>
+              </div>
             </div>
             <div className="collection-view-content">
               {collectionFilesError ? <p className="collections-error">{collectionFilesError}</p> : null}
@@ -895,6 +1155,35 @@ export default function CollectionsContainer({ searchQuery = "" }) {
           onClose={closeCollectionPicker}
         />
       </CollectionPickerModal>
+      <CollectionDeleteConfirmModal
+        pendingCollectionDelete={pendingCollectionDelete}
+        isCollectionDeleting={isCollectionDeleting}
+        onConfirm={() => void handleDeleteCollection()}
+        onClose={closeCollectionDeleteConfirm}
+      />
+      <MediaRelationPickerModal isOpen={isCreateCollectionModalOpen && isMediaRelationPickerOpen} onClose={closeMediaRelationPicker} initialData={{ mode: mediaRelationPickerMode }}>
+        <MediaRelationPickerDialogContent
+          mode={mediaRelationPickerMode}
+          query={mediaRelationPickerQuery}
+          onQueryChange={(value) => {
+            setMediaRelationPickerQuery(value);
+            setMediaRelationPickerPage(1);
+          }}
+          items={mediaRelationPickerItems}
+          page={mediaRelationPickerPage}
+          totalPages={mediaRelationPickerTotalPages}
+          totalCount={mediaRelationPickerTotalCount}
+          isLoading={isMediaRelationPickerLoading}
+          errorMessage={mediaRelationPickerError}
+          tagCatalog={tagCatalog}
+          tagTypes={tagTypesCatalog}
+          onPrev={() => setMediaRelationPickerPage((current) => Math.max(1, current - 1))}
+          onNext={() => setMediaRelationPickerPage((current) => current + 1)}
+          onPageChange={(value) => setMediaRelationPickerPage(value)}
+          onClose={closeMediaRelationPicker}
+          onSelect={handleSelectMediaRelationFromPicker}
+        />
+      </MediaRelationPickerModal>
     </CollectionsPage>
   );
 }

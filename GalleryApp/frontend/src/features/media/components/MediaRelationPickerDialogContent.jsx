@@ -239,7 +239,7 @@ export default function MediaRelationPickerDialogContent({
 
   return (
     <PickerDialog
-      title={`Select ${mode === "child" ? "child" : "parent"} media`}
+      title={mode === "cover" ? "Select cover media" : `Select ${mode === "child" ? "child" : "parent"} media`}
       className="media-relation-picker-dialog"
       onClose={onClose}
       toolbar={toolbar}

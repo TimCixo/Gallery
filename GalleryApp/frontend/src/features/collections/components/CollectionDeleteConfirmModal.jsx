@@ -1,4 +1,5 @@
 import { getCollectionDeleteConfirmMessage } from "../../shared/utils/deleteConfirm";
+import AppIcon from "../../shared/components/AppIcon";
 
 function CollectionDeleteConfirmModal({ pendingCollectionDelete, isCollectionDeleting, onConfirm, onClose }) {
   if (!pendingCollectionDelete) {
@@ -12,14 +13,23 @@ function CollectionDeleteConfirmModal({ pendingCollectionDelete, isCollectionDel
         <div className="media-delete-buttons">
           <button
             type="button"
-            className="media-action-btn media-action-danger"
+            className="media-action-btn media-action-danger app-button-icon-only"
             onClick={onConfirm}
             disabled={isCollectionDeleting}
+            aria-label={isCollectionDeleting ? "Deleting collection" : "Confirm delete"}
+            title={isCollectionDeleting ? "Deleting collection" : "Confirm delete"}
           >
-            {isCollectionDeleting ? "Deleting..." : "Yes"}
+            <AppIcon name="confirm" alt="" aria-hidden="true" />
           </button>
-          <button type="button" className="media-action-btn" onClick={onClose} disabled={isCollectionDeleting}>
-            No
+          <button
+            type="button"
+            className="media-action-btn app-button-icon-only"
+            onClick={onClose}
+            disabled={isCollectionDeleting}
+            aria-label="Cancel delete"
+            title="Cancel delete"
+          >
+            <AppIcon name="cancel" alt="" aria-hidden="true" />
           </button>
         </div>
       </div>
