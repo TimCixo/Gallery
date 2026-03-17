@@ -3,7 +3,7 @@ import { getExtensionFromPath } from "./mediaFormatters";
 const videoExtensions = new Set([".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v"]);
 const imageExtensions = new Set([".jpg", ".jpeg", ".jfif", ".png", ".webp", ".bmp"]);
 
-export const resolveOriginalMediaUrl = (file) => file?.originalUrl || file?.url || file?._tileUrl || "";
+export const resolveOriginalMediaUrl = (file) => file?.displayUrl || file?.originalUrl || file?.url || file?._tileUrl || "";
 
 export const resolveTileMediaUrl = (file) => {
   if (file?.tileUrl) {

@@ -12,7 +12,7 @@ export const getExtensionFromPath = (value) => {
   return dotIndex >= 0 ? cleanValue.slice(dotIndex).toLowerCase() : "";
 };
 
-export const resolveOriginalMediaUrl = (file) => file?.originalUrl || file?.url || file?._tileUrl || "";
+export const resolveOriginalMediaUrl = (file) => file?.displayUrl || file?.originalUrl || file?.url || file?._tileUrl || "";
 
 export const resolveTileUrl = (file) => {
   if (file?.tileUrl) {

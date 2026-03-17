@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getExtensionFromPath, getMediaIdentity, isVideoFile, resolveTileUrl } from "../utils/mediaIdentity.js";
+import { getExtensionFromPath, getMediaIdentity, isVideoFile, resolveOriginalMediaUrl, resolveTileUrl } from "../utils/mediaIdentity.js";
 
 test("getExtensionFromPath normalizes extension", () => {
   assert.equal(getExtensionFromPath("photo.JPG?x=1"), ".jpg");
@@ -22,6 +22,16 @@ test("resolveTileUrl prefers tileUrl over original image url", () => {
       originalUrl: "/media/a/b/c.webp"
     }),
     "/api/media/preview?path=a%2Fb%2Fc.webp&v=1"
+  );
+});
+
+test("resolveOriginalMediaUrl prefers display url when provided", () => {
+  assert.equal(
+    resolveOriginalMediaUrl({
+      displayUrl: "/api/media/view?path=a%2Fb%2Fc.webp",
+      originalUrl: "/media/a/b/c.webp"
+    }),
+    "/api/media/view?path=a%2Fb%2Fc.webp"
   );
 });
 

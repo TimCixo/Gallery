@@ -8,12 +8,28 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Formats.Webp;
 using static GalleryApp.Api.Services.LegacyHelpers;
 
 namespace GalleryApp.Api.Endpoints;
 
 public static class MediaEndpoints
 {
+    private static string GetImageContentType(string extension)
+    {
+        return extension.ToLowerInvariant() switch
+        {
+            ".jpg" or ".jpeg" or ".jfif" => "image/jpeg",
+            ".png" => "image/png",
+            ".webp" => "image/webp",
+            ".bmp" => "image/bmp",
+            ".gif" => "image/gif",
+            _ => "application/octet-stream"
+        };
+    }
+
     public static IEndpointRouteBuilder MapMediaEndpoints(this IEndpointRouteBuilder app)
     {
         var connectionString = app.ServiceProvider.GetRequiredService<string>();
@@ -69,6 +85,44 @@ app.MapGet("/api/media/preview", (string path) =>
     }
 
     return Results.NotFound(new { error = "Preview is not available for this media type." });
+});
+
+app.MapGet("/api/media/view", (string path) =>
+{
+    if (!TryResolveMediaFilePath(mediaRootPath, path, out var absolutePath, out var extension))
+    {
+        return Results.NotFound(new { error = "Media file not found." });
+    }
+
+    if (!IsImageFile(extension) || IsGifFile(extension))
+    {
+        return Results.File(absolutePath, GetImageContentType(extension));
+    }
+
+    try
+    {
+        var info = Image.Identify(absolutePath);
+        if (info is null)
+        {
+            return Results.NotFound(new { error = "Media file not found." });
+        }
+
+        if (!BrowserSafeImageHelper.RequiresBrowserSafeViewTranscode(extension, info.Width, info.Height))
+        {
+            return Results.File(absolutePath, GetImageContentType(extension));
+        }
+
+        using var image = Image.Load(absolutePath);
+        BrowserSafeImageHelper.ResizeForBrowser(image);
+
+        using var stream = new MemoryStream();
+        image.Save(stream, new JpegEncoder { Quality = 92 });
+        return Results.File(stream.ToArray(), "image/jpeg");
+    }
+    catch (UnknownImageFormatException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
 });
 
 app.MapPut("/api/media/{id:long}", (long id, MediaUpdateRequest request) =>

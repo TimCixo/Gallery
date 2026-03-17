@@ -141,7 +141,19 @@ export default function MediaViewerModal({
   const [pendingMediaDelete, setPendingMediaDelete] = useState(null);
   const [mediaFitMode, setMediaFitMode] = useState("resize");
   const [mediaAssetOverflow, setMediaAssetOverflow] = useState({ x: false, y: false });
+  const [imageSourceAttempt, setImageSourceAttempt] = useState("primary");
   const mediaAssetFrameRef = useRef(null);
+  const previewMediaUrl = resolvePreviewMediaUrl(file);
+  const originalMediaUrl = resolveOriginalMediaUrl(file);
+  const directViewMediaUrl = !isVideoFile(file) && file?.relativePath
+    ? `/api/media/view?path=${encodeURIComponent(file.relativePath)}`
+    : "";
+  const primaryImageMediaUrl = directViewMediaUrl || originalMediaUrl;
+  const imageMediaUrl = imageSourceAttempt === "primary"
+    ? primaryImageMediaUrl
+    : imageSourceAttempt === "original"
+      ? originalMediaUrl
+      : previewMediaUrl;
 
   const getDraftTagNamesByType = (tagTypeId) => {
     const typeTags = catalogTagsByType.get(tagTypeId) || [];
@@ -396,6 +408,10 @@ export default function MediaViewerModal({
     };
   }, [file?.id, mediaFitMode]);
 
+  useEffect(() => {
+    setImageSourceAttempt("primary");
+  }, [file?.id, primaryImageMediaUrl]);
+
   if (isEditing) {
     return (
       <div className="media-modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
@@ -525,8 +541,8 @@ export default function MediaViewerModal({
             >
               {isVideoFile(file) ? (
                 <video
-                  src={resolveOriginalMediaUrl(file)}
-                  poster={resolvePreviewMediaUrl(file)}
+                  src={originalMediaUrl}
+                  poster={previewMediaUrl}
                   className={`media-modal-asset media-modal-fit-${mediaFitMode}`}
                   onLoadedMetadata={() => {
                     syncMediaAssetOverflow();
@@ -538,12 +554,22 @@ export default function MediaViewerModal({
                 />
               ) : (
                 <img
-                  src={resolveOriginalMediaUrl(file)}
+                  src={imageMediaUrl}
                   alt={getDisplayName(file.name)}
                   className={`media-modal-asset media-modal-fit-${mediaFitMode}`}
                   onLoad={() => {
                     syncMediaAssetOverflow();
                     centerMediaAssetFrame();
+                  }}
+                  onError={() => {
+                    if (imageSourceAttempt === "primary" && originalMediaUrl && primaryImageMediaUrl !== originalMediaUrl) {
+                      setImageSourceAttempt("original");
+                      return;
+                    }
+
+                    if (imageSourceAttempt !== "preview" && previewMediaUrl && previewMediaUrl !== imageMediaUrl) {
+                      setImageSourceAttempt("preview");
+                    }
                   }}
                 />
               )}

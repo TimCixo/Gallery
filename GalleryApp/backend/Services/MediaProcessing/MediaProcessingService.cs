@@ -103,6 +103,7 @@ public sealed class MediaProcessingService(ILogger<MediaProcessingService> logge
         try
         {
             using var image = await Image.LoadAsync(inputStream, cancellationToken);
+            BrowserSafeImageHelper.ResizeForBrowser(image);
             await image.SaveAsync(destinationPath, new WebpEncoder { Quality = 85 }, cancellationToken);
         }
         catch (UnknownImageFormatException ex)

@@ -158,6 +158,11 @@ public static string BuildMediaUrl(string relativePath)
     return $"/media/{Uri.EscapeDataString(relativePath).Replace("%2F", "/")}";
 }
 
+public static string BuildDisplayUrl(string relativePath)
+{
+    return $"/api/media/view?path={Uri.EscapeDataString(relativePath)}";
+}
+
 public static string BuildTileUrl(string relativePath, string extension, long modifiedTicks)
 {
     return $"/api/media/preview?path={Uri.EscapeDataString(relativePath)}&v={modifiedTicks}";
@@ -234,6 +239,7 @@ public static async Task ConvertImageToWebpAsync(IFormFile file, string destinat
     try
     {
         using var image = await Image.LoadAsync(inputStream);
+        BrowserSafeImageHelper.ResizeForBrowser(image);
         await image.SaveAsync(destinationPath, new WebpEncoder { Quality = 85 });
     }
     catch (UnknownImageFormatException)
@@ -552,12 +558,14 @@ public static object? BuildCollectionCoverPayload(string mediaRootPath, long? co
     var fileInfo = new FileInfo(absolutePath);
     var mediaType = IsImageFile(extension) ? "image" : IsVideoFile(extension) ? "video" : "file";
     var originalUrl = BuildMediaUrl(normalizedPath);
+    var displayUrl = IsImageFile(extension) && !IsGifFile(extension) ? BuildDisplayUrl(normalizedPath) : originalUrl;
     var tileUrl = BuildTileUrl(normalizedPath, extension, fileInfo.LastWriteTimeUtc.Ticks);
 
     return new
     {
         id = coverId.Value,
         relativePath = normalizedPath,
+        displayUrl,
         originalUrl,
         tileUrl,
         mediaType
@@ -648,6 +656,7 @@ public static List<object> LoadMediaItems(
         var fileInfo = new FileInfo(absolutePath);
         var mediaType = IsImageFile(extension) ? "image" : IsVideoFile(extension) ? "video" : "file";
         var originalUrl = BuildMediaUrl(normalizedPath);
+        var displayUrl = IsImageFile(extension) && !IsGifFile(extension) ? BuildDisplayUrl(normalizedPath) : originalUrl;
         var tileUrl = BuildTileUrl(normalizedPath, extension, fileInfo.LastWriteTimeUtc.Ticks);
         var item = new MediaMetadata(
             Id: reader.GetInt64(0),
@@ -671,6 +680,7 @@ public static List<object> LoadMediaItems(
             parent = item.Parent,
             child = item.Child,
             isFavorite = item.IsFavorite,
+            displayUrl,
             originalUrl,
             tileUrl,
             mediaType,
@@ -743,6 +753,7 @@ public static List<object> LoadCollectionMediaItems(
         var fileInfo = new FileInfo(absolutePath);
         var mediaType = IsImageFile(extension) ? "image" : IsVideoFile(extension) ? "video" : "file";
         var originalUrl = BuildMediaUrl(normalizedPath);
+        var displayUrl = IsImageFile(extension) && !IsGifFile(extension) ? BuildDisplayUrl(normalizedPath) : originalUrl;
         var tileUrl = BuildTileUrl(normalizedPath, extension, fileInfo.LastWriteTimeUtc.Ticks);
         var item = new MediaMetadata(
             Id: reader.GetInt64(0),
@@ -766,6 +777,7 @@ public static List<object> LoadCollectionMediaItems(
             parent = item.Parent,
             child = item.Child,
             isFavorite = item.IsFavorite,
+            displayUrl,
             originalUrl,
             tileUrl,
             mediaType,
