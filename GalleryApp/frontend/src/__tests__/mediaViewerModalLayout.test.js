@@ -13,6 +13,9 @@ const appCss = readFileSync(appCssPath, "utf8");
 
 test("media viewer shows related media in thumbnail strip instead of metadata table", () => {
   assert.match(modalSource, /relatedMediaItems/);
+  assert.match(modalSource, /createTagTypeRows/);
+  assert.match(modalSource, /Array\.isArray\(media\?\.tags\) \? media\.tags : \[\]/);
+  assert.match(modalSource, /getTagTypeColor\(tag\?\.tagTypeColor\)/);
   assert.match(modalSource, /const visibleRelatedMediaItems = Array\.isArray\(relatedMediaItems\) && relatedMediaItems\.length > 0/);
   assert.match(modalSource, /relatedMediaStripRef/);
   assert.match(modalSource, /useLayoutEffect/);

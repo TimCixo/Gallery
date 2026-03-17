@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { tagsApi } from "../../../api/tagsApi";
 import { formatFileSize, formatMediaDate } from "../../shared/utils/mediaFormatters";
 import { isVideoFile, resolveOriginalMediaUrl, resolvePreviewMediaUrl } from "../../shared/utils/mediaPredicates";
+import { createTagTypeRows, getTagTypeColor } from "../../shared/utils/tagUtils";
 import { createPendingMediaDelete } from "../../shared/utils/deleteConfirm";
 import TagDeleteConfirmModal from "../../tags/components/TagDeleteConfirmModal";
 import AppIcon from "../../shared/components/AppIcon";
@@ -107,8 +108,17 @@ export default function MediaViewerModal({
   }
 
   const tagTypesSorted = Array.isArray(tagTypes) ? [...tagTypes] : [];
-  const fallbackTypeEntries = groupTagsByType(tagCatalog).map(([name]) => ({ id: name, name, color: "#64748B" }));
-  const normalizedTagTypes = tagTypesSorted.length > 0 ? tagTypesSorted : fallbackTypeEntries;
+  const fallbackTypeEntries = groupTagsByType(tagCatalog).map(([name, tags]) => ({
+    id: String(name),
+    name,
+    color: getTagTypeColor(tags[0]?.tagTypeColor)
+  }));
+  const normalizedTagTypes = createTagTypeRows(
+    file,
+    tagTypesSorted.length > 0 ? tagTypesSorted : fallbackTypeEntries,
+    (media) => (Array.isArray(media?.tags) ? media.tags : []),
+    (tag) => getTagTypeColor(tag?.tagTypeColor)
+  );
   const selectedTagIdsSet = new Set(Array.isArray(selectedTagIds) ? selectedTagIds : []);
   const selectedTagsByType = new Map();
   (Array.isArray(file.tags) ? file.tags : []).forEach((tag) => {
