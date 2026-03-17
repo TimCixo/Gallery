@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { collectionsApi } from "../../api/collectionsApi";
 import { mediaApi } from "../../api/mediaApi";
 import { tagsApi } from "../../api/tagsApi";
+import { normalizePageJumpInput } from "../shared/utils/pagination";
 import CollectionPickerModal from "../collections/components/CollectionPickerModal";
 import MediaViewerModal from "../media/components/MediaViewerModal";
 import FavoritesPage from "./FavoritesPage";
@@ -214,15 +215,14 @@ export default function FavoritesContainer() {
       return;
     }
 
-    const parsed = Number.parseInt(favoritesPageJumpInput, 10);
-    if (!Number.isFinite(parsed)) {
+    const result = normalizePageJumpInput(favoritesPageJumpInput, favoritesPage, favoritesTotalPages);
+    if (!result.isValid) {
       setFavoritesPageJumpInput(String(favoritesPage));
       return;
     }
 
-    const targetPage = Math.min(Math.max(parsed, 1), favoritesTotalPages);
-    setFavoritesPageJumpInput(String(targetPage));
-    handleFavoritesPageChange(targetPage);
+    setFavoritesPageJumpInput(String(result.targetPage));
+    handleFavoritesPageChange(result.targetPage);
   };
 
   const renderFavoritesPagination = (showLoadingState = false) => {
@@ -232,6 +232,41 @@ export default function FavoritesContainer() {
 
     return (
       <div className="media-pagination-wrap">
+        <div className="media-pagination">
+          <button
+            type="button"
+            onClick={() => handleFavoritesPageChange(favoritesPage - 1)}
+            disabled={isFavoritesLoading || favoritesPage <= 1 || favoritesTotalPages === 0}
+          >
+            Prev
+          </button>
+          <p>
+            Page {favoritesTotalPages === 0 ? 0 : favoritesPage} of {favoritesTotalPages}
+          </p>
+          <button
+            type="button"
+            onClick={() => handleFavoritesPageChange(favoritesPage + 1)}
+            disabled={isFavoritesLoading || favoritesTotalPages === 0 || favoritesPage >= favoritesTotalPages}
+          >
+            Next
+          </button>
+          <form className="media-pagination-jump" onSubmit={handleFavoritesPageJumpSubmit}>
+            <input
+              type="number"
+              min={1}
+              max={Math.max(favoritesTotalPages, 1)}
+              step={1}
+              inputMode="numeric"
+              value={favoritesPageJumpInput}
+              onChange={(event) => setFavoritesPageJumpInput(event.target.value)}
+              disabled={isFavoritesLoading || favoritesTotalPages === 0}
+              aria-label="Go to favorites page"
+            />
+            <button type="submit" disabled={isFavoritesLoading || favoritesTotalPages === 0}>
+              Go
+            </button>
+          </form>
+        </div>
         {showLoadingState ? (
           <p className="media-pagination-status" aria-live="polite">
             {isFavoritesLoading ? "Loading favorites..." : "\u00A0"}

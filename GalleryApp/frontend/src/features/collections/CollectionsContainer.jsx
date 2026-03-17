@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { collectionsApi } from "../../api/collectionsApi";
 import { mediaApi } from "../../api/mediaApi";
 import { tagsApi } from "../../api/tagsApi";
+import { normalizePageJumpInput } from "../shared/utils/pagination";
 import CollectionPickerModal from "./components/CollectionPickerModal";
 import MediaViewerModal from "../media/components/MediaViewerModal";
 import CollectionsPage from "./CollectionsPage";
@@ -278,15 +279,14 @@ export default function CollectionsContainer({ searchQuery = "" }) {
       return;
     }
 
-    const parsed = Number.parseInt(collectionFilesPageJumpInput, 10);
-    if (!Number.isFinite(parsed)) {
+    const result = normalizePageJumpInput(collectionFilesPageJumpInput, collectionFilesPage, collectionFilesTotalPages);
+    if (!result.isValid) {
       setCollectionFilesPageJumpInput(String(collectionFilesPage));
       return;
     }
 
-    const targetPage = Math.min(Math.max(parsed, 1), collectionFilesTotalPages);
-    setCollectionFilesPageJumpInput(String(targetPage));
-    handleCollectionFilesPageChange(targetPage);
+    setCollectionFilesPageJumpInput(String(result.targetPage));
+    handleCollectionFilesPageChange(result.targetPage);
   };
 
   const renderCollectionFilesPagination = (showLoadingState = false) => {
@@ -296,6 +296,41 @@ export default function CollectionsContainer({ searchQuery = "" }) {
 
     return (
       <div className="media-pagination-wrap">
+        <div className="media-pagination">
+          <button
+            type="button"
+            onClick={() => handleCollectionFilesPageChange(collectionFilesPage - 1)}
+            disabled={isCollectionFilesLoading || collectionFilesPage <= 1 || collectionFilesTotalPages === 0}
+          >
+            Prev
+          </button>
+          <p>
+            Page {collectionFilesTotalPages === 0 ? 0 : collectionFilesPage} of {collectionFilesTotalPages}
+          </p>
+          <button
+            type="button"
+            onClick={() => handleCollectionFilesPageChange(collectionFilesPage + 1)}
+            disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0 || collectionFilesPage >= collectionFilesTotalPages}
+          >
+            Next
+          </button>
+          <form className="media-pagination-jump" onSubmit={handleCollectionFilesPageJumpSubmit}>
+            <input
+              type="number"
+              min={1}
+              max={Math.max(collectionFilesTotalPages, 1)}
+              step={1}
+              inputMode="numeric"
+              value={collectionFilesPageJumpInput}
+              onChange={(event) => setCollectionFilesPageJumpInput(event.target.value)}
+              disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0}
+              aria-label="Go to collection media page"
+            />
+            <button type="submit" disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0}>
+              Go
+            </button>
+          </form>
+        </div>
         {showLoadingState ? (
           <p className="media-pagination-status" aria-live="polite">
             {isCollectionFilesLoading ? "Loading collection files..." : "\u00A0"}

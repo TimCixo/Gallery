@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { collectionsApi } from "../../api/collectionsApi";
 import { mediaApi } from "../../api/mediaApi";
 import { tagsApi } from "../../api/tagsApi";
+import { normalizePageJumpInput } from "../shared/utils/pagination";
 import CollectionPickerModal from "../collections/components/CollectionPickerModal";
 import MediaViewerModal from "../media/components/MediaViewerModal";
 import GalleryPage from "./GalleryPage";
@@ -246,15 +247,14 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
       return;
     }
 
-    const parsed = Number.parseInt(pageJumpInput, 10);
-    if (!Number.isFinite(parsed)) {
+    const result = normalizePageJumpInput(pageJumpInput, currentPage, totalPages);
+    if (!result.isValid) {
       setPageJumpInput(String(currentPage));
       return;
     }
 
-    const targetPage = Math.min(Math.max(parsed, 1), totalPages);
-    setPageJumpInput(String(targetPage));
-    handlePageChange(targetPage);
+    setPageJumpInput(String(result.targetPage));
+    handlePageChange(result.targetPage);
   };
 
   const renderPagination = (showLoadingState = false) => {
@@ -264,6 +264,41 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
 
     return (
       <div className="media-pagination-wrap">
+        <div className="media-pagination">
+          <button
+            type="button"
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={isMediaLoading || currentPage <= 1 || totalPages === 0}
+          >
+            Prev
+          </button>
+          <p>
+            Page {totalPages === 0 ? 0 : currentPage} of {totalPages}
+          </p>
+          <button
+            type="button"
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={isMediaLoading || totalPages === 0 || currentPage >= totalPages}
+          >
+            Next
+          </button>
+          <form className="media-pagination-jump" onSubmit={handlePageJumpSubmit}>
+            <input
+              type="number"
+              min={1}
+              max={Math.max(totalPages, 1)}
+              step={1}
+              inputMode="numeric"
+              value={pageJumpInput}
+              onChange={(event) => setPageJumpInput(event.target.value)}
+              disabled={isMediaLoading || totalPages === 0}
+              aria-label="Go to page"
+            />
+            <button type="submit" disabled={isMediaLoading || totalPages === 0}>
+              Go
+            </button>
+          </form>
+        </div>
         {showLoadingState ? (
           <p className="media-pagination-status" aria-live="polite">
             {isMediaLoading ? "Loading media..." : "\u00A0"}
