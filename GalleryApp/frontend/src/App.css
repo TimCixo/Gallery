@@ -1011,7 +1011,7 @@
   position: fixed;
   inset: 0;
   background: rgba(2, 6, 23, 0.4);
-  z-index: 35;
+  z-index: 120;
 }
 
 .slide-menu {
@@ -1216,7 +1216,7 @@
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  z-index: 40;
+  z-index: 130;
 }
 
 .media-modal {
@@ -2091,7 +2091,7 @@
   align-items: center;
   justify-content: center;
   background: rgba(2, 6, 23, 0.35);
-  z-index: 70;
+  z-index: 140;
   padding: 1rem;
 }
 
