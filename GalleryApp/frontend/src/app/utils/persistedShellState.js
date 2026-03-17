@@ -1,9 +1,12 @@
+import { normalizeSearchHistory } from "./searchHistory.js";
+
 const SHELL_STATE_KEY = "gallery.app-shell-state";
 
 const DEFAULT_SHELL_STATE = {
   activePage: "gallery",
   inputValue: "",
-  submittedText: ""
+  submittedText: "",
+  searchHistory: []
 };
 
 export function loadPersistedShellState(storage = globalThis?.sessionStorage) {
@@ -25,7 +28,8 @@ export function loadPersistedShellState(storage = globalThis?.sessionStorage) {
     return {
       activePage,
       inputValue: String(parsed?.inputValue || ""),
-      submittedText: String(parsed?.submittedText || "")
+      submittedText: String(parsed?.submittedText || ""),
+      searchHistory: normalizeSearchHistory(parsed?.searchHistory)
     };
   } catch {
     return { ...DEFAULT_SHELL_STATE };
@@ -40,6 +44,7 @@ export function persistShellState(state, storage = globalThis?.sessionStorage) {
   storage.setItem(SHELL_STATE_KEY, JSON.stringify({
     activePage: state?.activePage || DEFAULT_SHELL_STATE.activePage,
     inputValue: String(state?.inputValue || ""),
-    submittedText: String(state?.submittedText || "")
+    submittedText: String(state?.submittedText || ""),
+    searchHistory: normalizeSearchHistory(state?.searchHistory)
   }));
 }

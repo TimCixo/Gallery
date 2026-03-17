@@ -5,19 +5,20 @@ import FavoritesContainer from "../features/favorites/FavoritesContainer";
 import CollectionsContainer from "../features/collections/CollectionsContainer";
 import TagsContainer from "../features/tags/TagsContainer";
 import UploadManagerContainer from "../features/upload/UploadManagerContainer";
+import SearchInput from "../features/search/components/SearchInput";
 import AppIcon from "../features/shared/components/AppIcon";
 import {
   buildSearchSuggestions,
-  formatSearchTagValue,
   getSearchTokenRange,
   parseSearchSegments
 } from "../features/shared/utils/searchUtils";
 import { buildSearchTagTypeOptions } from "../features/shared/utils/tagUtils";
 import {
+  applySearchSuggestionToValue,
   createGalleryBrandNavigationState,
-  getSearchSuggestionSelection,
   getSubmittedSearchText
 } from "./utils/searchState";
+import { addSearchHistoryItem } from "./utils/searchHistory";
 import { loadPersistedShellState, persistShellState } from "./utils/persistedShellState";
 
 const BASE_SEARCH_TAG_OPTIONS = ["path", "title", "description", "id", "source"];
@@ -29,16 +30,12 @@ export default function AppShell() {
   const [isSlideMenuOpen, setIsSlideMenuOpen] = useState(false);
   const [inputValue, setInputValue] = useState(initialShellState.inputValue);
   const [submittedText, setSubmittedText] = useState(initialShellState.submittedText);
+  const [searchHistory, setSearchHistory] = useState(initialShellState.searchHistory);
   const [searchCaretPosition, setSearchCaretPosition] = useState(0);
-  const [isSearchInputFocused, setIsSearchInputFocused] = useState(false);
-  const [activeSearchSuggestionIndex, setActiveSearchSuggestionIndex] = useState(0);
-  const [isSearchSuggestionExplicitlyActive, setIsSearchSuggestionExplicitlyActive] = useState(false);
   const [searchTagTypes, setSearchTagTypes] = useState([]);
   const [searchTagCatalog, setSearchTagCatalog] = useState([]);
   const [searchSubmitSeq, setSearchSubmitSeq] = useState(0);
   const [openMediaRequest, setOpenMediaRequest] = useState({ token: 0, media: null });
-  const searchInputRef = useRef(null);
-  const searchHighlightRef = useRef(null);
   const prevActivePageRef = useRef("gallery");
 
   const loadSearchMetadata = useCallback(async () => {
@@ -63,9 +60,10 @@ export default function AppShell() {
     persistShellState({
       activePage,
       inputValue,
-      submittedText
+      submittedText,
+      searchHistory
     });
-  }, [activePage, inputValue, submittedText]);
+  }, [activePage, inputValue, submittedText, searchHistory]);
 
   useEffect(() => {
     const previousPage = prevActivePageRef.current;
@@ -91,13 +89,6 @@ export default function AppShell() {
     [searchTagTypeOptions]
   );
 
-  const syncSearchHighlightScroll = () => {
-    if (!searchInputRef.current || !searchHighlightRef.current) {
-      return;
-    }
-    searchHighlightRef.current.scrollLeft = searchInputRef.current.scrollLeft;
-  };
-
   const searchTokenRange = useMemo(
     () => getSearchTokenRange(inputValue, searchCaretPosition),
     [inputValue, searchCaretPosition]
@@ -112,113 +103,22 @@ export default function AppShell() {
     }),
     [searchTagCatalog, searchTagOptions, searchTagTypeMap, searchTokenRange]
   );
-  const hasSearchSuggestions = activePage !== "collections" && isSearchInputFocused && searchSuggestions.length > 0;
-
-  const handleSearchInputChange = (event) => {
-    setInputValue(event.target.value);
-    const caretPosition = event.target.selectionStart ?? event.target.value.length;
-    setSearchCaretPosition(caretPosition);
-    setActiveSearchSuggestionIndex(0);
-    setIsSearchSuggestionExplicitlyActive(false);
-  };
-
-  const updateSearchCaretPosition = (event) => {
-    const caretPosition = event.target.selectionStart ?? event.target.value.length;
-    setSearchCaretPosition(caretPosition);
-    setIsSearchSuggestionExplicitlyActive(false);
-  };
-
-  const applySearchSuggestion = (suggestion) => {
-    if (!suggestion) {
-      return;
+  const searchHighlightSegments = useMemo(() => {
+    if (!inputValue) {
+      return [];
     }
 
-    const prefix = inputValue.slice(0, searchTokenRange.start);
-    const suffix = inputValue.slice(searchTokenRange.end);
-    let insertedToken = `${suggestion.tagName}:`;
-
-    if (suggestion.kind === "tagValue") {
-      insertedToken = `${suggestion.tagName}:${formatSearchTagValue(suggestion.tagValue)}`;
-      if (!suffix.startsWith(" ")) {
-        insertedToken += " ";
-      }
+    if (activePage === "collections") {
+      return [{ text: inputValue, isTag: false, color: "" }];
     }
 
-    const nextValue = `${prefix}${insertedToken}${suffix}`;
-    const nextCaret = prefix.length + insertedToken.length;
-    setInputValue(nextValue);
-    setSearchCaretPosition(nextCaret);
-    setActiveSearchSuggestionIndex(0);
-    setIsSearchSuggestionExplicitlyActive(false);
-
-    requestAnimationFrame(() => {
-      if (!searchInputRef.current) {
-        return;
-      }
-      searchInputRef.current.focus();
-      searchInputRef.current.setSelectionRange(nextCaret, nextCaret);
-      syncSearchHighlightScroll();
+    return parseSearchSegments({
+      value: inputValue,
+      baseSearchTagNames: BASE_SEARCH_TAG_NAMES,
+      searchTagTypeMap,
+      searchTagOptions
     });
-  };
-
-  const handleSearchInputKeyDown = (event) => {
-    if (!hasSearchSuggestions) {
-      return;
-    }
-
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      setIsSearchSuggestionExplicitlyActive(true);
-      setActiveSearchSuggestionIndex((current) => (current + 1) % searchSuggestions.length);
-      return;
-    }
-
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setIsSearchSuggestionExplicitlyActive(true);
-      setActiveSearchSuggestionIndex((current) => ((current - 1 + searchSuggestions.length) % searchSuggestions.length));
-      return;
-    }
-
-    if (event.key === "Tab") {
-      event.preventDefault();
-      const selectedSuggestion = getSearchSuggestionSelection(searchSuggestions, activeSearchSuggestionIndex);
-      if (selectedSuggestion) {
-        applySearchSuggestion(selectedSuggestion);
-      }
-      return;
-    }
-
-    if (event.key === "Enter") {
-      const selectedSuggestion = getSearchSuggestionSelection(searchSuggestions, activeSearchSuggestionIndex);
-      if (!selectedSuggestion) {
-        return;
-      }
-
-      event.preventDefault();
-      if (selectedSuggestion) {
-        applySearchSuggestion(selectedSuggestion);
-      }
-      return;
-    }
-
-    if (event.key === "Escape") {
-      setIsSearchInputFocused(false);
-      setIsSearchSuggestionExplicitlyActive(false);
-    }
-  };
-
-  useEffect(() => {
-    syncSearchHighlightScroll();
-  }, [inputValue]);
-
-  useEffect(() => {
-    if (activeSearchSuggestionIndex < searchSuggestions.length) {
-      return;
-    }
-    setActiveSearchSuggestionIndex(0);
-    setIsSearchSuggestionExplicitlyActive(false);
-  }, [activeSearchSuggestionIndex, searchSuggestions.length]);
+  }, [activePage, inputValue, searchTagOptions, searchTagTypeMap]);
 
   useEffect(() => {
     const handleOpenMedia = (event) => {
@@ -268,10 +168,39 @@ export default function AppShell() {
     setSubmittedText(nextSubmittedText);
     setActivePage("gallery");
     setSearchSubmitSeq((value) => value + 1);
+    setSearchHistory((current) => addSearchHistoryItem(current, activePage === "collections" ? "" : nextSubmittedText));
     setIsSlideMenuOpen(false);
   };
 
   const searchPlaceholder = activePage === "collections" ? "collection name" : "title:cat id:42";
+  const searchHelpText = activePage === "collections"
+    ? "Search collections by name."
+    : "Use filters like title:cat or id:42.";
+
+  const handleSearchSuggestionApply = ({ suggestion, searchTokenRange: nextSearchTokenRange }) => {
+    const nextState = applySearchSuggestionToValue({
+      inputValue,
+      suggestion,
+      searchTokenRange: nextSearchTokenRange
+    });
+    setInputValue(nextState.nextValue);
+    setSearchCaretPosition(nextState.nextCaret);
+    return nextState;
+  };
+
+  const handleSearchHistorySelect = (historyValue) => {
+    const nextValue = String(historyValue || "").trim();
+    if (!nextValue) {
+      return;
+    }
+
+    setInputValue(nextValue);
+    setSearchHistory((current) => addSearchHistoryItem(current, nextValue));
+  };
+
+  const handleSearchHistoryClear = () => {
+    setSearchHistory([]);
+  };
 
   return (
     <main className="app-root">
@@ -293,70 +222,20 @@ export default function AppShell() {
         </div>
 
         <form className="top-form" onSubmit={handleSubmit}>
-          <div className="top-input-wrap">
-            <div ref={searchHighlightRef} className="top-input-highlight" aria-hidden="true">
-              {inputValue ? (
-                activePage === "collections" ? (
-                  <span className="top-input-segment">{inputValue}</span>
-                ) : (
-                  parseSearchSegments({
-                    value: inputValue,
-                    baseSearchTagNames: BASE_SEARCH_TAG_NAMES,
-                    searchTagTypeMap,
-                    searchTagOptions
-                  }).map((segment, index) => (
-                    <span
-                      key={`${index}-${segment.text}`}
-                      className={segment.isTag ? "top-input-segment is-tag" : "top-input-segment"}
-                      style={segment.isTag && segment.color ? { outlineColor: segment.color } : undefined}
-                    >
-                      {segment.text}
-                    </span>
-                  ))
-                )
-              ) : (
-                <span className="top-input-placeholder">{searchPlaceholder}</span>
-              )}
-            </div>
-            <input
-              ref={searchInputRef}
-              className="top-input"
-              type="text"
-              value={inputValue}
-              onChange={handleSearchInputChange}
-              onFocus={() => setIsSearchInputFocused(true)}
-              onBlur={() => {
-                setIsSearchInputFocused(false);
-                setIsSearchSuggestionExplicitlyActive(false);
-              }}
-              onClick={updateSearchCaretPosition}
-              onKeyUp={updateSearchCaretPosition}
-              onKeyDown={handleSearchInputKeyDown}
-              onScroll={syncSearchHighlightScroll}
-              placeholder={searchPlaceholder}
-              spellCheck={false}
-              autoComplete="off"
-            />
-            {hasSearchSuggestions ? (
-              <ul className="top-search-suggestions">
-                {searchSuggestions.map((suggestion, index) => (
-                  <li key={suggestion.key}>
-                    <button
-                      type="button"
-                      className={`top-search-suggestion${index === activeSearchSuggestionIndex ? " is-active" : ""}`}
-                      style={suggestion.color ? { outlineColor: suggestion.color } : undefined}
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        applySearchSuggestion(suggestion);
-                      }}
-                    >
-                      {suggestion.label}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
+          <SearchInput
+            value={inputValue}
+            placeholder={searchPlaceholder}
+            highlightSegments={searchHighlightSegments}
+            suggestions={searchSuggestions}
+            suggestionsEnabled={activePage !== "collections"}
+            historyItems={searchHistory}
+            helpText={searchHelpText}
+            onValueChange={setInputValue}
+            onCaretChange={setSearchCaretPosition}
+            onApplySuggestion={handleSearchSuggestionApply}
+            onSelectHistory={handleSearchHistorySelect}
+            onClearHistory={handleSearchHistoryClear}
+          />
           <button type="submit" className="media-action-btn app-button-icon-only top-search-submit-btn" aria-label="Search" title="Search">
             <AppIcon name="search" alt="" aria-hidden="true" />
           </button>

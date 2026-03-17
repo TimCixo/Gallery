@@ -18,4 +18,4 @@ public sealed class MediaSearchCriteria
         || TagFilters.Count > 0;
 }
 
-public sealed record MediaSearchTagFilter(string TagTypeName, string TagName);
+public sealed record MediaSearchTagFilter(string TagTypeName, string TagName, bool Exclude = false);

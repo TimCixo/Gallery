@@ -1,3 +1,9 @@
+const stripSearchTokenDecorators = (token) => {
+  const rawToken = String(token || "");
+  const tokenWithoutMinus = rawToken.startsWith("-") ? rawToken.slice(1) : rawToken;
+  return tokenWithoutMinus.startsWith("@") ? tokenWithoutMinus.slice(1) : tokenWithoutMinus;
+};
+
 export const parseSearchSegments = ({ value, baseSearchTagNames, searchTagTypeMap, searchTagOptions }) => {
   const text = String(value || "");
   if (!text) {
@@ -24,10 +30,10 @@ export const parseSearchSegments = ({ value, baseSearchTagNames, searchTagTypeMa
     }
 
     const token = text.slice(tokenStart, tokenEnd);
-    const separatorIndex = token.indexOf(":");
-    const tokenWithoutAtPrefix = token.startsWith("@") ? token.slice(1) : token;
-    const normalizedToken = tokenWithoutAtPrefix.trim().toLowerCase();
-    const tagName = separatorIndex > 0 ? tokenWithoutAtPrefix.slice(0, separatorIndex).trim().toLowerCase() : "";
+    const tokenWithoutDecorators = stripSearchTokenDecorators(token);
+    const separatorIndex = tokenWithoutDecorators.indexOf(":");
+    const normalizedToken = tokenWithoutDecorators.trim().toLowerCase();
+    const tagName = separatorIndex > 0 ? tokenWithoutDecorators.slice(0, separatorIndex).trim().toLowerCase() : "";
     const normalizedTokenTagName = separatorIndex < 0 ? normalizedToken : tagName;
     const tagType = searchTagTypeMap.get(normalizedTokenTagName);
     const isKnownSearchTag = baseSearchTagNames.has(normalizedTokenTagName);

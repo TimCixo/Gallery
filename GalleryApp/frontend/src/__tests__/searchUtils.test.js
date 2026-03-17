@@ -21,6 +21,28 @@ test("buildSearchSuggestions suggests tag names by prefix", () => {
   assert.equal(suggestions[0].kind, "tagName");
 });
 
+test("buildSearchSuggestions stays empty for an empty token and limits autocomplete results", () => {
+  const suggestions = buildSearchSuggestions({
+    searchTokenRange: getSearchTokenRange("", 0),
+    searchTagOptions: ["title", "path", "artist", "author", "album", "age"],
+    searchTagTypeMap: new Map(),
+    baseSearchTagNames: new Set(["path", "title", "description", "id", "source"]),
+    mediaTagCatalog: []
+  });
+
+  assert.deepEqual(suggestions, []);
+
+  const limitedSuggestions = buildSearchSuggestions({
+    searchTokenRange: getSearchTokenRange("a", 1),
+    searchTagOptions: ["artist", "author", "album", "age", "area", "arc"],
+    searchTagTypeMap: new Map(),
+    baseSearchTagNames: new Set(["path", "title", "description", "id", "source"]),
+    mediaTagCatalog: []
+  });
+
+  assert.equal(limitedSuggestions.length, 5);
+});
+
 test("buildSearchSuggestions suggests values for typed tag", () => {
   const suggestions = buildSearchSuggestions({
     searchTokenRange: getSearchTokenRange("artist:bl", 9),
@@ -41,9 +63,39 @@ test("buildSearchSuggestions suggests values for typed tag", () => {
   assert.equal(formatSearchTagValue("Blue Sky"), '"Blue Sky"');
 });
 
+test("buildSearchSuggestions ignores leading minus while keeping it in labels", () => {
+  const suggestions = buildSearchSuggestions({
+    searchTokenRange: getSearchTokenRange("-cat", 4),
+    searchTagOptions: ["title", "path", "animal"],
+    searchTagTypeMap: new Map([["animal", { color: "#112233" }]]),
+    baseSearchTagNames: new Set(["path", "title", "description", "id", "source"]),
+    mediaTagCatalog: [
+      { tagTypeName: "animal", name: "cat" },
+      { tagTypeName: "animal", name: "dog" }
+    ]
+  });
+
+  assert.deepEqual(suggestions.map((item) => item.label), ["-animal:cat"]);
+});
+
+test("buildSearchSuggestions excludes non-prefix free-form matches", () => {
+  const suggestions = buildSearchSuggestions({
+    searchTokenRange: getSearchTokenRange("at", 2),
+    searchTagOptions: ["title", "path", "artist"],
+    searchTagTypeMap: new Map([["artist", { color: "#112233" }]]),
+    baseSearchTagNames: new Set(["path", "title", "description", "id", "source"]),
+    mediaTagCatalog: [
+      { tagTypeName: "artist", name: "Black Cat" },
+      { tagTypeName: "artist", name: "Cathedral" }
+    ]
+  });
+
+  assert.deepEqual(suggestions, []);
+});
+
 test("parseSearchSegments includes color for known tag type", () => {
   const segments = parseSearchSegments({
-    value: "artist:alpha plain",
+    value: "-artist:alpha plain",
     baseSearchTagNames: new Set(["title", "path"]),
     searchTagTypeMap: new Map([["artist", { color: "#112233" }]]),
     searchTagOptions: ["title", "path", "artist"]

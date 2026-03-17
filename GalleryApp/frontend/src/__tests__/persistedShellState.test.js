@@ -19,13 +19,15 @@ test("persisted shell state round-trips active page and search values", () => {
   persistShellState({
     activePage: "favorites",
     inputValue: "title:cat",
-    submittedText: "title:cat"
+    submittedText: "title:cat",
+    searchHistory: ["title:cat", "id:42"]
   }, storage);
 
   assert.deepEqual(loadPersistedShellState(storage), {
     activePage: "favorites",
     inputValue: "title:cat",
-    submittedText: "title:cat"
+    submittedText: "title:cat",
+    searchHistory: ["title:cat", "id:42"]
   });
 });
 
@@ -36,6 +38,7 @@ test("persisted shell state falls back to defaults for invalid values", () => {
   assert.deepEqual(loadPersistedShellState(storage), {
     activePage: "gallery",
     inputValue: "42",
-    submittedText: ""
+    submittedText: "",
+    searchHistory: []
   });
 });

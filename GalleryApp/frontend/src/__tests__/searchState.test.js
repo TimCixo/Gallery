@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  applySearchSuggestionToValue,
   createGalleryBrandNavigationState,
   getSearchSuggestionSelection,
   getSubmittedSearchText
@@ -30,4 +31,62 @@ test("getSearchSuggestionSelection clamps out of range indexes", () => {
   const suggestions = [{ key: "first" }, { key: "second" }];
   assert.deepEqual(getSearchSuggestionSelection(suggestions, 99), { key: "second" });
   assert.equal(getSearchSuggestionSelection([], 0), null);
+});
+
+test("applySearchSuggestionToValue inserts tag names and values at the current token", () => {
+  assert.deepEqual(
+    applySearchSuggestionToValue({
+      inputValue: "tit",
+      suggestion: {
+        kind: "tagName",
+        tagName: "title"
+      },
+      searchTokenRange: {
+        start: 0,
+        end: 3
+      }
+    }),
+    {
+      nextValue: "title:",
+      nextCaret: 6
+    }
+  );
+
+  assert.deepEqual(
+    applySearchSuggestionToValue({
+      inputValue: "artist:bl",
+      suggestion: {
+        kind: "tagValue",
+        tagName: "artist",
+        tagValue: "Blue Sky"
+      },
+      searchTokenRange: {
+        start: 0,
+        end: 9
+      }
+    }),
+    {
+      nextValue: 'artist:"Blue Sky" ',
+      nextCaret: 18
+    }
+  );
+
+  assert.deepEqual(
+    applySearchSuggestionToValue({
+      inputValue: "-cat",
+      suggestion: {
+        kind: "tagValue",
+        tagName: "animal",
+        tagValue: "cat"
+      },
+      searchTokenRange: {
+        start: 0,
+        end: 4
+      }
+    }),
+    {
+      nextValue: "-animal:cat ",
+      nextCaret: 12
+    }
+  );
 });

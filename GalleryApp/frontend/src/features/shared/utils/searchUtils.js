@@ -1,3 +1,17 @@
+const MAX_SEARCH_SUGGESTIONS = 5;
+
+const stripSearchTokenDecorators = (token) => {
+  const rawToken = String(token || "");
+  const isExcluded = rawToken.startsWith("-");
+  const tokenWithoutMinus = isExcluded ? rawToken.slice(1) : rawToken;
+  const tokenWithoutAtPrefix = tokenWithoutMinus.startsWith("@") ? tokenWithoutMinus.slice(1) : tokenWithoutMinus;
+
+  return {
+    isExcluded,
+    tokenWithoutDecorators: tokenWithoutAtPrefix
+  };
+};
+
 export const parseSearchSegments = ({ value, baseSearchTagNames, searchTagTypeMap, searchTagOptions }) => {
   const text = String(value || "");
   if (!text) {
@@ -25,9 +39,10 @@ export const parseSearchSegments = ({ value, baseSearchTagNames, searchTagTypeMa
 
     const token = text.slice(tokenStart, tokenEnd);
     const separatorIndex = token.indexOf(":");
-    const tokenWithoutAtPrefix = token.startsWith("@") ? token.slice(1) : token;
-    const normalizedToken = tokenWithoutAtPrefix.trim().toLowerCase();
-    const tagName = separatorIndex > 0 ? tokenWithoutAtPrefix.slice(0, separatorIndex).trim().toLowerCase() : "";
+    const { tokenWithoutDecorators } = stripSearchTokenDecorators(token);
+    const normalizedToken = tokenWithoutDecorators.trim().toLowerCase();
+    const normalizedSeparatorIndex = tokenWithoutDecorators.indexOf(":");
+    const tagName = normalizedSeparatorIndex > 0 ? tokenWithoutDecorators.slice(0, normalizedSeparatorIndex).trim().toLowerCase() : "";
     const normalizedTokenTagName = separatorIndex < 0 ? normalizedToken : tagName;
     const tagType = searchTagTypeMap.get(normalizedTokenTagName);
     const isKnownSearchTag = baseSearchTagNames.has(normalizedTokenTagName);
@@ -77,11 +92,10 @@ export const buildSearchSuggestions = ({
 }) => {
   const tokenBeforeCaret = searchTokenRange.tokenBeforeCaret;
   const token = searchTokenRange.token;
-  const tokenBeforeCaretWithoutAtPrefix = tokenBeforeCaret.startsWith("@")
-    ? tokenBeforeCaret.slice(1)
-    : tokenBeforeCaret;
-  const tokenWithoutAtPrefix = token.startsWith("@") ? token.slice(1) : token;
+  const { isExcluded, tokenWithoutDecorators: tokenBeforeCaretWithoutAtPrefix } = stripSearchTokenDecorators(tokenBeforeCaret);
+  const { tokenWithoutDecorators: tokenWithoutAtPrefix } = stripSearchTokenDecorators(token);
   const separatorIndex = tokenWithoutAtPrefix.indexOf(":");
+  const suggestionPrefix = isExcluded ? "-" : "";
 
   if (separatorIndex < 0) {
     if (tokenBeforeCaretWithoutAtPrefix.includes(":")) {
@@ -89,14 +103,18 @@ export const buildSearchSuggestions = ({
     }
 
     const typedFragment = tokenBeforeCaretWithoutAtPrefix.trim().toLowerCase();
+    if (!typedFragment) {
+      return [];
+    }
+
     const byTagNames = searchTagOptions
       .filter((tagName) => tagName.startsWith(typedFragment))
-      .slice(0, 40)
+      .slice(0, MAX_SEARCH_SUGGESTIONS)
       .map((tagName) => ({
         kind: "tagName",
         key: `tag-${tagName}`,
         tagName,
-        label: `${tagName}:`,
+        label: `${suggestionPrefix}${tagName}:`,
         color: searchTagTypeMap.get(tagName)?.color || ""
       }));
 
@@ -111,7 +129,7 @@ export const buildSearchSuggestions = ({
         return;
       }
 
-      if (typedFragment && !candidateType.includes(typedFragment) && !candidateValue.includes(typedFragment)) {
+      if (!candidateType.startsWith(typedFragment) && !candidateValue.startsWith(typedFragment)) {
         return;
       }
 
@@ -126,13 +144,13 @@ export const buildSearchSuggestions = ({
         key: `pair-${normalizedPair}`,
         tagName: candidateType,
         tagValue: candidateValueName,
-        label: `${candidateType}:${candidateValueName}`,
+        label: `${suggestionPrefix}${candidateType}:${candidateValueName}`,
         color: searchTagTypeMap.get(candidateType)?.color || ""
       });
     });
 
     byTagPairs.sort((left, right) => left.label.localeCompare(right.label));
-    return [...byTagNames, ...byTagPairs].slice(0, 40);
+    return [...byTagNames, ...byTagPairs].slice(0, MAX_SEARCH_SUGGESTIONS);
   }
 
   if (!tokenBeforeCaretWithoutAtPrefix.includes(":") || separatorIndex <= 0) {
@@ -149,6 +167,9 @@ export const buildSearchSuggestions = ({
     .trimStart()
     .replace(/^"/, "")
     .toLowerCase();
+  if (!typedTagValuePrefix) {
+    return [];
+  }
 
   const candidates = [];
   const seen = new Set();
@@ -160,7 +181,7 @@ export const buildSearchSuggestions = ({
     }
 
     const normalizedCandidate = candidateName.toLowerCase();
-    if (typedTagValuePrefix && !normalizedCandidate.includes(typedTagValuePrefix)) {
+    if (!normalizedCandidate.startsWith(typedTagValuePrefix)) {
       return;
     }
     if (seen.has(normalizedCandidate)) {
@@ -172,12 +193,12 @@ export const buildSearchSuggestions = ({
   });
 
   candidates.sort((left, right) => left.localeCompare(right));
-  return candidates.slice(0, 40).map((tagValue) => ({
+  return candidates.slice(0, MAX_SEARCH_SUGGESTIONS).map((tagValue) => ({
     kind: "tagValue",
     key: `value-${tagName}-${tagValue.toLowerCase()}`,
     tagName,
     tagValue,
-    label: tagValue,
+    label: `${suggestionPrefix}${tagValue}`,
     color: searchTagTypeMap.get(tagName)?.color || ""
   }));
 };

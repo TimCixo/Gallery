@@ -4,7 +4,7 @@ import { formatSearchTagValue, getSearchTokenRange, parseSearchSegments } from "
 
 test("parseSearchSegments marks known and typed tags", () => {
   const segments = parseSearchSegments({
-    value: "title:cat artist dog",
+    value: "title:cat -artist dog",
     baseSearchTagNames: new Set(["title", "path"]),
     searchTagTypeMap: new Map([["artist", { color: "#112233" }]]),
     searchTagOptions: ["title", "path", "artist"]
@@ -13,7 +13,7 @@ test("parseSearchSegments marks known and typed tags", () => {
   assert.deepEqual(segments, [
     { text: "title:cat", isTag: true, color: "" },
     { text: " ", isTag: false },
-    { text: "artist", isTag: true, color: "#112233" },
+    { text: "-artist", isTag: true, color: "#112233" },
     { text: " ", isTag: false },
     { text: "dog", isTag: false, color: "" }
   ]);

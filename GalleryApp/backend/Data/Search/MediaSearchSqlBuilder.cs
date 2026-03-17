@@ -75,7 +75,7 @@ public static class MediaSearchSqlBuilder
                 var tagParamName = $"$p{parameterIndex++}";
                 command.Parameters.AddWithValue(typeParamName, filter.TagTypeName.Trim().ToLowerInvariant());
                 command.Parameters.AddWithValue(tagParamName, $"%{filter.TagName.Trim().ToLowerInvariant()}%");
-                whereClauses.Add($"""
+                var existsClause = $"""
                     EXISTS (
                         SELECT 1
                         FROM MediaTags mt
@@ -85,7 +85,8 @@ public static class MediaSearchSqlBuilder
                           AND LOWER(tt.Name) = {typeParamName}
                           AND LOWER(t.Name) LIKE {tagParamName}
                     )
-                    """);
+                    """;
+                whereClauses.Add(filter.Exclude ? $"NOT {existsClause}" : existsClause);
             }
         }
     }

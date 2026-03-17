@@ -25,6 +25,17 @@ public static class MediaSearchParser
                 break;
             }
 
+            var isExcluded = text[index] == '-';
+            if (isExcluded)
+            {
+                index++;
+            }
+
+            if (index >= text.Length)
+            {
+                break;
+            }
+
             var hasAtPrefix = text[index] == '@';
             var tagStart = hasAtPrefix ? index + 1 : index;
             var separatorIndex = text.IndexOf(':', tagStart);
@@ -133,7 +144,7 @@ public static class MediaSearchParser
                     }
                     break;
                 default:
-                    criteria.TagFilters.Add(new MediaSearchTagFilter(tag, value));
+                    criteria.TagFilters.Add(new MediaSearchTagFilter(tag, value, isExcluded));
                     break;
             }
         }

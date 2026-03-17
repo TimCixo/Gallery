@@ -899,7 +899,7 @@ public static List<string> BuildMediaSearchWhereClauses(
             var tagParamName = $"$p{parameterIndex++}";
             command.Parameters.AddWithValue(typeParamName, filter.TagTypeName.Trim().ToLowerInvariant());
             command.Parameters.AddWithValue(tagParamName, $"%{filter.TagName.Trim().ToLowerInvariant()}%");
-            whereClauses.Add($"""
+            var existsClause = $"""
                 EXISTS (
                     SELECT 1
                     FROM MediaTags mt
@@ -909,7 +909,8 @@ public static List<string> BuildMediaSearchWhereClauses(
                       AND LOWER(tt.Name) = {typeParamName}
                       AND LOWER(t.Name) LIKE {tagParamName}
                 )
-                """);
+                """;
+            whereClauses.Add(filter.Exclude ? $"NOT {existsClause}" : existsClause);
         }
     }
 }
@@ -928,6 +929,17 @@ public static MediaSearchCriteria ParseMediaSearchCriteria(string? search)
     while (index < text.Length)
     {
         while (index < text.Length && char.IsWhiteSpace(text[index]))
+        {
+            index++;
+        }
+
+        if (index >= text.Length)
+        {
+            break;
+        }
+
+        var isExcluded = text[index] == '-';
+        if (isExcluded)
         {
             index++;
         }
@@ -1055,7 +1067,8 @@ public static MediaSearchCriteria ParseMediaSearchCriteria(string? search)
             default:
                 criteria.TagFilters.Add(new MediaSearchTagFilter(
                     TagTypeName: tag,
-                    TagName: value));
+                    TagName: value,
+                    Exclude: isExcluded));
                 break;
         }
     }
