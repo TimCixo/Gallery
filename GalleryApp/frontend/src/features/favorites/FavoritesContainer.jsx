@@ -4,6 +4,7 @@ import { mediaApi } from "../../api/mediaApi";
 import { tagsApi } from "../../api/tagsApi";
 import { normalizePageJumpInput } from "../shared/utils/pagination";
 import CollectionPickerModal from "../collections/components/CollectionPickerModal";
+import CollectionPickerDialogContent from "../collections/components/CollectionPickerDialogContent";
 import MediaViewerModal from "../media/components/MediaViewerModal";
 import { buildRelatedMediaChain } from "../media/utils/relatedMediaChain";
 import FavoritesPage from "./FavoritesPage";
@@ -659,6 +660,7 @@ export default function FavoritesContainer() {
           mediaRelationPickerError={mediaRelationPickerError}
           onMediaRelationPickerPrev={() => setMediaRelationPickerPage((current) => Math.max(1, current - 1))}
           onMediaRelationPickerNext={() => setMediaRelationPickerPage((current) => current + 1)}
+          onMediaRelationPickerPageChange={(value) => setMediaRelationPickerPage(value)}
           onCloseMediaRelationPicker={closeMediaRelationPicker}
           onSelectMediaRelationFromPicker={handleSelectMediaRelationFromPicker}
           onStartEdit={() => setIsEditingMedia(true)}
@@ -670,32 +672,14 @@ export default function FavoritesContainer() {
         />
       ) : null}
       <CollectionPickerModal isOpen={isCollectionPickerOpen} onClose={closeCollectionPicker} initialData={{ kind: "media" }}>
-        <div className="collection-picker-dialog" onClick={(event) => event.stopPropagation()}>
-          <p className="collection-picker-title">Select collection</p>
-          {collectionPickerError ? <p className="media-action-error">{collectionPickerError}</p> : null}
-          {isCollectionPickerLoading ? (
-            <p className="collections-state">Loading collections...</p>
-          ) : collectionPickerItems.length === 0 ? (
-            <p className="collections-state">No collections available.</p>
-          ) : (
-            <ul className="collection-picker-list">
-              {collectionPickerItems.map((item) => (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    className={`collection-picker-item${item.containsMedia ? " is-included" : ""}`}
-                    onClick={() => void handleAddSelectedMediaToCollection(item.id)}
-                    disabled={isAddingMediaToCollection}
-                  >
-                    <span>{item.label}</span>
-                    <em>{item.containsMedia ? "Included" : "Not included"}</em>
-                    <small>{item.description || "No description."}</small>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <CollectionPickerDialogContent
+          items={collectionPickerItems}
+          errorMessage={collectionPickerError}
+          isLoading={isCollectionPickerLoading}
+          isBusy={isAddingMediaToCollection}
+          onSelect={(item) => void handleAddSelectedMediaToCollection(item.id)}
+          onClose={closeCollectionPicker}
+        />
       </CollectionPickerModal>
     </FavoritesPage>
   );

@@ -7,6 +7,8 @@ import TagDeleteConfirmModal from "../../tags/components/TagDeleteConfirmModal";
 import AppIcon from "../../shared/components/AppIcon";
 import MediaEditorPanel from "./MediaEditorPanel";
 import MediaDeleteConfirmModal from "./MediaDeleteConfirmModal";
+import MediaRelationPickerDialogContent from "./MediaRelationPickerDialogContent";
+import MediaRelationPickerModal from "./MediaRelationPickerModal";
 import { getNextMediaFitMode } from "../utils/mediaFitMode";
 
 function renderSource(source) {
@@ -96,6 +98,7 @@ export default function MediaViewerModal({
   mediaRelationPickerError,
   onMediaRelationPickerPrev,
   onMediaRelationPickerNext,
+  onMediaRelationPickerPageChange,
   onCloseMediaRelationPicker,
   onSelectMediaRelationFromPicker
 }) {
@@ -458,6 +461,7 @@ export default function MediaViewerModal({
             mediaRelationPickerError={mediaRelationPickerError}
             onMediaRelationPickerPrev={onMediaRelationPickerPrev}
             onMediaRelationPickerNext={onMediaRelationPickerNext}
+            onMediaRelationPickerPageChange={onMediaRelationPickerPageChange}
             onCloseMediaRelationPicker={onCloseMediaRelationPicker}
             onSelectMediaRelationFromPicker={onSelectMediaRelationFromPicker}
             primaryActionLabel="Save"
@@ -919,107 +923,26 @@ export default function MediaViewerModal({
       </div>
       </div>
 
-      {isMediaRelationPickerOpen ? (
-        <div className="media-confirm-overlay" onClick={onCloseMediaRelationPicker}>
-          <div
-            className="collection-picker-dialog media-relation-picker-dialog"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <p className="collection-picker-title">
-              Select {mediaRelationPickerMode === "child" ? "child" : "parent"} media
-            </p>
-            <div className="media-relation-picker-controls">
-              <input
-                type="search"
-                className="media-edit-input"
-                value={mediaRelationPickerQuery}
-                onChange={(event) => onMediaRelationPickerQueryChange?.(event.target.value)}
-                placeholder="Search by id, title, path..."
-              />
-              <button
-                type="button"
-                className="media-action-btn"
-                onClick={() => onMediaRelationPickerQueryChange?.("")}
-                disabled={!mediaRelationPickerQuery}
-              >
-                Reset
-              </button>
-            </div>
-            {mediaRelationPickerError ? <p className="media-action-error">{mediaRelationPickerError}</p> : null}
-            {isMediaRelationPickerLoading ? (
-              <p className="collections-state">Loading media...</p>
-            ) : mediaRelationPickerItems.length === 0 ? (
-              <p className="collections-state">No media found.</p>
-            ) : (
-              <ul className="collection-picker-list media-relation-picker-list">
-                {mediaRelationPickerItems.map((item) => {
-                  const previewUrl = resolvePreviewMediaUrl(item);
-                  return (
-                    <li key={`relation-picker-${item.id}`}>
-                      <button
-                        type="button"
-                        className="collection-picker-item media-relation-picker-item"
-                        onClick={() => onSelectMediaRelationFromPicker?.(item)}
-                      >
-                        {previewUrl ? (
-                          <span className="media-relation-picker-thumb-wrap" aria-hidden="true">
-                            <img
-                              src={previewUrl}
-                              alt=""
-                              className="media-relation-picker-thumb"
-                              loading="lazy"
-                            />
-                          </span>
-                        ) : null}
-                        <span className="media-relation-picker-main">
-                          <span>#{item.id} - {item.title || item.relativePath || "Untitled media"}</span>
-                          <small>{item.relativePath || "No path"}</small>
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            <div className="media-action-row media-action-row-spaced">
-              <small>
-                Page {mediaRelationPickerPage}
-                {mediaRelationPickerTotalPages > 0 ? ` / ${mediaRelationPickerTotalPages}` : ""}
-                {mediaRelationPickerTotalCount > 0 ? ` - ${mediaRelationPickerTotalCount} total` : ""}
-              </small>
-              <div className="media-action-row">
-                <button
-                  type="button"
-                  className="media-action-btn app-button-icon-only"
-                  onClick={onMediaRelationPickerPrev}
-                  disabled={isMediaRelationPickerLoading || mediaRelationPickerPage <= 1}
-                  aria-label="Previous page"
-                >
-                  <AppIcon name="arrowLeft" alt="" aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  className="media-action-btn app-button-icon-only"
-                  onClick={onMediaRelationPickerNext}
-                  disabled={isMediaRelationPickerLoading || (mediaRelationPickerTotalPages > 0 && mediaRelationPickerPage >= mediaRelationPickerTotalPages)}
-                  aria-label="Next page"
-                >
-                  <AppIcon name="arrowRight" alt="" aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  className="media-action-btn app-button-icon-only"
-                  onClick={onCloseMediaRelationPicker}
-                  aria-label="Close picker"
-                  title="Close picker"
-                >
-                  <AppIcon name="close" alt="" aria-hidden="true" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <MediaRelationPickerModal isOpen={isMediaRelationPickerOpen} onClose={onCloseMediaRelationPicker} initialData={{ mode: mediaRelationPickerMode }}>
+        <MediaRelationPickerDialogContent
+          mode={mediaRelationPickerMode}
+          query={mediaRelationPickerQuery}
+          onQueryChange={onMediaRelationPickerQueryChange}
+          items={mediaRelationPickerItems}
+          page={mediaRelationPickerPage}
+          totalPages={mediaRelationPickerTotalPages}
+          totalCount={mediaRelationPickerTotalCount}
+          isLoading={isMediaRelationPickerLoading}
+          errorMessage={mediaRelationPickerError}
+          tagCatalog={tagCatalog}
+          tagTypes={tagTypes}
+          onPrev={onMediaRelationPickerPrev}
+          onNext={onMediaRelationPickerNext}
+          onPageChange={onMediaRelationPickerPageChange}
+          onClose={onCloseMediaRelationPicker}
+          onSelect={onSelectMediaRelationFromPicker}
+        />
+      </MediaRelationPickerModal>
 
       {activeTagManagerTagTypeId !== null ? (
         <div

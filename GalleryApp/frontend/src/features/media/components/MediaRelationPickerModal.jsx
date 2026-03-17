@@ -1,11 +1,11 @@
-import { useEffect } from "react";
-import { useMediaEditorContext } from "../context/MediaEditorContext";
+import { useContext, useEffect } from "react";
+import { MediaEditorContext } from "../context/MediaEditorContext";
 
 function MediaRelationPickerModal({ isOpen, onClose, initialData, children }) {
-  const context = useMediaEditorContext();
-  const isModalOpen = context.isRelationPickerOpen ?? isOpen;
-  const closeHandler = context.onCloseRelationPicker ?? onClose;
-  const mode = context.relationPickerMode ?? initialData?.mode ?? "parent";
+  const context = useContext(MediaEditorContext);
+  const isModalOpen = context?.isRelationPickerOpen ?? isOpen;
+  const closeHandler = context?.onCloseRelationPicker ?? onClose;
+  const mode = context?.relationPickerMode ?? initialData?.mode ?? "parent";
 
   useEffect(() => {
     if (!isModalOpen) {
