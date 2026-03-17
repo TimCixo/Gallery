@@ -226,7 +226,7 @@ export default function FavoritesContainer() {
     handleFavoritesPageChange(result.targetPage);
   };
 
-  const renderFavoritesPagination = (showLoadingState = false) => {
+  const renderFavoritesPagination = () => {
     if (favoritesTotalPages <= 1) {
       return null;
     }
@@ -272,11 +272,6 @@ export default function FavoritesContainer() {
             </button>
           </form>
         </div>
-        {showLoadingState ? (
-          <p className="media-pagination-status" aria-live="polite">
-            {isFavoritesLoading ? "Loading favorites..." : "\u00A0"}
-          </p>
-        ) : null}
       </div>
     );
   };

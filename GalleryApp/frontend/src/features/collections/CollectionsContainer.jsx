@@ -290,7 +290,7 @@ export default function CollectionsContainer({ searchQuery = "" }) {
     handleCollectionFilesPageChange(result.targetPage);
   };
 
-  const renderCollectionFilesPagination = (showLoadingState = false) => {
+  const renderCollectionFilesPagination = () => {
     if (collectionFilesTotalPages <= 1) {
       return null;
     }
@@ -336,11 +336,6 @@ export default function CollectionsContainer({ searchQuery = "" }) {
             </button>
           </form>
         </div>
-        {showLoadingState ? (
-          <p className="media-pagination-status" aria-live="polite">
-            {isCollectionFilesLoading ? "Loading collection files..." : "\u00A0"}
-          </p>
-        ) : null}
       </div>
     );
   };
@@ -760,7 +755,7 @@ export default function CollectionsContainer({ searchQuery = "" }) {
               ) : null}
               {!collectionFilesError && collectionFilesTotalCount > 0 ? (
                 <>
-                  {renderCollectionFilesPagination(true)}
+                  {renderCollectionFilesPagination()}
                   <div className="media-grid">
                     {visibleCollectionFiles.map((file) => (
                       <article
@@ -791,7 +786,7 @@ export default function CollectionsContainer({ searchQuery = "" }) {
                       </article>
                     ))}
                   </div>
-                  {renderCollectionFilesPagination(false)}
+                  {renderCollectionFilesPagination()}
                 </>
               ) : null}
             </div>

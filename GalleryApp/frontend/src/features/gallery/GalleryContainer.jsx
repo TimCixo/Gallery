@@ -258,7 +258,7 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
     handlePageChange(result.targetPage);
   };
 
-  const renderPagination = (showLoadingState = false) => {
+  const renderPagination = () => {
     if (totalPages <= 1) {
       return null;
     }
@@ -304,11 +304,6 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
             </button>
           </form>
         </div>
-        {showLoadingState ? (
-          <p className="media-pagination-status" aria-live="polite">
-            {isMediaLoading ? "Loading media..." : "\u00A0"}
-          </p>
-        ) : null}
       </div>
     );
   };

@@ -26,7 +26,7 @@ export default function GalleryPage({
 
       {!mediaError && visibleMediaFiles.length > 0 ? (
         <>
-          {renderPagination(true)}
+          {renderPagination()}
           <div className="media-grid">
             {visibleMediaFiles.map((file) => (
               <article
@@ -59,7 +59,7 @@ export default function GalleryPage({
               </article>
             ))}
           </div>
-          {renderPagination(false)}
+          {renderPagination()}
         </>
       ) : null}
       </section>

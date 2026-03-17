@@ -22,7 +22,7 @@ export default function FavoritesPage({
       ) : null}
       {!favoritesError && favoritesTotalFiles > 0 ? (
         <>
-          {renderFavoritesPagination(true)}
+          {renderFavoritesPagination()}
           <div className="media-grid">
             {visibleFavoriteFiles.map((file) => (
               <article
@@ -55,7 +55,7 @@ export default function FavoritesPage({
               </article>
             ))}
           </div>
-          {renderFavoritesPagination(false)}
+          {renderFavoritesPagination()}
         </>
       ) : null}
       </section>
