@@ -1,3 +1,5 @@
+import { getCollectionDeleteConfirmMessage } from "../../shared/utils/deleteConfirm";
+
 function CollectionDeleteConfirmModal({ pendingCollectionDelete, isCollectionDeleting, onConfirm, onClose }) {
   if (!pendingCollectionDelete) {
     return null;
@@ -6,7 +8,7 @@ function CollectionDeleteConfirmModal({ pendingCollectionDelete, isCollectionDel
   return (
     <div className="media-confirm-overlay" onClick={onClose}>
       <div className="media-confirm-dialog" onClick={(event) => event.stopPropagation()}>
-        <p>Are you sure you want to delete collection "{pendingCollectionDelete.name}"?</p>
+        <p>{getCollectionDeleteConfirmMessage(pendingCollectionDelete)}</p>
         <div className="media-delete-buttons">
           <button
             type="button"

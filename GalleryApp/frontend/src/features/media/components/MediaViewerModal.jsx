@@ -2,7 +2,10 @@ import { useMemo, useState } from "react";
 import { tagsApi } from "../../../api/tagsApi";
 import { formatFileSize, formatMediaDate } from "../../shared/utils/mediaFormatters";
 import { isVideoFile, resolveOriginalMediaUrl, resolvePreviewMediaUrl } from "../../shared/utils/mediaPredicates";
+import { createPendingMediaDelete } from "../../shared/utils/deleteConfirm";
+import TagDeleteConfirmModal from "../../tags/components/TagDeleteConfirmModal";
 import MediaEditorPanel from "./MediaEditorPanel";
+import MediaDeleteConfirmModal from "./MediaDeleteConfirmModal";
 
 function renderSource(source) {
   if (!source) {
@@ -131,6 +134,8 @@ export default function MediaViewerModal({
   const [editingTagDraftById, setEditingTagDraftById] = useState({});
   const [savingTagByTagTypeId, setSavingTagByTagTypeId] = useState({});
   const [tagManagerError, setTagManagerError] = useState("");
+  const [pendingTagDelete, setPendingTagDelete] = useState(null);
+  const [pendingMediaDelete, setPendingMediaDelete] = useState(null);
 
   const getDraftTagNamesByType = (tagTypeId) => {
     const typeTags = catalogTagsByType.get(tagTypeId) || [];
@@ -226,7 +231,30 @@ export default function MediaViewerModal({
     }
   };
 
-  const handleDeleteTag = async (tagTypeId, tagId) => {
+  const handleDeleteTagRequest = (tagTypeId, tagId) => {
+    const tag = (catalogTagsByType.get(tagTypeId) || []).find((item) => item.id === tagId);
+    setPendingTagDelete({
+      kind: "tag",
+      id: tagId,
+      tagTypeId,
+      name: String(tag?.name || "")
+    });
+  };
+
+  const closeTagDeleteConfirm = () => {
+    if (pendingTagDelete && savingTagByTagTypeId[pendingTagDelete.tagTypeId]) {
+      return;
+    }
+
+    setPendingTagDelete(null);
+  };
+
+  const handleDeleteTag = async () => {
+    if (!pendingTagDelete) {
+      return;
+    }
+
+    const { tagTypeId, id: tagId } = pendingTagDelete;
     setSavingTagByTagTypeId((current) => ({ ...current, [tagTypeId]: true }));
     setTagManagerError("");
     try {
@@ -235,6 +263,7 @@ export default function MediaViewerModal({
         onToggleTag?.(tagId);
       }
       await onRefreshTagCatalog?.();
+      setPendingTagDelete(null);
     } catch (error) {
       setTagManagerError(error instanceof Error ? error.message : "Failed to delete tag.");
     } finally {
@@ -718,7 +747,7 @@ export default function MediaViewerModal({
                 <button
                   type="button"
                   className="media-action-btn media-action-danger"
-                  onClick={onDelete}
+                  onClick={() => setPendingMediaDelete(createPendingMediaDelete(file))}
                   disabled={isSavingMedia || isDeletingMedia}
                 >
                   {isDeletingMedia ? "Deleting..." : "Delete"}
@@ -986,7 +1015,7 @@ export default function MediaViewerModal({
                               <button
                                 type="button"
                                 className="tags-action-btn tags-action-delete"
-                                onClick={() => void handleDeleteTag(activeTagManagerTagTypeId, tagItem.id)}
+                                onClick={() => handleDeleteTagRequest(activeTagManagerTagTypeId, tagItem.id)}
                                 disabled={!!savingTagByTagTypeId[activeTagManagerTagTypeId]}
                                 title="Delete tag"
                               >
@@ -1005,6 +1034,27 @@ export default function MediaViewerModal({
           </div>
         </div>
       ) : null}
+
+      <TagDeleteConfirmModal
+        pendingTagDelete={pendingTagDelete}
+        isDeletingTagEntity={!!(pendingTagDelete && savingTagByTagTypeId[pendingTagDelete.tagTypeId])}
+        onConfirm={() => void handleDeleteTag()}
+        onClose={closeTagDeleteConfirm}
+      />
+
+      <MediaDeleteConfirmModal
+        pendingMediaDelete={pendingMediaDelete}
+        isDeletingMedia={isDeletingMedia}
+        onConfirm={() => {
+          void onDelete?.();
+          setPendingMediaDelete(null);
+        }}
+        onClose={() => {
+          if (!isDeletingMedia) {
+            setPendingMediaDelete(null);
+          }
+        }}
+      />
     </>
   );
 }

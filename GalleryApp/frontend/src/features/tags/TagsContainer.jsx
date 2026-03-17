@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { tagsApi } from "../../api/tagsApi";
+import TagDeleteConfirmModal from "./components/TagDeleteConfirmModal";
 import TagsPage from "./TagsPage";
 
 export default function TagsContainer() {
@@ -23,6 +24,8 @@ export default function TagsContainer() {
   const [draggedTag, setDraggedTag] = useState(null);
   const [dragTargetTagTypeId, setDragTargetTagTypeId] = useState(null);
   const [tagTypeCalloutOpenById, setTagTypeCalloutOpenById] = useState({});
+  const [pendingTagDelete, setPendingTagDelete] = useState(null);
+  const [isDeletingTagEntity, setIsDeletingTagEntity] = useState(false);
 
   const loadTagTypes = async () => {
     setIsTagTypesLoading(true);
@@ -143,16 +146,36 @@ export default function TagsContainer() {
     }
   };
 
-  const openTagDeleteConfirm = async (payload) => {
+  const openTagDeleteConfirm = (payload) => {
+    setPendingTagDelete(payload);
+  };
+
+  const closeTagDeleteConfirm = () => {
+    if (isDeletingTagEntity) {
+      return;
+    }
+
+    setPendingTagDelete(null);
+  };
+
+  const handleConfirmTagDelete = async () => {
+    if (!pendingTagDelete) {
+      return;
+    }
+
+    setIsDeletingTagEntity(true);
     try {
-      if (payload.kind === "tagType") {
-        await tagsApi.deleteTagType(payload.id);
+      if (pendingTagDelete.kind === "tagType") {
+        await tagsApi.deleteTagType(pendingTagDelete.id);
       } else {
-        await tagsApi.deleteTag(payload.id);
+        await tagsApi.deleteTag(pendingTagDelete.id);
       }
+      setPendingTagDelete(null);
       await loadTagTypes();
     } catch (error) {
       setTagTypesError(error instanceof Error ? error.message : "Delete failed.");
+    } finally {
+      setIsDeletingTagEntity(false);
     }
   };
 
@@ -182,51 +205,59 @@ export default function TagsContainer() {
   };
 
   return (
-    <TagsPage
-      handleCreateTagType={handleCreateTagType}
-      tagTypeColorInput={tagTypeColorInput}
-      setTagTypeColorInput={setTagTypeColorInput}
-      tagTypeNameInput={tagTypeNameInput}
-      setTagTypeNameInput={setTagTypeNameInput}
-      isTagTypeSaving={isTagTypeSaving}
-      handleClearTagTypeForm={handleClearTagTypeForm}
-      tagTypesError={tagTypesError}
-      isTagTypesLoading={isTagTypesLoading}
-      tagTypes={tagTypes}
-      editingTagTypeId={editingTagTypeId}
-      dragTargetTagTypeId={dragTargetTagTypeId}
-      tagTypeCalloutOpenById={tagTypeCalloutOpenById}
-      handleTagTypeCalloutToggle={handleTagTypeCalloutToggle}
-      handleTagTypeDragOver={handleTagTypeDragOver}
-      handleTagTypeDragLeave={handleTagTypeDragLeave}
-      handleTagTypeDrop={handleTagTypeDrop}
-      draggedTag={draggedTag}
-      handleTagDragStart={handleTagDragStart}
-      handleTagDragEnd={handleTagDragEnd}
-      editingTagTypeColor={editingTagTypeColor}
-      setEditingTagTypeColor={setEditingTagTypeColor}
-      editingTagTypeName={editingTagTypeName}
-      setEditingTagTypeName={setEditingTagTypeName}
-      isTagTypeUpdating={isTagTypeUpdating}
-      handleSaveTagType={handleSaveTagType}
-      handleCancelEditTagType={handleCancelEditTagType}
-      handleStartEditTagType={handleStartEditTagType}
-      openTagDeleteConfirm={openTagDeleteConfirm}
-      tagSearchQueryByTagTypeId={tagSearchQueryByTagTypeId}
-      setTagSearchQueryByTagTypeId={setTagSearchQueryByTagTypeId}
-      newTagDraftByTagTypeId={newTagDraftByTagTypeId}
-      handleNewTagDraftChange={handleNewTagDraftChange}
-      handleCreateTag={handleCreateTag}
-      savingTagByTagTypeId={savingTagByTagTypeId}
-      handleClearNewTagDraft={handleClearNewTagDraft}
-      editingTagByTagTypeId={editingTagByTagTypeId}
-      editingTagDraftById={editingTagDraftById}
-      handleEditTagDraftChange={handleEditTagDraftChange}
-      handleSaveTag={handleSaveTag}
-      handleCancelEditTag={handleCancelEditTag}
-      handleStartEditTag={handleStartEditTag}
-      tagsByTagTypeId={tagsByTagTypeId}
-      tagTableStateByTagTypeId={tagTableStateByTagTypeId}
-    />
+    <>
+      <TagsPage
+        handleCreateTagType={handleCreateTagType}
+        tagTypeColorInput={tagTypeColorInput}
+        setTagTypeColorInput={setTagTypeColorInput}
+        tagTypeNameInput={tagTypeNameInput}
+        setTagTypeNameInput={setTagTypeNameInput}
+        isTagTypeSaving={isTagTypeSaving}
+        handleClearTagTypeForm={handleClearTagTypeForm}
+        tagTypesError={tagTypesError}
+        isTagTypesLoading={isTagTypesLoading}
+        tagTypes={tagTypes}
+        editingTagTypeId={editingTagTypeId}
+        dragTargetTagTypeId={dragTargetTagTypeId}
+        tagTypeCalloutOpenById={tagTypeCalloutOpenById}
+        handleTagTypeCalloutToggle={handleTagTypeCalloutToggle}
+        handleTagTypeDragOver={handleTagTypeDragOver}
+        handleTagTypeDragLeave={handleTagTypeDragLeave}
+        handleTagTypeDrop={handleTagTypeDrop}
+        draggedTag={draggedTag}
+        handleTagDragStart={handleTagDragStart}
+        handleTagDragEnd={handleTagDragEnd}
+        editingTagTypeColor={editingTagTypeColor}
+        setEditingTagTypeColor={setEditingTagTypeColor}
+        editingTagTypeName={editingTagTypeName}
+        setEditingTagTypeName={setEditingTagTypeName}
+        isTagTypeUpdating={isTagTypeUpdating}
+        handleSaveTagType={handleSaveTagType}
+        handleCancelEditTagType={handleCancelEditTagType}
+        handleStartEditTagType={handleStartEditTagType}
+        openTagDeleteConfirm={openTagDeleteConfirm}
+        tagSearchQueryByTagTypeId={tagSearchQueryByTagTypeId}
+        setTagSearchQueryByTagTypeId={setTagSearchQueryByTagTypeId}
+        newTagDraftByTagTypeId={newTagDraftByTagTypeId}
+        handleNewTagDraftChange={handleNewTagDraftChange}
+        handleCreateTag={handleCreateTag}
+        savingTagByTagTypeId={savingTagByTagTypeId}
+        handleClearNewTagDraft={handleClearNewTagDraft}
+        editingTagByTagTypeId={editingTagByTagTypeId}
+        editingTagDraftById={editingTagDraftById}
+        handleEditTagDraftChange={handleEditTagDraftChange}
+        handleSaveTag={handleSaveTag}
+        handleCancelEditTag={handleCancelEditTag}
+        handleStartEditTag={handleStartEditTag}
+        tagsByTagTypeId={tagsByTagTypeId}
+        tagTableStateByTagTypeId={tagTableStateByTagTypeId}
+      />
+      <TagDeleteConfirmModal
+        pendingTagDelete={pendingTagDelete}
+        isDeletingTagEntity={isDeletingTagEntity}
+        onConfirm={() => void handleConfirmTagDelete()}
+        onClose={closeTagDeleteConfirm}
+      />
+    </>
   );
 }

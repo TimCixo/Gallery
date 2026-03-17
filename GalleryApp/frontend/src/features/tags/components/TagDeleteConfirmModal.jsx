@@ -1,3 +1,5 @@
+import { getTagDeleteConfirmMessage } from "../../shared/utils/deleteConfirm";
+
 function TagDeleteConfirmModal({ pendingTagDelete, isDeletingTagEntity, onConfirm, onClose }) {
   if (!pendingTagDelete) {
     return null;
@@ -6,9 +8,7 @@ function TagDeleteConfirmModal({ pendingTagDelete, isDeletingTagEntity, onConfir
   return (
     <div className="media-confirm-overlay" onClick={onClose}>
       <div className="media-confirm-dialog" onClick={(event) => event.stopPropagation()}>
-        <p>
-          Are you sure you want to delete {pendingTagDelete.kind === "tagType" ? "TagType" : "Tag"} "{pendingTagDelete.name}"?
-        </p>
+        <p>{getTagDeleteConfirmMessage(pendingTagDelete)}</p>
         <div className="media-delete-buttons">
           <button
             type="button"
