@@ -7,6 +7,7 @@ import TagDeleteConfirmModal from "../../tags/components/TagDeleteConfirmModal";
 import AppIcon from "../../shared/components/AppIcon";
 import MediaEditorPanel from "./MediaEditorPanel";
 import MediaDeleteConfirmModal from "./MediaDeleteConfirmModal";
+import { getNextMediaFitMode } from "../utils/mediaFitMode";
 
 function renderSource(source) {
   if (!source) {
@@ -138,6 +139,9 @@ export default function MediaViewerModal({
   const [tagManagerError, setTagManagerError] = useState("");
   const [pendingTagDelete, setPendingTagDelete] = useState(null);
   const [pendingMediaDelete, setPendingMediaDelete] = useState(null);
+  const [mediaFitMode, setMediaFitMode] = useState("resize");
+  const [mediaAssetOverflow, setMediaAssetOverflow] = useState({ x: false, y: false });
+  const mediaAssetFrameRef = useRef(null);
 
   const getDraftTagNamesByType = (tagTypeId) => {
     const typeTags = catalogTagsByType.get(tagTypeId) || [];
@@ -276,6 +280,43 @@ export default function MediaViewerModal({
   const activeRelatedMediaRef = useRef(null);
   const relatedMediaStripRef = useRef(null);
 
+  const syncMediaAssetOverflow = () => {
+    const frame = mediaAssetFrameRef.current;
+    if (!frame) {
+      return;
+    }
+
+    setMediaAssetOverflow({
+      x: frame.scrollWidth > frame.clientWidth,
+      y: frame.scrollHeight > frame.clientHeight,
+    });
+  };
+
+  const centerMediaAssetFrame = () => {
+    const frame = mediaAssetFrameRef.current;
+    if (!frame) {
+      return;
+    }
+
+    const maxScrollLeft = Math.max(0, frame.scrollWidth - frame.clientWidth);
+    const maxScrollTop = Math.max(0, frame.scrollHeight - frame.clientHeight);
+
+    if (mediaFitMode === "height") {
+      frame.scrollLeft = maxScrollLeft / 2;
+      frame.scrollTop = 0;
+      return;
+    }
+
+    if (mediaFitMode === "width") {
+      frame.scrollLeft = 0;
+      frame.scrollTop = maxScrollTop / 2;
+      return;
+    }
+
+    frame.scrollLeft = 0;
+    frame.scrollTop = 0;
+  };
+
   const renderLinkedMediaId = (value, label) => {
     if (value == null) {
       return "-";
@@ -334,6 +375,26 @@ export default function MediaViewerModal({
       window.removeEventListener("resize", centerActiveRelatedMedia);
     };
   }, [file?.id, relatedMediaItems]);
+
+  useLayoutEffect(() => {
+    let innerFrameId = 0;
+    const frameId = window.requestAnimationFrame(() => {
+      innerFrameId = window.requestAnimationFrame(() => {
+        syncMediaAssetOverflow();
+        centerMediaAssetFrame();
+      });
+    });
+
+    window.addEventListener("resize", syncMediaAssetOverflow);
+    window.addEventListener("resize", centerMediaAssetFrame);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.cancelAnimationFrame(innerFrameId);
+      window.removeEventListener("resize", syncMediaAssetOverflow);
+      window.removeEventListener("resize", centerMediaAssetFrame);
+    };
+  }, [file?.id, mediaFitMode]);
 
   if (isEditing) {
     return (
@@ -441,6 +502,15 @@ export default function MediaViewerModal({
           <div className="media-modal-content">
             <button
               type="button"
+              className="media-fit-btn"
+              onClick={() => setMediaFitMode((currentMode) => getNextMediaFitMode(currentMode))}
+              aria-label={`Switch media scale mode. Current mode: ${mediaFitMode}`}
+              title={`Scale mode: ${mediaFitMode}`}
+            >
+              <AppIcon name={mediaFitMode} alt="" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
               className="media-nav-btn media-nav-btn-prev"
               onClick={onPrev}
               disabled={!canNavigate}
@@ -449,17 +519,35 @@ export default function MediaViewerModal({
             >
               <AppIcon name="arrowLeft" alt="" aria-hidden="true" />
             </button>
-            {isVideoFile(file) ? (
-              <video
-                src={resolveOriginalMediaUrl(file)}
-                poster={resolvePreviewMediaUrl(file)}
-                controls
-                autoPlay
-                preload="metadata"
-              />
-            ) : (
-              <img src={resolveOriginalMediaUrl(file)} alt={getDisplayName(file.name)} />
-            )}
+            <div
+              ref={mediaAssetFrameRef}
+              className={`media-modal-asset-frame media-modal-asset-frame-${mediaFitMode}${mediaAssetOverflow.x ? " is-overflow-x" : ""}${mediaAssetOverflow.y ? " is-overflow-y" : ""}`}
+            >
+              {isVideoFile(file) ? (
+                <video
+                  src={resolveOriginalMediaUrl(file)}
+                  poster={resolvePreviewMediaUrl(file)}
+                  className={`media-modal-asset media-modal-fit-${mediaFitMode}`}
+                  onLoadedMetadata={() => {
+                    syncMediaAssetOverflow();
+                    centerMediaAssetFrame();
+                  }}
+                  controls
+                  autoPlay
+                  preload="metadata"
+                />
+              ) : (
+                <img
+                  src={resolveOriginalMediaUrl(file)}
+                  alt={getDisplayName(file.name)}
+                  className={`media-modal-asset media-modal-fit-${mediaFitMode}`}
+                  onLoad={() => {
+                    syncMediaAssetOverflow();
+                    centerMediaAssetFrame();
+                  }}
+                />
+              )}
+            </div>
             <button
               type="button"
               className="media-nav-btn media-nav-btn-next"

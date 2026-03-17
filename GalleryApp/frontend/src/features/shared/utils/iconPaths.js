@@ -10,12 +10,15 @@ export const ICON_PATHS = Object.freeze({
   edit: "/icons/edit.png",
   favoriteDisabled: "/icons/favorite_disable.png",
   favoriteEnabled: "/icons/favorite_enable.png",
+  height: "/icons/height.png",
   home: "/icons/home.png",
   menu: "/icons/menu.png",
   process: "/icons/process.png",
+  resize: "/icons/resize.png",
   search: "/icons/search.png",
   tag: "/icons/tag.png",
-  upload: "/icons/upload.png"
+  upload: "/icons/upload.png",
+  width: "/icons/width.png"
 });
 
 export function getIconPath(name) {

@@ -6,6 +6,9 @@ import { ICON_PATHS, getIconPath } from "../features/shared/utils/iconPaths.js";
 test("getIconPath returns a known icon path", () => {
   assert.equal(getIconPath("search"), "/icons/search.png");
   assert.equal(getIconPath("favoriteEnabled"), "/icons/favorite_enable.png");
+  assert.equal(getIconPath("resize"), "/icons/resize.png");
+  assert.equal(getIconPath("height"), "/icons/height.png");
+  assert.equal(getIconPath("width"), "/icons/width.png");
 });
 
 test("getIconPath returns null for an unknown icon name", () => {

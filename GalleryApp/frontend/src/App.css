@@ -1424,6 +1424,32 @@
   overflow: hidden;
 }
 
+.media-fit-btn {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+  z-index: 2;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #e2e8f0;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+  line-height: 1;
+  text-transform: lowercase;
+  cursor: pointer;
+}
+
+.media-fit-btn:hover {
+  background: rgba(30, 41, 59, 0.85);
+}
+
+.media-fit-btn .app-icon {
+  width: 1rem;
+  height: 1rem;
+  filter: brightness(0) invert(1);
+}
+
 .media-nav-btn {
   position: absolute;
   top: 50%;
@@ -1467,10 +1493,51 @@
 
 .media-modal-content img,
 .media-modal-content video {
+  display: block;
+}
+
+.media-modal-asset-frame {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.media-modal-asset-frame-height,
+.media-modal-asset-frame-width {
+  overflow: auto;
+}
+
+.media-modal-asset-frame.is-overflow-x {
+  justify-content: flex-start;
+}
+
+.media-modal-asset-frame.is-overflow-y {
+  align-items: flex-start;
+}
+
+.media-modal-asset {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  display: block;
+  flex: 0 0 auto;
+}
+
+.media-modal-fit-height {
+  width: auto;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+}
+
+.media-modal-fit-width {
+  width: 100%;
+  height: auto;
+  max-width: none;
+  max-height: none;
 }
 
 .upload-edit-thumbnail {
@@ -2538,6 +2605,20 @@
   .media-modal-content img,
   .media-modal-content video {
     max-height: 100%;
+  }
+
+  .media-modal-content .media-modal-fit-height {
+    width: auto;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+  }
+
+  .media-modal-content .media-modal-fit-width {
+    width: 100%;
+    height: auto;
+    max-width: none;
+    max-height: none;
   }
 
   .upload-edit-thumbnail {

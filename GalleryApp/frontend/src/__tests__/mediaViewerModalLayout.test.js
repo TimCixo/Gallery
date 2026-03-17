@@ -15,6 +15,21 @@ test("media viewer shows related media in thumbnail strip instead of metadata ta
   assert.match(modalSource, /relatedMediaItems/);
   assert.match(modalSource, /relatedMediaStripRef/);
   assert.match(modalSource, /useLayoutEffect/);
+  assert.match(modalSource, /getNextMediaFitMode/);
+  assert.match(modalSource, /mediaFitMode/);
+  assert.match(modalSource, /mediaAssetFrameRef/);
+  assert.match(modalSource, /mediaAssetOverflow/);
+  assert.match(modalSource, /syncMediaAssetOverflow/);
+  assert.match(modalSource, /centerMediaAssetFrame/);
+  assert.match(modalSource, /frame\.scrollLeft = maxScrollLeft \/ 2/);
+  assert.match(modalSource, /frame\.scrollTop = maxScrollTop \/ 2/);
+  assert.match(modalSource, /className="media-fit-btn"/);
+  assert.match(modalSource, /<AppIcon name=\{mediaFitMode\} alt="" aria-hidden="true" \/>/);
+  assert.match(modalSource, /frame\.scrollWidth > frame\.clientWidth/);
+  assert.match(modalSource, /frame\.scrollHeight > frame\.clientHeight/);
+  assert.match(modalSource, /media-modal-asset-frame media-modal-asset-frame-\$\{mediaFitMode\}\$\{mediaAssetOverflow\.x \? " is-overflow-x" : ""\}\$\{mediaAssetOverflow\.y \? " is-overflow-y" : ""\}/);
+  assert.match(modalSource, /syncMediaAssetOverflow\(\);\s*centerMediaAssetFrame\(\);/);
+  assert.match(modalSource, /media-modal-fit-\$\{mediaFitMode\}/);
   assert.match(modalSource, /innerFrameId/);
   assert.match(modalSource, /getBoundingClientRect\(\)/);
   assert.match(modalSource, /scrollTo\(\{/);
@@ -26,9 +41,21 @@ test("media viewer shows related media in thumbnail strip instead of metadata ta
 });
 
 test("media viewer defines related media strip styles", () => {
-  const mobileMediaViewerStyles = appCss.match(/@media \(max-width: 760px\) \{[\s\S]*?\.media-modal-content img,[\s\S]*?max-height: 100%;[\s\S]*?\}/);
+  const mobileMediaViewerStyles = appCss.match(/@media \(max-width: 760px\) \{[\s\S]*?\.media-modal-content \.media-modal-fit-width[\s\S]*?\n\}/);
 
   assert.ok(mobileMediaViewerStyles, "Expected mobile media viewer styles to exist");
+  assert.match(appCss, /\.media-fit-btn/);
+  assert.match(appCss, /\.media-fit-btn \.app-icon/);
+  assert.match(appCss, /\.media-modal-asset-frame/);
+  assert.match(appCss, /\.media-modal-asset-frame-height,/);
+  assert.match(appCss, /overflow:\s*auto/);
+  assert.match(appCss, /\.media-modal-asset-frame\.is-overflow-x/);
+  assert.match(appCss, /\.media-modal-asset-frame\.is-overflow-y/);
+  assert.match(appCss, /justify-content:\s*flex-start/);
+  assert.match(appCss, /align-items:\s*flex-start/);
+  assert.match(appCss, /\.media-modal-asset/);
+  assert.match(appCss, /\.media-modal-fit-height/);
+  assert.match(appCss, /\.media-modal-fit-width/);
   assert.match(appCss, /\.media-related-strip/);
   assert.match(appCss, /\.media-related-card-thumb-wrap/);
   assert.match(appCss, /background:\s*transparent/);
@@ -49,6 +76,9 @@ test("media viewer defines related media strip styles", () => {
   assert.match(mobileMediaViewerStyles[0], /overflow-y:\s*auto/);
   assert.match(mobileMediaViewerStyles[0], /overflow-y:\s*visible/);
   assert.match(mobileMediaViewerStyles[0], /min-height:\s*clamp\(220px, 60vh, 32rem\)/);
+  assert.match(mobileMediaViewerStyles[0], /\.media-modal-content \.media-modal-fit-height/);
+  assert.match(mobileMediaViewerStyles[0], /\.media-modal-content \.media-modal-fit-width/);
+  assert.match(mobileMediaViewerStyles[0], /max-height:\s*none/);
   assert.match(mobileMediaViewerStyles[0], /width:\s*var\(--media-related-thumb-size\)/);
   assert.match(mobileMediaViewerStyles[0], /height:\s*var\(--media-related-thumb-size\)/);
 });
