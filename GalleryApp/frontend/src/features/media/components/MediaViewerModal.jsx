@@ -154,6 +154,9 @@ export default function MediaViewerModal({
     : imageSourceAttempt === "original"
       ? originalMediaUrl
       : previewMediaUrl;
+  const visibleRelatedMediaItems = Array.isArray(relatedMediaItems) && relatedMediaItems.length > 0
+    ? relatedMediaItems
+    : [{ ...file, relationSide: "current", isCurrent: true }];
 
   const getDraftTagNamesByType = (tagTypeId) => {
     const typeTags = catalogTagsByType.get(tagTypeId) || [];
@@ -386,7 +389,7 @@ export default function MediaViewerModal({
       window.cancelAnimationFrame(innerFrameId);
       window.removeEventListener("resize", centerActiveRelatedMedia);
     };
-  }, [file?.id, relatedMediaItems]);
+  }, [file?.id, visibleRelatedMediaItems]);
 
   useLayoutEffect(() => {
     let innerFrameId = 0;
@@ -472,9 +475,9 @@ export default function MediaViewerModal({
   return (
     <>
       <div className="media-modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
-        {Array.isArray(relatedMediaItems) && relatedMediaItems.length > 0 ? (
+        {visibleRelatedMediaItems.length > 0 ? (
           <div ref={relatedMediaStripRef} className="media-related-strip">
-            {relatedMediaItems.map((item) => {
+            {visibleRelatedMediaItems.map((item) => {
               const relatedId = Number(item?.id);
               const previewUrl = resolvePreviewMediaUrl(item);
               const isCurrent = Boolean(item?.isCurrent);
@@ -482,7 +485,7 @@ export default function MediaViewerModal({
 
               return (
                 <button
-                  key={`${item.relationSide || "item"}-${relatedId || item.relativePath || "unknown"}`}
+                  key={relatedId || item.relativePath || "unknown"}
                   ref={isCurrent ? activeRelatedMediaRef : null}
                   type="button"
                   className={`media-related-card${isCurrent ? " is-current" : ""}`}

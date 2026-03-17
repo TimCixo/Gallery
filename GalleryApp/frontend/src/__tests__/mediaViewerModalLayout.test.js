@@ -13,6 +13,7 @@ const appCss = readFileSync(appCssPath, "utf8");
 
 test("media viewer shows related media in thumbnail strip instead of metadata table", () => {
   assert.match(modalSource, /relatedMediaItems/);
+  assert.match(modalSource, /const visibleRelatedMediaItems = Array\.isArray\(relatedMediaItems\) && relatedMediaItems\.length > 0/);
   assert.match(modalSource, /relatedMediaStripRef/);
   assert.match(modalSource, /useLayoutEffect/);
   assert.match(modalSource, /getNextMediaFitMode/);
@@ -43,6 +44,8 @@ test("media viewer shows related media in thumbnail strip instead of metadata ta
   assert.match(modalSource, /scrollTo\(\{/);
   assert.match(modalSource, /addEventListener\("resize", centerActiveRelatedMedia\)/);
   assert.match(modalSource, /className="media-related-strip"/);
+  assert.match(modalSource, /key=\{relatedId \|\| item\.relativePath \|\| "unknown"\}/);
+  assert.match(modalSource, /visibleRelatedMediaItems\.map/);
   assert.doesNotMatch(modalSource, /media-related-card-label/);
   assert.doesNotMatch(modalSource, /<th scope="row">Parent<\/th>/);
   assert.doesNotMatch(modalSource, /<th scope="row">Child<\/th>/);

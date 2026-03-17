@@ -24,6 +24,8 @@ const getDisplayName = (value) => {
 
 export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0, openMediaRequest = null }) {
   const initialViewState = useMemo(() => loadGalleryViewState(), []);
+  const mediaCacheRef = useRef(new Map());
+  const relatedMediaChainCacheRef = useRef(new Map());
   const [mediaFiles, setMediaFiles] = useState([]);
   const [totalFiles, setTotalFiles] = useState(0);
   const [currentPage, setCurrentPage] = useState(
@@ -97,7 +99,14 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
     try {
       const response = await mediaApi.listMedia({ page, pageSize: PAGE_SIZE, search: searchText || undefined });
       const items = Array.isArray(response?.items) ? response.items : [];
-      setMediaFiles(items.map((item) => ({ ...item, _tileUrl: item.tileUrl || item.previewUrl || item.originalUrl || item.url || "" })));
+      const normalizedItems = items.map((item) => ({ ...item, _tileUrl: item.tileUrl || item.previewUrl || item.originalUrl || item.url || "" }));
+      normalizedItems.forEach((item) => {
+        const normalizedId = Number(item?.id);
+        if (Number.isSafeInteger(normalizedId) && normalizedId > 0) {
+          mediaCacheRef.current.set(normalizedId, item);
+        }
+      });
+      setMediaFiles(normalizedItems);
       setTotalPages(Number(response?.totalPages || 0));
       setTotalFiles(Number(response?.totalCount || items.length));
     } catch (error) {
@@ -428,14 +437,27 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
       return null;
     }
 
+    const cachedCandidate = mediaCacheRef.current.get(normalizedId) || null;
+    if (cachedCandidate) {
+      return cachedCandidate;
+    }
+
     const localCandidate = mediaFiles.find((item) => item?.id === normalizedId) || null;
     if (localCandidate) {
+      mediaCacheRef.current.set(normalizedId, localCandidate);
       return localCandidate;
     }
 
     const response = await mediaApi.listMedia({ page: 1, pageSize: 40, search: `id:${normalizedId}` });
     const items = Array.isArray(response?.items) ? response.items : [];
-    return items.find((item) => Number(item?.id) === normalizedId) || null;
+    const remoteCandidate = items.find((item) => Number(item?.id) === normalizedId) || null;
+    if (remoteCandidate) {
+      const normalizedCandidate = { ...remoteCandidate, _tileUrl: remoteCandidate.tileUrl || remoteCandidate.previewUrl || remoteCandidate.originalUrl || remoteCandidate.url || "" };
+      mediaCacheRef.current.set(normalizedId, normalizedCandidate);
+      return normalizedCandidate;
+    }
+
+    return null;
   }, [mediaFiles]);
 
   useEffect(() => {
@@ -542,16 +564,42 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
       return undefined;
     }
 
+    const selectedMediaId = Number(selectedMedia.id);
+    if (Number.isSafeInteger(selectedMediaId) && selectedMediaId > 0) {
+      mediaCacheRef.current.set(selectedMediaId, selectedMedia);
+      const cachedChain = relatedMediaChainCacheRef.current.get(selectedMediaId);
+      if (Array.isArray(cachedChain) && cachedChain.length > 0) {
+        setRelatedMediaItems(cachedChain);
+      } else {
+        setRelatedMediaItems((current) => (
+          Array.isArray(current) && current.length > 0
+            ? current.map((item) => ({
+              ...item,
+              isCurrent: Number(item?.id) === selectedMediaId,
+              relationSide: Number(item?.id) === selectedMediaId ? "current" : item.relationSide
+            }))
+            : [{ ...selectedMedia, relationSide: "current", isCurrent: true }]
+        ));
+      }
+    }
+
     let cancelled = false;
     const loadRelatedMedia = async () => {
       try {
         const items = await buildRelatedMediaChain({ media: selectedMedia, findMediaById });
         if (!cancelled) {
+          if (Number.isSafeInteger(selectedMediaId) && selectedMediaId > 0) {
+            relatedMediaChainCacheRef.current.set(selectedMediaId, items);
+          }
           setRelatedMediaItems(items);
         }
       } catch {
         if (!cancelled) {
-          setRelatedMediaItems([{ ...selectedMedia, relationSide: "current", isCurrent: true }]);
+          const fallbackItems = [{ ...selectedMedia, relationSide: "current", isCurrent: true }];
+          if (Number.isSafeInteger(selectedMediaId) && selectedMediaId > 0) {
+            relatedMediaChainCacheRef.current.set(selectedMediaId, fallbackItems);
+          }
+          setRelatedMediaItems(fallbackItems);
         }
       }
     };
