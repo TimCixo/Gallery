@@ -14,6 +14,17 @@ test("resolveTileUrl returns preview path for videos", () => {
   );
 });
 
+test("resolveTileUrl prefers tileUrl over original image url", () => {
+  assert.equal(
+    resolveTileUrl({
+      mediaType: "image",
+      tileUrl: "/api/media/preview?path=a%2Fb%2Fc.webp&v=1",
+      originalUrl: "/media/a/b/c.webp"
+    }),
+    "/api/media/preview?path=a%2Fb%2Fc.webp&v=1"
+  );
+});
+
 test("media identity and video predicate", () => {
   assert.equal(getMediaIdentity({ id: 4 }), "id:4");
   assert.equal(getMediaIdentity({ relativePath: "x/y.jpg" }), "path:x/y.jpg");

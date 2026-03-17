@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Formats.Webp;
+using SixLabors.ImageSharp.Processing;
 
 namespace GalleryApp.Api.Services;
 
@@ -159,12 +160,7 @@ public static string BuildMediaUrl(string relativePath)
 
 public static string BuildTileUrl(string relativePath, string extension, long modifiedTicks)
 {
-    if (IsVideoFile(extension) || IsGifFile(extension))
-    {
-        return $"/api/media/preview?path={Uri.EscapeDataString(relativePath)}&v={modifiedTicks}";
-    }
-
-    return BuildMediaUrl(relativePath);
+    return $"/api/media/preview?path={Uri.EscapeDataString(relativePath)}&v={modifiedTicks}";
 }
 
 public static bool TryResolveMediaFilePath(
@@ -329,6 +325,27 @@ public static byte[] GenerateGifPreviewJpeg(string sourcePath)
     catch (UnknownImageFormatException)
     {
         throw new MediaConversionException($"Unsupported image content: {Path.GetFileName(sourcePath)}");
+    }
+}
+
+public static byte[] GenerateImagePreviewJpeg(string sourcePath, int maxSize = 640, int quality = 75)
+{
+    try
+    {
+        using var image = Image.Load(sourcePath);
+        image.Mutate((context) => context.Resize(new ResizeOptions
+        {
+            Mode = ResizeMode.Max,
+            Size = new Size(maxSize, maxSize)
+        }));
+
+        using var stream = new MemoryStream();
+        image.Save(stream, new JpegEncoder { Quality = quality });
+        return stream.ToArray();
+    }
+    catch (UnknownImageFormatException ex)
+    {
+        throw new MediaConversionException($"Image preview generation failed: {ex.Message}");
     }
 }
 

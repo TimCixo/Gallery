@@ -45,6 +45,12 @@ app.MapGet("/api/media/preview", (string path) =>
 
     try
     {
+        if (IsImageFile(extension) && !IsGifFile(extension))
+        {
+            var bytes = GenerateImagePreviewJpeg(absolutePath);
+            return Results.File(bytes, "image/jpeg");
+        }
+
         if (IsVideoFile(extension))
         {
             var bytes = GenerateVideoPreviewJpeg(absolutePath);
@@ -62,7 +68,7 @@ app.MapGet("/api/media/preview", (string path) =>
         return Results.BadRequest(new { error = ex.Message });
     }
 
-    return Results.NotFound(new { error = "Preview is supported only for video and gif files." });
+    return Results.NotFound(new { error = "Preview is not available for this media type." });
 });
 
 app.MapPut("/api/media/{id:long}", (long id, MediaUpdateRequest request) =>

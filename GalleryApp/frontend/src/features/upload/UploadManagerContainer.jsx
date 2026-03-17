@@ -260,9 +260,7 @@ export default function UploadManagerContainer() {
               source: task.draft.source || null,
               parent: task.draft.parent ?? null,
               child: task.draft.child ?? null,
-              _tileUrl: VIDEO_EXTENSIONS.has(uploadedExtension) || uploadedExtension === ".gif"
-                ? `/api/media/preview?path=${encodeURIComponent(uploadedRelativePath)}`
-                : `/media/${encodedRelativePath}`
+              _tileUrl: `/api/media/preview?path=${encodeURIComponent(uploadedRelativePath)}`
             }
             : null;
 
