@@ -1,24 +1,77 @@
-import { memo } from "react";
+import { memo, useRef } from "react";
+import AppIcon from "../shared/components/AppIcon";
+
+const LONG_PRESS_DELAY_MS = 450;
 
 function GalleryMediaTile({
   file,
   alt,
   hasPreviewError,
+  isSelected = false,
+  isSelectionMode = false,
   onSelect,
+  onStartSelection,
+  onToggleSelection,
   onPreviewError
 }) {
+  const longPressTimeoutRef = useRef(null);
+  const suppressClickRef = useRef(false);
+
+  const clearLongPressTimeout = () => {
+    if (longPressTimeoutRef.current !== null) {
+      window.clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+  };
+
+  const handleStartSelection = ({ suppressClick = false } = {}) => {
+    onStartSelection?.(file);
+    suppressClickRef.current = suppressClick;
+  };
+
   return (
     <article
-      className="media-tile"
+      className={`media-tile${isSelected ? " is-selected" : ""}${isSelectionMode ? " is-selection-mode" : ""}`}
       role="button"
       tabIndex={0}
-      onClick={() => onSelect(file)}
+      aria-pressed={isSelectionMode ? isSelected : undefined}
+      onClick={() => {
+        if (suppressClickRef.current) {
+          suppressClickRef.current = false;
+          return;
+        }
+
+        if (isSelectionMode) {
+          onToggleSelection?.(file);
+          return;
+        }
+
+        onSelect(file);
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        handleStartSelection();
+      }}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
+          if (isSelectionMode) {
+            onToggleSelection?.(file);
+            return;
+          }
+
           onSelect(file);
         }
       }}
+      onTouchStart={() => {
+        clearLongPressTimeout();
+        longPressTimeoutRef.current = window.setTimeout(() => {
+          handleStartSelection({ suppressClick: true });
+        }, LONG_PRESS_DELAY_MS);
+      }}
+      onTouchEnd={clearLongPressTimeout}
+      onTouchCancel={clearLongPressTimeout}
+      onTouchMove={clearLongPressTimeout}
     >
       <div className="media-preview">
         {file._tileUrl && !hasPreviewError ? (
@@ -32,6 +85,11 @@ function GalleryMediaTile({
           <div className="media-fallback">Preview unavailable</div>
         )}
       </div>
+      {isSelectionMode ? (
+        <span className={`media-selection-indicator${isSelected ? " is-selected" : ""}`} aria-hidden="true">
+          {isSelected ? <AppIcon name="confirm" alt="" aria-hidden="true" /> : null}
+        </span>
+      ) : null}
     </article>
   );
 }

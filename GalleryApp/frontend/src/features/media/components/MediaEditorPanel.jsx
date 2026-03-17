@@ -44,6 +44,7 @@ export default function MediaEditorPanel({
   onClose,
   showFavoriteButton = true,
   showCloseButton = true,
+  showCollectionButton = true,
   allowOpenRelatedMedia = true,
   previewNode = null,
   previewClassName = "media-edit-thumbnail",
@@ -86,10 +87,14 @@ export default function MediaEditorPanel({
   primaryActionLabel = "Save",
   primaryActionBusyLabel = "Saving...",
   isPrimaryActionBusy = false,
+  primaryIconName = null,
   onPrimaryAction,
   secondaryActionLabel = "Cancel",
   onSecondaryAction,
-  actionLeadingSlot = null
+  actionLeadingSlot = null,
+  showRelations = true,
+  systemDetailsNode = null,
+  previewTitle = ""
 }) {
   if (!file) {
     return null;
@@ -317,7 +322,7 @@ export default function MediaEditorPanel({
     <>
       <div className="media-modal-meta">
           <div className="media-favorite-row">
-            {onOpenCollectionPicker ? (
+            {onOpenCollectionPicker && showCollectionButton ? (
               <button
                 type="button"
                 className="media-icon-btn media-icon-btn-collections"
@@ -366,6 +371,7 @@ export default function MediaEditorPanel({
                   draft={draft}
                   onDraftChange={onDraftChange}
                   isEditingDisabled={isSavingMedia || isDeletingMedia}
+                  showRelations={showRelations}
                   renderParentCell={() => renderLinkedMediaPicker("parent", "Parent")}
                   renderChildCell={() => renderLinkedMediaPicker("child", "Child")}
                 />
@@ -499,24 +505,27 @@ export default function MediaEditorPanel({
                 })}
               </tbody>
             </table>
-            <div className={previewClassName} aria-label="Current media thumbnail">
-              {previewNode ?? (
-                isVideoFile(file) ? (
-                  <video
-                    src={resolveOriginalMediaUrl(file)}
-                    poster={resolvePreviewMediaUrl(file)}
-                    preload="metadata"
-                    playsInline
-                    muted
-                  />
-                ) : (
-                  <img
-                    src={resolvePreviewMediaUrl(file)}
-                    alt={String(file?.name || "")}
-                    loading="lazy"
-                  />
-                )
-              )}
+            <div className="media-edit-preview-stack">
+              <div className={previewClassName} aria-label="Current media thumbnail">
+                {previewNode ?? (
+                  isVideoFile(file) ? (
+                    <video
+                      src={resolveOriginalMediaUrl(file)}
+                      poster={resolvePreviewMediaUrl(file)}
+                      preload="metadata"
+                      playsInline
+                      muted
+                    />
+                  ) : (
+                    <img
+                      src={resolvePreviewMediaUrl(file)}
+                      alt={String(file?.name || "")}
+                      loading="lazy"
+                    />
+                  )
+                )}
+              </div>
+              {previewTitle ? <p className="upload-modal-title media-edit-preview-title">{previewTitle}</p> : null}
             </div>
           </div>
 
@@ -524,6 +533,7 @@ export default function MediaEditorPanel({
             primaryLabel={primaryActionLabel}
             primaryBusyLabel={primaryActionBusyLabel}
             isPrimaryBusy={isPrimaryActionBusy}
+            primaryIconName={primaryIconName}
             onPrimary={onPrimaryAction}
             secondaryLabel={secondaryActionLabel}
             onSecondary={onSecondaryAction}
@@ -533,7 +543,7 @@ export default function MediaEditorPanel({
 
           <details className="media-system-callout">
             <summary className="media-system-summary">System details</summary>
-            {mode === "upload" ? (
+            {systemDetailsNode ? systemDetailsNode : mode === "upload" ? (
               <table className="media-system-table">
                 <tbody>
                   <tr>

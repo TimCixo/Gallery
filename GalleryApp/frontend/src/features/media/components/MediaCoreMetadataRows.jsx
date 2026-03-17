@@ -16,6 +16,7 @@ export default function MediaCoreMetadataRows({
   draft,
   onDraftChange,
   isEditingDisabled = false,
+  showRelations = true,
   renderParentCell,
   renderChildCell
 }) {
@@ -89,14 +90,18 @@ export default function MediaCoreMetadataRows({
           ) : (file?.description || "-")}
         </td>
       </tr>
-      <tr>
-        <th scope="row">Parent</th>
-        <td>{parentCell}</td>
-      </tr>
-      <tr>
-        <th scope="row">Child</th>
-        <td>{childCell}</td>
-      </tr>
+      {showRelations ? (
+        <>
+          <tr>
+            <th scope="row">Parent</th>
+            <td>{parentCell}</td>
+          </tr>
+          <tr>
+            <th scope="row">Child</th>
+            <td>{childCell}</td>
+          </tr>
+        </>
+      ) : null}
     </>
   );
 }

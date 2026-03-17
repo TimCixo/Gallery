@@ -9,10 +9,11 @@ export default function MediaEditActions({
   onSecondary,
   isDisabled = false,
   leadingSlot = null,
-  primaryClassName = "media-action-btn media-action-primary"
+  primaryClassName = "media-action-btn media-action-primary",
+  primaryIconName = null
 }) {
-  const primaryVisual = primaryLabel === "Save"
-    ? <AppIcon name="confirm" alt="" aria-hidden="true" />
+  const primaryVisual = primaryLabel === "Save" || primaryIconName
+    ? <AppIcon name={primaryIconName || "confirm"} alt="" aria-hidden="true" />
     : (isPrimaryBusy ? (primaryBusyLabel || primaryLabel) : primaryLabel);
   const secondaryVisual = secondaryLabel === "Cancel"
     ? <AppIcon name="cancel" alt="" aria-hidden="true" />
@@ -20,7 +21,7 @@ export default function MediaEditActions({
   const secondaryClassName = secondaryLabel === "Cancel"
     ? "media-action-btn app-button-icon-only"
     : "media-action-btn";
-  const resolvedPrimaryClassName = primaryLabel === "Save"
+  const resolvedPrimaryClassName = primaryLabel === "Save" || primaryIconName
     ? `${primaryClassName} app-button-icon-only`
     : primaryClassName;
 

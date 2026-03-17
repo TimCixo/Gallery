@@ -608,12 +608,23 @@ export default function UploadManagerContainer() {
             onClick={(event) => event.stopPropagation()}
             onPaste={queue.step === "queue" ? handleUploadQueuePaste : undefined}
           >
-            <div className="media-modal-header">
-              <h2 className="upload-modal-title">
-                {queue.step === "queue"
-                  ? `Queue (${queue.items.length})`
-                  : (queue.items.length === 0 ? "No files remaining" : `Editing: ${activeUploadItem?.file.name || "-"}`)}
-              </h2>
+            <div className={`media-modal-header${queue.step !== "queue" ? " media-modal-header-upload-editor" : ""}`}>
+              {queue.step === "queue" ? (
+                <h2 className="upload-modal-title">Queue ({queue.items.length})</h2>
+              ) : null}
+
+              {queue.step !== "queue" ? (
+                <button
+                  type="button"
+                  className="media-icon-btn media-icon-btn-collections"
+                  onClick={() => void openUploadCollectionPicker()}
+                  disabled={collections.loading || isUploading}
+                  aria-label="Add to collection"
+                  title="Add to collection"
+                >
+                  <AppIcon name="collection" alt="" aria-hidden="true" />
+                </button>
+              ) : null}
 
               {queue.step !== "queue" ? (
                 <div className="media-upload-nav">

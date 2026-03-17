@@ -3,12 +3,19 @@ import { collectionsApi } from "../../api/collectionsApi";
 import { mediaApi } from "../../api/mediaApi";
 import { tagsApi } from "../../api/tagsApi";
 import { normalizePageJumpInput } from "../shared/utils/pagination";
+import { createPendingMediaDelete } from "../shared/utils/deleteConfirm";
 import CollectionPickerModal from "./components/CollectionPickerModal";
 import CollectionPickerDialogContent from "./components/CollectionPickerDialogContent";
 import CollectionDeleteConfirmModal from "./components/CollectionDeleteConfirmModal";
+import GalleryMediaTile from "../gallery/GalleryMediaTile";
+import BulkMediaActionBar from "../media/components/BulkMediaActionBar";
+import BulkMediaEditorModal from "../media/components/BulkMediaEditorModal";
+import MediaDeleteConfirmModal from "../media/components/MediaDeleteConfirmModal";
 import MediaViewerModal from "../media/components/MediaViewerModal";
 import MediaRelationPickerDialogContent from "../media/components/MediaRelationPickerDialogContent";
 import MediaRelationPickerModal from "../media/components/MediaRelationPickerModal";
+import { useMediaMultiSelect } from "../media/hooks/useMediaMultiSelect";
+import { applyMediaDraftToItem, buildMediaUpdatePayloadFromDraft } from "../media/utils/bulkMediaEdit";
 import { buildRelatedMediaChain } from "../media/utils/relatedMediaChain";
 import CollectionsPage from "./CollectionsPage";
 import AppIcon from "../shared/components/AppIcon";
@@ -77,6 +84,8 @@ export default function CollectionsContainer({ searchQuery = "" }) {
   const [isMediaRelationPickerLoading, setIsMediaRelationPickerLoading] = useState(false);
   const [mediaRelationPickerError, setMediaRelationPickerError] = useState("");
   const [collectionCoverPreview, setCollectionCoverPreview] = useState({ item: null, isLoading: false, error: "" });
+  const [pendingBulkDelete, setPendingBulkDelete] = useState(null);
+  const [isBulkEditing, setIsBulkEditing] = useState(false);
 
   const refreshTagCatalog = useCallback(async () => {
     setIsTagCatalogLoading(true);
@@ -157,6 +166,7 @@ export default function CollectionsContainer({ searchQuery = "" }) {
       return;
     }
 
+    mediaSelection.clearSelection();
     setSelectedCollection(item);
     setSelectedMedia(null);
     await loadCollectionMedia(item.id, 1);
@@ -199,6 +209,7 @@ export default function CollectionsContainer({ searchQuery = "" }) {
   };
 
   const visibleCollectionFiles = useMemo(() => collectionFiles, [collectionFiles]);
+  const mediaSelection = useMediaMultiSelect(visibleCollectionFiles);
   const selectedMediaIndex = useMemo(() => (
     selectedMedia
       ? visibleCollectionFiles.findIndex((file) => file.id === selectedMedia.id || file.relativePath === selectedMedia.relativePath)
@@ -271,6 +282,23 @@ export default function CollectionsContainer({ searchQuery = "" }) {
       setRelatedMediaItems([]);
     }
   }, [selectedMedia]);
+
+  useEffect(() => {
+    if (selectedCollection) {
+      return;
+    }
+
+    mediaSelection.clearSelection();
+  }, [mediaSelection, selectedCollection]);
+
+  useEffect(() => {
+    if (mediaSelection.selectedCount > 0) {
+      return;
+    }
+
+    setPendingBulkDelete(null);
+    setIsBulkEditing(false);
+  }, [mediaSelection.selectedCount]);
 
   useEffect(() => {
     if (!selectedMedia) {
@@ -841,6 +869,74 @@ export default function CollectionsContainer({ searchQuery = "" }) {
     }
   };
 
+  const handleOpenBulkEdit = async () => {
+    if (mediaSelection.selectedCount === 0 || isSavingMedia || isDeletingMedia) {
+      return;
+    }
+
+    setMediaModalError("");
+    setIsBulkEditing(true);
+    await refreshTagCatalog();
+  };
+
+  const handleBulkSaveMedia = async ({ items, collectionIds }) => {
+    if (!Array.isArray(items) || items.length === 0 || isSavingMedia || isDeletingMedia) {
+      return;
+    }
+
+    setIsSavingMedia(true);
+    setMediaModalError("");
+    try {
+      for (const item of items) {
+        await mediaApi.updateMedia(item.id, buildMediaUpdatePayloadFromDraft(item, item.draft));
+        for (const collectionId of (Array.isArray(collectionIds) ? collectionIds : [])) {
+          await collectionsApi.addMediaToCollection(collectionId, item.id);
+        }
+      }
+
+      const updatedItemsById = new Map(items.map((item) => ([
+        item.id,
+        applyMediaDraftToItem(item, item.draft, tagCatalog)
+      ])));
+
+      setCollectionFiles((current) => current.map((item) => updatedItemsById.get(item.id) || item));
+      setSelectedMedia((current) => (current ? (updatedItemsById.get(current.id) || current) : current));
+      setIsBulkEditing(false);
+      mediaSelection.clearSelection();
+      window.dispatchEvent(new CustomEvent("gallery:media-updated"));
+    } catch (error) {
+      setMediaModalError(error instanceof Error ? error.message : "Failed to update media.");
+    } finally {
+      setIsSavingMedia(false);
+    }
+  };
+
+  const handleBulkDeleteMedia = async () => {
+    if (mediaSelection.selectedCount === 0 || isDeletingMedia || isSavingMedia) {
+      return;
+    }
+
+    setIsDeletingMedia(true);
+    setMediaModalError("");
+    try {
+      for (const item of mediaSelection.selectedMediaItems) {
+        await mediaApi.deleteMedia(item.id);
+      }
+
+      const selectedIds = new Set(mediaSelection.selectedMediaIds);
+      setCollectionFiles((current) => current.filter((item) => !selectedIds.has(Number(item.id))));
+      setSelectedMedia((current) => (current && selectedIds.has(Number(current.id)) ? null : current));
+      setPendingBulkDelete(null);
+      setIsBulkEditing(false);
+      mediaSelection.clearSelection();
+      window.dispatchEvent(new CustomEvent("gallery:media-updated"));
+    } catch (error) {
+      setMediaModalError(error instanceof Error ? error.message : "Failed to delete media.");
+    } finally {
+      setIsDeletingMedia(false);
+    }
+  };
+
   const handleDeleteMedia = async () => {
     if (!selectedMedia?.id || isDeletingMedia || isSavingMedia) {
       return;
@@ -1049,35 +1145,29 @@ export default function CollectionsContainer({ searchQuery = "" }) {
               ) : null}
               {!collectionFilesError && collectionFilesTotalCount > 0 ? (
                 <>
-                  {renderCollectionFilesPagination()}
+                  <div className="media-pagination-toolbar">
+                    {renderCollectionFilesPagination()}
+                    <BulkMediaActionBar
+                      selectedCount={mediaSelection.selectedCount}
+                      onClearSelection={mediaSelection.clearSelection}
+                      onDeleteSelection={() => setPendingBulkDelete(createPendingMediaDelete(mediaSelection.selectedMediaItems))}
+                      onEditSelection={() => void handleOpenBulkEdit()}
+                    />
+                  </div>
                   <div className="media-grid">
                     {visibleCollectionFiles.map((file) => (
-                      <article
+                      <GalleryMediaTile
                         key={file.id || file.relativePath}
-                        className="media-tile"
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => setSelectedMedia(file)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            setSelectedMedia(file);
-                          }
-                        }}
-                      >
-                        <div className="media-preview">
-                          {file._tileUrl && !failedPreviewPaths.has(file.relativePath) ? (
-                            <img
-                              src={file._tileUrl}
-                              alt={getDisplayName(file.name)}
-                              loading="lazy"
-                              onError={() => setFailedPreviewPaths((prev) => new Set(prev).add(file.relativePath))}
-                            />
-                          ) : (
-                            <div className="media-fallback">Preview unavailable</div>
-                          )}
-                        </div>
-                      </article>
+                        file={file}
+                        alt={getDisplayName(file.name)}
+                        hasPreviewError={failedPreviewPaths.has(file.relativePath)}
+                        onSelect={setSelectedMedia}
+                        onStartSelection={mediaSelection.startSelection}
+                        onToggleSelection={mediaSelection.toggleSelection}
+                        isSelected={mediaSelection.isSelected(file)}
+                        isSelectionMode={mediaSelection.isSelectionMode}
+                        onPreviewError={(relativePath) => setFailedPreviewPaths((prev) => new Set(prev).add(relativePath))}
+                      />
                     ))}
                   </div>
                   {renderCollectionFilesPagination()}
@@ -1160,6 +1250,28 @@ export default function CollectionsContainer({ searchQuery = "" }) {
         isCollectionDeleting={isCollectionDeleting}
         onConfirm={() => void handleDeleteCollection()}
         onClose={closeCollectionDeleteConfirm}
+      />
+      <BulkMediaEditorModal
+        isOpen={isBulkEditing}
+        selectedItems={mediaSelection.selectedMediaItems}
+        tagCatalog={tagCatalog}
+        tagTypes={tagTypesCatalog}
+        isTagCatalogLoading={isTagCatalogLoading}
+        onRefreshTagCatalog={refreshTagCatalog}
+        isSaving={isSavingMedia}
+        errorMessage={mediaModalError}
+        onClose={() => setIsBulkEditing(false)}
+        onSave={({ items, collectionIds }) => void handleBulkSaveMedia({ items, collectionIds })}
+      />
+      <MediaDeleteConfirmModal
+        pendingMediaDelete={pendingBulkDelete}
+        isDeletingMedia={isDeletingMedia}
+        onConfirm={() => void handleBulkDeleteMedia()}
+        onClose={() => {
+          if (!isDeletingMedia) {
+            setPendingBulkDelete(null);
+          }
+        }}
       />
       <MediaRelationPickerModal isOpen={isCreateCollectionModalOpen && isMediaRelationPickerOpen} onClose={closeMediaRelationPicker} initialData={{ mode: mediaRelationPickerMode }}>
         <MediaRelationPickerDialogContent

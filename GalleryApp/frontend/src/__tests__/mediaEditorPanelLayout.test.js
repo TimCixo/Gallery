@@ -26,6 +26,18 @@ test("media editor relation picker uses thumbnail trigger and icon-only delete c
   assert.doesNotMatch(editorPanelSource, /Select \{label\.toLowerCase\(\)\} media/);
 });
 
+test("media editor shows preview title below thumbnail and supports icon primary actions", () => {
+  assert.match(editorPanelSource, /previewTitle = ""/);
+  assert.match(editorPanelSource, /showCollectionButton = true/);
+  assert.match(editorPanelSource, /onOpenCollectionPicker && showCollectionButton/);
+  assert.match(editorPanelSource, /className="media-edit-preview-stack"/);
+  assert.match(editorPanelSource, /className="upload-modal-title media-edit-preview-title"/);
+  assert.match(editorPanelSource, /primaryIconName = null/);
+  assert.match(editorPanelSource, /primaryIconName=\{primaryIconName\}/);
+  assert.match(appCss, /\.media-edit-preview-stack/);
+  assert.match(appCss, /\.media-edit-preview-title/);
+});
+
 test("media relation picker dialog is shared between editor panel and viewer modal", () => {
   assert.match(editorPanelSource, /MediaRelationPickerDialogContent/);
   assert.match(editorPanelSource, /MediaRelationPickerModal/);
@@ -49,6 +61,7 @@ test("media relation picker modal supports usage outside media editor context", 
 test("media editor relation picker defines empty thumbnail placeholder styles", () => {
   assert.match(appCss, /\.media-linked-editor-trigger\.is-empty/);
   assert.match(appCss, /\.media-linked-editor-placeholder/);
+  assert.match(appCss, /\.media-modal-bulk-header-start/);
   assert.match(appCss, /\.media-relation-picker-list/);
   assert.match(appCss, /\.picker-grid-card/);
   assert.match(appCss, /\.media-relation-picker-dialog\s*\{[\s\S]*width: 1120px;/);

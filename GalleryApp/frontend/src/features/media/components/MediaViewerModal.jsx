@@ -474,6 +474,7 @@ export default function MediaViewerModal({
             onMediaRelationPickerPageChange={onMediaRelationPickerPageChange}
             onCloseMediaRelationPicker={onCloseMediaRelationPicker}
             onSelectMediaRelationFromPicker={onSelectMediaRelationFromPicker}
+            previewTitle={String(draft?.title || file?.title || getDisplayName(file.name) || file.relativePath || "")}
             primaryActionLabel="Save"
             primaryActionBusyLabel="Saving..."
             isPrimaryActionBusy={isSavingMedia}

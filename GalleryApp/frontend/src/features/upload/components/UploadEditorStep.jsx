@@ -34,6 +34,7 @@ export default function UploadEditorStep({
         onOpenCollectionPicker={onOpenCollectionPicker}
         isCollectionPickerLoading={collections.loading}
         isAddingMediaToCollection={false}
+        showCollectionButton={false}
         showFavoriteButton={false}
         showCloseButton={false}
         allowOpenRelatedMedia={false}
@@ -65,6 +66,7 @@ export default function UploadEditorStep({
         onSelectMediaRelationFromPicker={editorData.handleSelectMediaRelationFromPicker}
         primaryActionLabel="Upload"
         primaryActionBusyLabel="Uploading..."
+        primaryIconName="upload"
         isPrimaryActionBusy={isUploading}
         onPrimaryAction={onUpload}
         secondaryActionLabel="Back"
@@ -82,6 +84,7 @@ export default function UploadEditorStep({
         )}
         previewNode={renderUploadPreview()}
         previewClassName="upload-edit-thumbnail"
+        previewTitle={String(activeDraft.title || activeUploadItem?.file?.name || "")}
         uploadFile={activeUploadItem?.file || null}
       />
 

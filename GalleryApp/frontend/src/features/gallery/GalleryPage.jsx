@@ -7,9 +7,11 @@ export default function GalleryPage({
   visibleMediaFiles,
   renderPagination,
   setSelectedMedia,
+  mediaSelection,
   failedPreviewPaths,
   getDisplayName,
   setFailedPreviewPaths,
+  bulkActionBar,
   children
 }) {
   return (
@@ -28,7 +30,10 @@ export default function GalleryPage({
 
       {!mediaError && visibleMediaFiles.length > 0 ? (
         <>
-          {renderPagination()}
+          <div className="media-pagination-toolbar">
+            {renderPagination()}
+            {bulkActionBar}
+          </div>
           <div className="media-grid">
             {visibleMediaFiles.map((file) => (
               <GalleryMediaTile
@@ -37,6 +42,10 @@ export default function GalleryPage({
                 alt={getDisplayName(file.name)}
                 hasPreviewError={failedPreviewPaths.has(file.relativePath)}
                 onSelect={setSelectedMedia}
+                onStartSelection={mediaSelection?.startSelection}
+                onToggleSelection={mediaSelection?.toggleSelection}
+                isSelected={mediaSelection?.isSelected(file)}
+                isSelectionMode={mediaSelection?.isSelectionMode}
                 onPreviewError={(relativePath) => {
                   setFailedPreviewPaths((prev) => new Set(prev).add(relativePath));
                 }}

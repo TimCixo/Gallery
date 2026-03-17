@@ -3,9 +3,15 @@ import { collectionsApi } from "../../api/collectionsApi";
 import { mediaApi } from "../../api/mediaApi";
 import { tagsApi } from "../../api/tagsApi";
 import { normalizePageJumpInput } from "../shared/utils/pagination";
+import { createPendingMediaDelete } from "../shared/utils/deleteConfirm";
 import CollectionPickerModal from "../collections/components/CollectionPickerModal";
 import CollectionPickerDialogContent from "../collections/components/CollectionPickerDialogContent";
+import BulkMediaActionBar from "../media/components/BulkMediaActionBar";
+import BulkMediaEditorModal from "../media/components/BulkMediaEditorModal";
+import MediaDeleteConfirmModal from "../media/components/MediaDeleteConfirmModal";
 import MediaViewerModal from "../media/components/MediaViewerModal";
+import { useMediaMultiSelect } from "../media/hooks/useMediaMultiSelect";
+import { applyMediaDraftToItem, buildMediaUpdatePayloadFromDraft } from "../media/utils/bulkMediaEdit";
 import { buildRelatedMediaChain } from "../media/utils/relatedMediaChain";
 import FavoritesPage from "./FavoritesPage";
 import AppIcon from "../shared/components/AppIcon";
@@ -60,6 +66,8 @@ export default function FavoritesContainer() {
   const [mediaRelationPickerTotalCount, setMediaRelationPickerTotalCount] = useState(0);
   const [isMediaRelationPickerLoading, setIsMediaRelationPickerLoading] = useState(false);
   const [mediaRelationPickerError, setMediaRelationPickerError] = useState("");
+  const [pendingBulkDelete, setPendingBulkDelete] = useState(null);
+  const [isBulkEditing, setIsBulkEditing] = useState(false);
 
   const refreshTagCatalog = useCallback(async () => {
     setIsTagCatalogLoading(true);
@@ -111,6 +119,7 @@ export default function FavoritesContainer() {
   }, [favoritesPage, loadFavorites]);
 
   const visibleFavoriteFiles = useMemo(() => favoritesFiles, [favoritesFiles]);
+  const mediaSelection = useMediaMultiSelect(visibleFavoriteFiles);
   const selectedMediaIndex = useMemo(() => (
     selectedMedia
       ? visibleFavoriteFiles.findIndex((file) => file.id === selectedMedia.id || file.relativePath === selectedMedia.relativePath)
@@ -179,6 +188,15 @@ export default function FavoritesContainer() {
       setRelatedMediaItems([]);
     }
   }, [selectedMedia]);
+
+  useEffect(() => {
+    if (mediaSelection.selectedCount > 0) {
+      return;
+    }
+
+    setPendingBulkDelete(null);
+    setIsBulkEditing(false);
+  }, [mediaSelection.selectedCount]);
 
   useEffect(() => {
     if (!selectedMedia) {
@@ -582,6 +600,74 @@ export default function FavoritesContainer() {
     }
   };
 
+  const handleOpenBulkEdit = async () => {
+    if (mediaSelection.selectedCount === 0 || isSavingMedia || isDeletingMedia) {
+      return;
+    }
+
+    setMediaModalError("");
+    setIsBulkEditing(true);
+    await refreshTagCatalog();
+  };
+
+  const handleBulkSaveMedia = async ({ items, collectionIds }) => {
+    if (!Array.isArray(items) || items.length === 0 || isSavingMedia || isDeletingMedia) {
+      return;
+    }
+
+    setIsSavingMedia(true);
+    setMediaModalError("");
+    try {
+      for (const item of items) {
+        await mediaApi.updateMedia(item.id, buildMediaUpdatePayloadFromDraft(item, item.draft));
+        for (const collectionId of (Array.isArray(collectionIds) ? collectionIds : [])) {
+          await collectionsApi.addMediaToCollection(collectionId, item.id);
+        }
+      }
+
+      const updatedItemsById = new Map(items.map((item) => ([
+        item.id,
+        applyMediaDraftToItem(item, item.draft, tagCatalog)
+      ])));
+
+      setFavoritesFiles((current) => current.map((item) => updatedItemsById.get(item.id) || item));
+      setSelectedMedia((current) => (current ? (updatedItemsById.get(current.id) || current) : current));
+      setIsBulkEditing(false);
+      mediaSelection.clearSelection();
+      window.dispatchEvent(new CustomEvent("gallery:media-updated"));
+    } catch (error) {
+      setMediaModalError(error instanceof Error ? error.message : "Failed to update media.");
+    } finally {
+      setIsSavingMedia(false);
+    }
+  };
+
+  const handleBulkDeleteMedia = async () => {
+    if (mediaSelection.selectedCount === 0 || isDeletingMedia || isSavingMedia) {
+      return;
+    }
+
+    setIsDeletingMedia(true);
+    setMediaModalError("");
+    try {
+      for (const item of mediaSelection.selectedMediaItems) {
+        await mediaApi.deleteMedia(item.id);
+      }
+
+      const selectedIds = new Set(mediaSelection.selectedMediaIds);
+      setFavoritesFiles((current) => current.filter((item) => !selectedIds.has(Number(item.id))));
+      setSelectedMedia((current) => (current && selectedIds.has(Number(current.id)) ? null : current));
+      setPendingBulkDelete(null);
+      setIsBulkEditing(false);
+      mediaSelection.clearSelection();
+      window.dispatchEvent(new CustomEvent("gallery:media-updated"));
+    } catch (error) {
+      setMediaModalError(error instanceof Error ? error.message : "Failed to delete media.");
+    } finally {
+      setIsDeletingMedia(false);
+    }
+  };
+
   const handleDeleteMedia = async () => {
     if (!selectedMedia?.id || isDeletingMedia || isSavingMedia) {
       return;
@@ -609,9 +695,18 @@ export default function FavoritesContainer() {
       visibleFavoriteFiles={visibleFavoriteFiles}
       renderFavoritesPagination={renderFavoritesPagination}
       setSelectedMedia={setSelectedMedia}
+      mediaSelection={mediaSelection}
       failedPreviewPaths={failedPreviewPaths}
       getDisplayName={getDisplayName}
       setFailedPreviewPaths={setFailedPreviewPaths}
+      bulkActionBar={(
+        <BulkMediaActionBar
+          selectedCount={mediaSelection.selectedCount}
+          onClearSelection={mediaSelection.clearSelection}
+          onDeleteSelection={() => setPendingBulkDelete(createPendingMediaDelete(mediaSelection.selectedMediaItems))}
+          onEditSelection={() => void handleOpenBulkEdit()}
+        />
+      )}
     >
       {selectedMedia ? (
         <MediaViewerModal
@@ -681,6 +776,28 @@ export default function FavoritesContainer() {
           onClose={closeCollectionPicker}
         />
       </CollectionPickerModal>
+      <BulkMediaEditorModal
+        isOpen={isBulkEditing}
+        selectedItems={mediaSelection.selectedMediaItems}
+        tagCatalog={tagCatalog}
+        tagTypes={tagTypesCatalog}
+        isTagCatalogLoading={isTagCatalogLoading}
+        onRefreshTagCatalog={refreshTagCatalog}
+        isSaving={isSavingMedia}
+        errorMessage={mediaModalError}
+        onClose={() => setIsBulkEditing(false)}
+        onSave={({ items, collectionIds }) => void handleBulkSaveMedia({ items, collectionIds })}
+      />
+      <MediaDeleteConfirmModal
+        pendingMediaDelete={pendingBulkDelete}
+        isDeletingMedia={isDeletingMedia}
+        onConfirm={() => void handleBulkDeleteMedia()}
+        onClose={() => {
+          if (!isDeletingMedia) {
+            setPendingBulkDelete(null);
+          }
+        }}
+      />
     </FavoritesPage>
   );
 }

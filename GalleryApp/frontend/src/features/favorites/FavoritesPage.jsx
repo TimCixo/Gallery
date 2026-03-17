@@ -1,3 +1,5 @@
+import GalleryMediaTile from "../gallery/GalleryMediaTile";
+
 export default function FavoritesPage({
   favoritesError,
   isFavoritesLoading,
@@ -5,9 +7,11 @@ export default function FavoritesPage({
   visibleFavoriteFiles,
   renderFavoritesPagination,
   setSelectedMedia,
+  mediaSelection,
   failedPreviewPaths,
   getDisplayName,
   setFailedPreviewPaths,
+  bulkActionBar,
   children
 }) {
   return (
@@ -22,37 +26,26 @@ export default function FavoritesPage({
       ) : null}
       {!favoritesError && favoritesTotalFiles > 0 ? (
         <>
-          {renderFavoritesPagination()}
+          <div className="media-pagination-toolbar">
+            {renderFavoritesPagination()}
+            {bulkActionBar}
+          </div>
           <div className="media-grid">
             {visibleFavoriteFiles.map((file) => (
-              <article
+              <GalleryMediaTile
                 key={file.relativePath}
-                className="media-tile"
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelectedMedia(file)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    setSelectedMedia(file);
-                  }
+                file={file}
+                alt={getDisplayName(file.name)}
+                hasPreviewError={failedPreviewPaths.has(file.relativePath)}
+                onSelect={setSelectedMedia}
+                onStartSelection={mediaSelection?.startSelection}
+                onToggleSelection={mediaSelection?.toggleSelection}
+                isSelected={mediaSelection?.isSelected(file)}
+                isSelectionMode={mediaSelection?.isSelectionMode}
+                onPreviewError={(relativePath) => {
+                  setFailedPreviewPaths((prev) => new Set(prev).add(relativePath));
                 }}
-              >
-                <div className="media-preview">
-                  {file._tileUrl && !failedPreviewPaths.has(file.relativePath) ? (
-                    <img
-                      src={file._tileUrl}
-                      alt={getDisplayName(file.name)}
-                      loading="lazy"
-                      onError={() => {
-                        setFailedPreviewPaths((prev) => new Set(prev).add(file.relativePath));
-                      }}
-                    />
-                  ) : (
-                    <div className="media-fallback">Preview unavailable</div>
-                  )}
-                </div>
-              </article>
+              />
             ))}
           </div>
           {renderFavoritesPagination()}
