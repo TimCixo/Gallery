@@ -1,247 +1,82 @@
 # Gallery
 
-Gallery — це локальний full-stack застосунок для керування медіа-архівом (зображення та відео) з можливістю:
-- завантаження файлів;
-- перегляду галереї та обраного;
-- редагування метаданих (title/description/source/зв'язки parent-child);
-- керування колекціями;
-- керування типами тегів і тегами;
-- пошуку по метаданих і тегах.
+Gallery - локальний full-stack застосунок для керування медіаархівом: зображеннями, відео, колекціями, обраним і тегами. Репозиторій організований так, щоб root README був картою всього проєкту, а підREADME пояснювали frontend і backend окремо.
 
 ## Технологічний стек
 
-- **Backend:** .NET 9, Minimal API, SQLite.  
-- **Frontend:** React + Vite.  
-- **Зберігання медіа:** файлова система (`GalleryApp/backend/App_Data/Media`).  
-- **Превʼю відео/GIF:** `ffmpeg` (автоматичний пошук у `run-app.ps1`).
+- Backend: ASP.NET Core Minimal API, .NET 9, SQLite
+- Frontend: React 18, Vite
+- Зберігання медіа: файлова система в `GalleryApp/backend/App_Data/Media`
+- Обробка preview для відео/GIF: `ffmpeg`
+- Уніфікований локальний запуск: `run-app.py`
 
 ## Структура проєкту
 
 ```text
 Gallery/
-├─ GalleryApp/
-│  ├─ backend/
-│  │  ├─ Endpoints/             # HTTP endpoints (media, collections, tags, health)
-│  │  ├─ Data/                  # Ініціалізація БД, репозиторії, search parser/sql builder
-│  │  ├─ Services/              # Бізнес-логіка, обробка медіа
-│  │  ├─ Models/                # DTO та моделі
-│  │  ├─ Validation/            # Валідація запитів
-│  │  ├─ App_Data/              # SQLite + файли медіа
-│  │  └─ Program.cs
-│  └─ frontend/
-│     ├─ src/App.jsx            # Основний UI (галерея, upload, модалки, теги, колекції)
-│     └─ src/App.css
-├─ run-app.ps1                  # Скрипт запуску backend + frontend
-└─ README.md
+|-- GalleryApp/
+|   |-- backend/         # API, SQLite, media storage, runtime data
+|   |-- frontend/        # React/Vite клієнт
+|   `-- native/          # допоміжна директорія для локальних native-артефактів
+|-- App_Data/            # коренева runtime-директорія, якщо використовується локальними сценаріями
+|-- tmp/                 # тимчасові локальні артефакти
+|-- Gallery.sln          # .NET solution для backend
+|-- run-app.py           # спільний launcher для backend + frontend
+`-- README.md            # огляд усього репозиторію
 ```
 
-## Вимоги
+### Ключові вузли
 
-- **.NET SDK 9**
-- **Node.js 18+** і **npm**
-- **Windows PowerShell** (для запуску `run-app.ps1`)
-- **ffmpeg** (опційно, але потрібен для превʼю відео/GIF)
+- `GalleryApp/backend` містить API, доступ до SQLite, обробку upload/preview і файлове сховище медіа.
+- `GalleryApp/frontend` містить UI на React/Vite, сторінки галереї, обраного, колекцій, тегів і upload manager.
+- `run-app.py` запускає backend і frontend разом, налаштовує режим `machine` або `network` і намагається знайти `ffmpeg`.
+- `Gallery.sln` потрібен для роботи з backend через Visual Studio або стандартний .NET tooling.
+- `App_Data` і `tmp` не є частиною логічної архітектури, але можуть містити локальні runtime або тимчасові файли.
 
-## Швидкий запуск
+## Швидкий запуск усього застосунку
 
 Запускати з кореня репозиторію.
 
-### 1) Локально на цій машині
+### Локально на цій машині
 
-```powershell
-.\run-app.ps1 -Mode machine
+```bash
+python3 run-app.py --mode machine
 ```
 
-### 2) У локальній мережі (LAN)
+### У локальній мережі
 
-```powershell
-.\run-app.ps1 -Mode network
+```bash
+python3 run-app.py --mode network
 ```
 
-У режимі `network` застосунок біндиться на `0.0.0.0`, а скрипт показує IP для доступу з інших пристроїв у мережі.
+### Без автоматичного відкриття браузера
 
-### Зупинка
-
-Натисніть `Ctrl+C` в тому самому терміналі — скрипт завершить і backend, і frontend процеси.
-
----
-
-## Як працює upload
-
-- Endpoint: `POST /api/upload`
-- Формат: `multipart/form-data`, поле: `files`
-- Підтримувані формати:
-  - **Зображення:** `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.bmp`, `.svg`
-  - **Відео:** `.mp4`, `.webm`, `.mov`, `.avi`, `.mkv`, `.m4v`
-- Файли зберігаються в:
-  - `GalleryApp/backend/App_Data/Media/<yyyy-MM-dd>/`
-
-## Доступ до медіа-файлів
-
-Backend публікує статичні файли через `/media/*`.
-
-Приклад:
-
-```text
-http://localhost:5000/media/2026-01-15/example.jpg
+```bash
+python3 run-app.py --mode machine --open-url false
 ```
 
----
+### Коли використовувати root launcher
 
-## API (коротка карта endpoint'ів)
+- Використовуйте `run-app.py`, коли потрібно швидко підняти весь застосунок цілком.
+- Запускайте frontend і backend окремо, коли дебажите лише одну підсистему або працюєте з IDE/tooling напряму.
 
-### Health
-- `GET /api/health`
+## Вимоги
 
-### Media
-- `GET /api/media?page=1&pageSize=36&search=...`
-- `GET /api/favorites?page=1&pageSize=36`
-- `GET /api/media/preview?path=...`
-- `PUT /api/media/{id}`
-- `PUT /api/media/{id}/favorite`
-- `DELETE /api/media/{id}`
-- `POST /api/upload`
+- .NET SDK 9
+- Node.js 18+ і npm
+- Python 3
+- `ffmpeg` опційно, але потрібен для preview відео та GIF
 
-### Collections
-- `GET /api/collections?search=...&mediaId=...`
-- `POST /api/collections`
-- `PUT /api/collections/{id}`
-- `GET /api/collections/{id}/media?page=1&pageSize=36`
-- `POST /api/collections/{id}/media`
-- `DELETE /api/collections/{id}`
+## Окремий запуск підсистем
 
-### Tags / Tag Types
-- `GET /api/tag-types`
-- `POST /api/tag-types`
-- `PUT /api/tag-types/{id}`
-- `DELETE /api/tag-types/{id}`
-- `GET /api/tag-types/{id}/tags`
-- `GET /api/tags`
-- `POST /api/tag-types/{id}/tags`
-- `PUT /api/tags/{id}`
-- `DELETE /api/tags/{id}`
-
----
-
-## Приклади payload'ів
-
-### Оновити медіа
-
-`PUT /api/media/{id}`
-
-```json
-{
-  "title": "Sunset",
-  "description": "Taken in 2026",
-  "source": "https://example.com/source",
-  "parent": 12,
-  "child": 18,
-  "tagIds": [1, 3, 9]
-}
-```
-
-### Додати/прибрати з обраного
-
-`PUT /api/media/{id}/favorite`
-
-```json
-{
-  "isFavorite": true
-}
-```
-
-### Створити колекцію
-
-`POST /api/collections`
-
-```json
-{
-  "label": "Trips",
-  "description": "Travel shots",
-  "cover": 101
-}
-```
-
-### Додати медіа в колекцію
-
-`POST /api/collections/{id}/media`
-
-```json
-{
-  "mediaId": 101
-}
-```
-
-### Створити тип тегів
-
-`POST /api/tag-types`
-
-```json
-{
-  "name": "Genre",
-  "color": "#2563EB"
-}
-```
-
-### Створити тег
-
-`POST /api/tag-types/{id}/tags`
-
-```json
-{
-  "name": "Landscape",
-  "description": "Landscape content"
-}
-```
-
----
-
-## Пошук (`search`) у `/api/media`
-
-Пошук підтримує формат `tag:value`.
-
-Базові теги:
-- `path:value`
-- `title:value`
-- `description:value`
-- `source:value`
-- `id:value`
-
-Також підтримуються динамічні теги за назвою `TagType`, наприклад:
-- `genre:landscape`
-- `person:"john doe"`
-
-Можна використовувати префікс `@`:
-- `@title:sunset`
-
-Підтримуються значення в лапках:
-- `description:"golden hour beach"`
-
----
-
-## Дані та БД
-
-При старті backend автоматично:
-- створює SQLite БД у `GalleryApp/backend/App_Data/gallery.db`;
-- ініціалізує таблиці `Media`, `Collections`, `CollectionsMedia`, `TagTypes`, `Tags`, `MediaTags`, `AppInfo`;
-- додає системну колекцію `Favorites`, якщо її ще немає.
-
-## CORS і URL за замовчуванням
-
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:5000`
-- CORS policy дозволяє frontend-джерело `http://localhost:5173`.
-
-## Корисні команди для розробки
-
-Backend:
+### Backend
 
 ```bash
 cd GalleryApp/backend
 dotnet run --urls http://localhost:5000
 ```
 
-Frontend:
+### Frontend
 
 ```bash
 cd GalleryApp/frontend
@@ -249,8 +84,19 @@ npm install
 npm run dev -- --host localhost --port 5173
 ```
 
-## Відомі нюанси
+## Де шукати деталі
 
-- Без `ffmpeg` превʼю відео/GIF не працюватиме.
-- У `network` режимі переконайтеся, що firewall дозволяє порти `5000` і `5173`.
+- Frontend: [GalleryApp/frontend/README.md](GalleryApp/frontend/README.md)
+- Backend: [GalleryApp/backend/README.md](GalleryApp/backend/README.md)
 
+## Основні URL за замовчуванням
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:5000`
+- Media files: `http://localhost:5000/media/...`
+
+## Примітки
+
+- Backend зберігає SQLite базу в `GalleryApp/backend/App_Data/gallery.db`.
+- Медіафайли зберігаються в `GalleryApp/backend/App_Data/Media`.
+- У режимі `network` потрібно дозволити порти `5000` і `5173` у firewall.

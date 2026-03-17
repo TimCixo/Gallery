@@ -201,6 +201,25 @@
   min-width: 0;
 }
 
+.top-upload-btn {
+  border: 1px solid #0f172a;
+  background-color: #0f172a;
+  color: #ffffff;
+  border-radius: 0.45rem;
+  padding: 0.42rem 0.82rem;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+
+.top-upload-btn:hover {
+  background-color: #1e293b;
+}
+
+.top-upload-btn:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
 .top-upload-dropdown {
   position: relative;
 }
@@ -1252,6 +1271,26 @@
   padding: 0;
 }
 
+.media-modal-body {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  padding: 0.75rem 0.8rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.media-modal-footer {
+  grid-column: 1 / -1;
+  border-top: 1px solid #e2e8f0;
+  padding: 0.7rem 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
 .media-modal-content {
   grid-column: 1;
   grid-row: 2;
@@ -1512,7 +1551,7 @@
   table-layout: fixed;
   border: 1px solid #d5dbe1;
   border-radius: 0.55rem;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .media-meta-table tr:not(:last-child) th,
@@ -1538,6 +1577,8 @@
 .media-meta-table td {
   color: #0f172a;
   word-break: break-word;
+  position: relative;
+  overflow: visible;
 }
 
 .media-id-link {
@@ -1738,6 +1779,11 @@
 
 .media-tagtype-edit-wrap {
   position: relative;
+  z-index: 1;
+}
+
+.media-tagtype-edit-wrap:focus-within {
+  z-index: 6;
 }
 
 .media-tagtype-field {
@@ -1911,6 +1957,22 @@
   line-height: 1.2;
 }
 
+.media-tag-pill-toggle {
+  border: 1px solid #d5dbe1;
+  border-radius: 0.35rem;
+  background-color: #f8fafc;
+  color: #0f172a;
+  padding: 0.12rem 0.4rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.media-tag-pill-toggle.is-active {
+  border-color: #93c5fd;
+  background-color: #dbeafe;
+  color: #1d4ed8;
+}
+
 .media-action-row {
   display: flex;
   gap: 0.5rem;
@@ -1918,7 +1980,36 @@
   margin: 0.65rem 0.65rem 0.75rem;
 }
 
+.upload-file-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.upload-file-item {
+  border: 1px solid #d5dbe1;
+  border-radius: 0.5rem;
+  background-color: #ffffff;
+  padding: 0.45rem 0.55rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+
+.upload-file-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .media-action-row-spaced {
+  position: relative;
+  z-index: 0;
   margin-left: 0;
   margin-right: 0;
   margin-bottom: 0;

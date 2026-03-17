@@ -1,14 +1,21 @@
 import { useEffect } from "react";
+import { useOptionalUploadContext } from "../context/UploadContext";
 
-function UploadModal({ isOpen, onClose, onSubmit, initialData, children }) {
+function UploadModal({ isOpen, onClose, initialData, children }) {
+  const context = useOptionalUploadContext();
+  const isModalOpen = context?.isOpen ?? isOpen;
+  const closeHandler = context?.onClose ?? onClose;
+  const prevHandler = context?.onPrev ?? initialData?.onPrev;
+  const nextHandler = context?.onNext ?? initialData?.onNext;
+
   useEffect(() => {
-    if (!isOpen) {
+    if (!isModalOpen) {
       return undefined;
     }
 
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
-        onClose?.();
+        closeHandler?.();
         return;
       }
 
@@ -22,25 +29,25 @@ function UploadModal({ isOpen, onClose, onSubmit, initialData, children }) {
 
       if (event.key === "ArrowLeft") {
         event.preventDefault();
-        initialData?.onPrev?.();
+        prevHandler?.();
       }
 
       if (event.key === "ArrowRight") {
         event.preventDefault();
-        initialData?.onNext?.();
+        nextHandler?.();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose, initialData]);
+  }, [isModalOpen, closeHandler, prevHandler, nextHandler]);
 
-  if (!isOpen) {
+  if (!isModalOpen) {
     return null;
   }
 
   return (
-    <div className="media-modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
+    <div className="media-modal-overlay" role="dialog" aria-modal="true" onClick={closeHandler}>
       {children}
     </div>
   );

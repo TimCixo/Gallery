@@ -7,10 +7,12 @@ export default function FavoritesPage({
   setSelectedMedia,
   failedPreviewPaths,
   getDisplayName,
-  setFailedPreviewPaths
+  setFailedPreviewPaths,
+  children
 }) {
   return (
-    <section className="favorites-page">
+    <>
+      <section className="favorites-page">
       {favoritesError ? <p className="media-state error">{favoritesError}</p> : null}
       {!favoritesError && isFavoritesLoading && favoritesTotalFiles === 0 ? (
         <p className="media-state">Loading favorites...</p>
@@ -56,6 +58,8 @@ export default function FavoritesPage({
           {renderFavoritesPagination(false)}
         </>
       ) : null}
-    </section>
+      </section>
+      {children}
+    </>
   );
 }

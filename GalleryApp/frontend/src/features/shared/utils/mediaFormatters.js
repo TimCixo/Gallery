@@ -30,7 +30,7 @@ export const formatFileSize = (value) => {
   }
 
   const fractionDigits = size >= 100 || unitIndex === 0 ? 0 : size >= 10 ? 1 : 2;
-  return `${size.toFixed(fractionDigits)} ${units[unitIndex]} (${bytes.toLocaleString()} B)`;
+  return `${size.toFixed(fractionDigits)} ${units[unitIndex]} (${bytes.toLocaleString("en-US")} B)`;
 };
 
 export const getExtensionFromPath = (value) => {
