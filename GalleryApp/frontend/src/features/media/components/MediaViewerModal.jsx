@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { tagsApi } from "../../../api/tagsApi";
 import { formatFileSize, formatMediaDate } from "../../shared/utils/mediaFormatters";
 import { isVideoFile, resolveOriginalMediaUrl, resolvePreviewMediaUrl } from "../../shared/utils/mediaPredicates";
@@ -79,6 +79,7 @@ export default function MediaViewerModal({
   selectedTagIds,
   onToggleTag,
   onRefreshTagCatalog,
+  relatedMediaItems,
   relationPreviewByMode,
   onOpenRelationPicker,
   onOpenRelatedMediaById,
@@ -272,6 +273,9 @@ export default function MediaViewerModal({
     }
   };
 
+  const activeRelatedMediaRef = useRef(null);
+  const relatedMediaStripRef = useRef(null);
+
   const renderLinkedMediaId = (value, label) => {
     if (value == null) {
       return "-";
@@ -293,66 +297,27 @@ export default function MediaViewerModal({
     );
   };
 
-  const renderLinkedMediaPicker = (fieldKey, label) => {
-    const mode = fieldKey === "child" ? "child" : "parent";
-    const draftValue = String(draft?.[fieldKey] || "");
-    const relationId = Number.parseInt(draftValue, 10);
-    const previewState = relationPreviewByMode?.[mode] || { item: null, isLoading: false, error: "" };
-    const relationItem = previewState.item;
-    const previewUrl = relationItem ? resolvePreviewMediaUrl(relationItem) : "";
-    const hasSelection = Boolean(draftValue.trim());
+  useLayoutEffect(() => {
+    const stripElement = relatedMediaStripRef.current;
+    const activeElement = activeRelatedMediaRef.current;
+    if (!stripElement || !activeElement) {
+      return undefined;
+    }
 
-    return (
-      <div className="media-linked-editor">
-        <div className="media-linked-editor-controls">
-          <button
-            type="button"
-            className="media-action-btn"
-            onClick={() => onOpenRelationPicker?.(mode)}
-          >
-            {hasSelection ? "Change" : "Select"}
-          </button>
-          <button
-            type="button"
-            className="media-action-btn"
-            onClick={() => onDraftChange?.({ [fieldKey]: "" })}
-            disabled={!hasSelection}
-          >
-            Clear
-          </button>
-        </div>
+    let innerFrameId = 0;
+    const frameId = window.requestAnimationFrame(() => {
+      innerFrameId = window.requestAnimationFrame(() => {
+        const targetLeft = activeElement.offsetLeft - ((stripElement.clientWidth - activeElement.clientWidth) / 2);
+        const maxScrollLeft = Math.max(0, stripElement.scrollWidth - stripElement.clientWidth);
+        stripElement.scrollLeft = Math.max(0, Math.min(targetLeft, maxScrollLeft));
+      });
+    });
 
-        {hasSelection ? (
-          <div className="media-linked-editor-preview">
-            {relationItem ? (
-              <div className="media-relation-picker-item media-linked-editor-preview-item">
-                {previewUrl ? (
-                  <span className="media-relation-picker-thumb-wrap" aria-hidden="true">
-                    <img
-                      src={previewUrl}
-                      alt=""
-                      className="media-relation-picker-thumb"
-                      loading="lazy"
-                    />
-                  </span>
-                ) : null}
-                <span className="media-relation-picker-main">
-                  {Number.isSafeInteger(relationId) ? renderLinkedMediaId(relationId, label) : <span>{draftValue}</span>}
-                  <small>{relationItem.title || relationItem.relativePath || "Untitled media"}</small>
-                </span>
-              </div>
-            ) : previewState.isLoading ? (
-              <small>Resolving...</small>
-            ) : previewState.error ? (
-              <small className="media-action-error">{previewState.error}</small>
-            ) : (
-              <small>Media not found.</small>
-            )}
-          </div>
-        ) : null}
-      </div>
-    );
-  };
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.cancelAnimationFrame(innerFrameId);
+    };
+  }, [file?.id, relatedMediaItems]);
 
   if (isEditing) {
     return (
@@ -414,6 +379,47 @@ export default function MediaViewerModal({
   return (
     <>
       <div className="media-modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
+        {Array.isArray(relatedMediaItems) && relatedMediaItems.length > 0 ? (
+          <div ref={relatedMediaStripRef} className="media-related-strip">
+            {relatedMediaItems.map((item) => {
+              const relatedId = Number(item?.id);
+              const previewUrl = resolvePreviewMediaUrl(item);
+              const isCurrent = Boolean(item?.isCurrent);
+              const title = item.title || item.relativePath || (Number.isSafeInteger(relatedId) ? `#${relatedId}` : "Related media");
+
+              return (
+                <button
+                  key={`${item.relationSide || "item"}-${relatedId || item.relativePath || "unknown"}`}
+                  ref={isCurrent ? activeRelatedMediaRef : null}
+                  type="button"
+                  className={`media-related-card${isCurrent ? " is-current" : ""}`}
+                  onClick={() => {
+                    if (!isCurrent && Number.isSafeInteger(relatedId) && relatedId > 0) {
+                      onOpenRelatedMediaById?.(relatedId, item.relationSide || "related");
+                    }
+                  }}
+                  title={title}
+                  aria-label={isCurrent ? "Current media" : `Open related media ${relatedId}`}
+                >
+                  <span className="media-related-card-thumb-wrap" aria-hidden="true">
+                    {previewUrl ? (
+                      <img
+                        src={previewUrl}
+                        alt=""
+                        className="media-related-card-thumb"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <span className="media-linked-editor-placeholder">
+                        <AppIcon name="create" alt="" aria-hidden="true" />
+                      </span>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
         <div className={`media-modal${isEditing ? " media-modal-editing" : ""}`} onClick={(event) => event.stopPropagation()}>
         {!isEditing ? (
           <div className="media-modal-content">
@@ -526,22 +532,6 @@ export default function MediaViewerModal({
                       onChange={(event) => onDraftChange?.({ description: event.target.value })}
                     />
                   ) : (file.description || "-")}
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">Parent</th>
-                <td>
-                  {isEditing ? (
-                    renderLinkedMediaPicker("parent", "Parent")
-                  ) : renderLinkedMediaId(file.parent, "Parent")}
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">Child</th>
-                <td>
-                  {isEditing ? (
-                    renderLinkedMediaPicker("child", "Child")
-                  ) : renderLinkedMediaId(file.child, "Child")}
                 </td>
               </tr>
                 {normalizedTagTypes.map((tagType, index) => {

@@ -254,60 +254,58 @@ export default function MediaEditorPanel({
   const renderLinkedMediaPicker = (fieldKey, label) => {
     const mode = fieldKey === "child" ? "child" : "parent";
     const draftValue = String(draft?.[fieldKey] || "");
-    const relationId = Number.parseInt(draftValue, 10);
     const previewState = relationPreviewByMode?.[mode] || { item: null, isLoading: false, error: "" };
     const relationItem = previewState.item;
     const previewUrl = relationItem ? resolvePreviewMediaUrl(relationItem) : "";
     const hasSelection = Boolean(draftValue.trim());
+    const relationLabel = relationItem?.title || relationItem?.relativePath || "Untitled media";
 
     return (
       <div className="media-linked-editor">
         <div className="media-linked-editor-controls">
           <button
             type="button"
-            className="media-action-btn"
+            className={`media-linked-editor-trigger${hasSelection ? "" : " is-empty"}`}
             onClick={() => onOpenRelationPicker?.(mode)}
+            aria-label={hasSelection ? `Change ${label}` : `Select ${label}`}
+            title={hasSelection ? `Change ${label}` : `Select ${label}`}
           >
-            {hasSelection ? "Change" : "Select"}
+            {previewUrl ? (
+              <img
+                src={previewUrl}
+                alt={relationLabel}
+                className="media-relation-picker-thumb"
+                loading="lazy"
+              />
+            ) : (
+              <span className="media-linked-editor-placeholder" aria-hidden="true">
+                <AppIcon name="create" alt="" aria-hidden="true" />
+              </span>
+            )}
           </button>
           <button
             type="button"
-            className="media-action-btn"
+            className="media-action-btn app-button-icon-only"
             onClick={() => onDraftChange?.({ [fieldKey]: "" })}
             disabled={!hasSelection}
+            title={`Clear ${label}`}
+            aria-label={`Clear ${label}`}
           >
-            Clear
+            <AppIcon name="delete" alt="" aria-hidden="true" />
           </button>
         </div>
 
-        {hasSelection ? (
-          <div className="media-linked-editor-preview">
-            {relationItem ? (
-              <div className="media-relation-picker-item media-linked-editor-preview-item">
-                {previewUrl ? (
-                  <span className="media-relation-picker-thumb-wrap" aria-hidden="true">
-                    <img
-                      src={previewUrl}
-                      alt=""
-                      className="media-relation-picker-thumb"
-                      loading="lazy"
-                    />
-                  </span>
-                ) : null}
-                <span className="media-relation-picker-main">
-                  {Number.isSafeInteger(relationId) ? renderLinkedMediaId(relationId, label) : <span>{draftValue}</span>}
-                  <small>{relationItem.title || relationItem.relativePath || "Untitled media"}</small>
-                </span>
-              </div>
-            ) : previewState.isLoading ? (
+        <div className="media-linked-editor-preview">
+          {hasSelection ? (
+            relationItem ? null : previewState.isLoading ? (
               <small>Resolving...</small>
             ) : previewState.error ? (
               <small className="media-action-error">{previewState.error}</small>
             ) : (
               <small>Media not found.</small>
-            )}
-          </div>
-        ) : null}
+            )
+          ) : null}
+        </div>
       </div>
     );
   };

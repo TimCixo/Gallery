@@ -5,6 +5,7 @@ import { tagsApi } from "../../api/tagsApi";
 import { normalizePageJumpInput } from "../shared/utils/pagination";
 import CollectionPickerModal from "./components/CollectionPickerModal";
 import MediaViewerModal from "../media/components/MediaViewerModal";
+import { buildRelatedMediaChain } from "../media/utils/relatedMediaChain";
 import CollectionsPage from "./CollectionsPage";
 import AppIcon from "../shared/components/AppIcon";
 
@@ -56,6 +57,7 @@ export default function CollectionsContainer({ searchQuery = "" }) {
     parent: { item: null, isLoading: false, error: "" },
     child: { item: null, isLoading: false, error: "" }
   });
+  const [relatedMediaItems, setRelatedMediaItems] = useState([]);
   const [isMediaRelationPickerOpen, setIsMediaRelationPickerOpen] = useState(false);
   const [mediaRelationPickerMode, setMediaRelationPickerMode] = useState("parent");
   const [mediaRelationPickerQuery, setMediaRelationPickerQuery] = useState("");
@@ -232,6 +234,7 @@ export default function CollectionsContainer({ searchQuery = "" }) {
         parent: { item: null, isLoading: false, error: "" },
         child: { item: null, isLoading: false, error: "" }
       });
+      setRelatedMediaItems([]);
     }
   }, [selectedMedia]);
 
@@ -481,12 +484,17 @@ export default function CollectionsContainer({ searchQuery = "" }) {
   }, [collectionFiles]);
 
   useEffect(() => {
-    if (!selectedMedia || !isEditingMedia) {
+    if (!selectedMedia) {
       return undefined;
     }
 
     const resolveMode = async (mode) => {
-      const rawValue = String(mode === "parent" ? mediaDraft.parent : mediaDraft.child || "").trim();
+      const rawValue = String(
+        isEditingMedia
+          ? (mode === "parent" ? mediaDraft.parent : mediaDraft.child)
+          : (mode === "parent" ? selectedMedia.parent : selectedMedia.child)
+          || ""
+      ).trim();
       if (!rawValue) {
         setMediaRelationPreviewByMode((current) => ({
           ...current,
@@ -529,6 +537,31 @@ export default function CollectionsContainer({ searchQuery = "" }) {
     void resolveMode("child");
     return undefined;
   }, [selectedMedia, isEditingMedia, mediaDraft.parent, mediaDraft.child, findMediaById]);
+
+  useEffect(() => {
+    if (!selectedMedia) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const loadRelatedMedia = async () => {
+      try {
+        const items = await buildRelatedMediaChain({ media: selectedMedia, findMediaById });
+        if (!cancelled) {
+          setRelatedMediaItems(items);
+        }
+      } catch {
+        if (!cancelled) {
+          setRelatedMediaItems([{ ...selectedMedia, relationSide: "current", isCurrent: true }]);
+        }
+      }
+    };
+
+    void loadRelatedMedia();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMedia, findMediaById]);
 
   const handleOpenRelatedMediaById = async (targetId) => {
     const normalizedId = Number(targetId);
@@ -821,6 +854,7 @@ export default function CollectionsContainer({ searchQuery = "" }) {
             const hasTag = currentIds.includes(tagId);
             return { ...current, tagIds: hasTag ? currentIds.filter((id) => id !== tagId) : [...currentIds, tagId] };
           })}
+          relatedMediaItems={relatedMediaItems}
           relationPreviewByMode={mediaRelationPreviewByMode}
           onOpenRelationPicker={openMediaRelationPicker}
           onOpenRelatedMediaById={handleOpenRelatedMediaById}
