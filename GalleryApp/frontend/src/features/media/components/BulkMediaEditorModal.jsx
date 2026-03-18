@@ -86,6 +86,48 @@ export default function BulkMediaEditorModal({
   const visibleDraft = isGroupEditEnabled ? groupDraft : activeDraft;
   const modalTitle = activeItem?.name || activeItem?.title || activeItem?.relativePath || `${editorItems.length} selected media`;
 
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+        return;
+      }
+
+      const activeElement = document.activeElement;
+      if (
+        activeElement instanceof HTMLElement
+        && (activeElement.tagName === "INPUT" || activeElement.tagName === "TEXTAREA" || activeElement.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (isGroupEditEnabled || isSaving) {
+        return;
+      }
+
+      if (event.key === "ArrowLeft" && !canNavigatePrev) {
+        return;
+      }
+
+      if (event.key === "ArrowRight" && !canNavigateNext) {
+        return;
+      }
+
+      event.preventDefault();
+      setActiveIndex((current) => (
+        event.key === "ArrowRight"
+          ? Math.min(current + 1, editorItems.length - 1)
+          : Math.max(current - 1, 0)
+      ));
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [canNavigateNext, canNavigatePrev, editorItems.length, isGroupEditEnabled, isOpen, isSaving]);
+
   const previewNode = useMemo(() => {
     if (isGroupEditEnabled) {
       return <div className="media-bulk-preview">{editorItems.length}</div>;

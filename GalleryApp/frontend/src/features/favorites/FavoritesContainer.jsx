@@ -120,6 +120,12 @@ export default function FavoritesContainer() {
 
   const visibleFavoriteFiles = useMemo(() => favoritesFiles, [favoritesFiles]);
   const mediaSelection = useMediaMultiSelect(visibleFavoriteFiles);
+  const hasBlockingDialogOpen = Boolean(
+    selectedMedia
+    || isBulkEditing
+    || isCollectionPickerOpen
+    || isMediaRelationPickerOpen
+  );
   const selectedMediaIndex = useMemo(() => (
     selectedMedia
       ? visibleFavoriteFiles.findIndex((file) => file.id === selectedMedia.id || file.relativePath === selectedMedia.relativePath)
@@ -231,6 +237,32 @@ export default function FavoritesContainer() {
 
     setFavoritesPage(nextPage);
   };
+
+  useEffect(() => {
+    if (hasBlockingDialogOpen || favoritesTotalPages <= 1) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+        return;
+      }
+
+      const activeElement = document.activeElement;
+      if (
+        activeElement instanceof HTMLElement
+        && (activeElement.tagName === "INPUT" || activeElement.tagName === "TEXTAREA" || activeElement.isContentEditable)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      handleFavoritesPageChange(event.key === "ArrowRight" ? favoritesPage + 1 : favoritesPage - 1);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [favoritesPage, favoritesTotalPages, hasBlockingDialogOpen, isFavoritesLoading]);
 
   const handleFavoritesPageJumpSubmit = (event) => {
     event.preventDefault();

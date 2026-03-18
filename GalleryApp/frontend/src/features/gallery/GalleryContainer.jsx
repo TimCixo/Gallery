@@ -184,6 +184,12 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
 
   const visibleMediaFiles = useMemo(() => mediaFiles, [mediaFiles]);
   const mediaSelection = useMediaMultiSelect(visibleMediaFiles);
+  const hasBlockingDialogOpen = Boolean(
+    selectedMedia
+    || isBulkEditing
+    || isCollectionPickerOpen
+    || isMediaRelationPickerOpen
+  );
   const selectedMediaIndex = useMemo(() => (
     selectedMedia
       ? visibleMediaFiles.findIndex((file) => file.id === selectedMedia.id || file.relativePath === selectedMedia.relativePath)
@@ -301,6 +307,32 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
 
     setCurrentPage(nextPage);
   };
+
+  useEffect(() => {
+    if (hasBlockingDialogOpen || totalPages <= 1) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+        return;
+      }
+
+      const activeElement = document.activeElement;
+      if (
+        activeElement instanceof HTMLElement
+        && (activeElement.tagName === "INPUT" || activeElement.tagName === "TEXTAREA" || activeElement.isContentEditable)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      handlePageChange(event.key === "ArrowRight" ? currentPage + 1 : currentPage - 1);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentPage, hasBlockingDialogOpen, isMediaLoading, totalPages]);
 
   const handlePageJumpSubmit = (event) => {
     event.preventDefault();

@@ -74,6 +74,11 @@ test("bulk media editor group mode locks navigation and shows selection count pr
   assert.match(bulkModalSource, /if \(isGroupEditEnabled\) \{\s*return <div className="media-bulk-preview">\{editorItems\.length\}<\/div>/);
   assert.match(bulkModalSource, /const visibleDraft = isGroupEditEnabled \? groupDraft : activeDraft/);
   assert.match(bulkModalSource, /const previewTitle = isGroupEditEnabled \? `\$\{editorItems\.length\} selected media` : `Editing: \$\{modalTitle\}`/);
+  assert.match(bulkModalSource, /if \(event\.key !== "ArrowLeft" && event\.key !== "ArrowRight"\) \{/);
+  assert.match(bulkModalSource, /if \(isGroupEditEnabled \|\| isSaving\) \{/);
+  assert.match(bulkModalSource, /if \(event\.key === "ArrowLeft" && !canNavigatePrev\) \{/);
+  assert.match(bulkModalSource, /if \(event\.key === "ArrowRight" && !canNavigateNext\) \{/);
+  assert.match(bulkModalSource, /window\.addEventListener\("keydown", handleKeyDown\)/);
   assert.match(bulkModalSource, /disabled=\{isGroupEditEnabled \|\| !canNavigatePrev \|\| isSaving\}/);
   assert.match(bulkModalSource, /disabled=\{isGroupEditEnabled \|\| !canNavigateNext \|\| isSaving\}/);
   assert.match(bulkModalSource, /setGroupDraft\(createEmptyMediaDraft\(\)\);/);
