@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { collectionsApi } from "../../api/collectionsApi";
 import { mediaApi } from "../../api/mediaApi";
 import { tagsApi } from "../../api/tagsApi";
-import { normalizePageJumpInput } from "../shared/utils/pagination";
+import { normalizePageJumpDisplayValue, normalizePageJumpInput } from "../shared/utils/pagination";
 import { createPendingMediaDelete } from "../shared/utils/deleteConfirm";
 import CollectionPickerModal from "../collections/components/CollectionPickerModal";
 import CollectionPickerDialogContent from "../collections/components/CollectionPickerDialogContent";
@@ -347,7 +347,7 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
           >
             <AppIcon name="arrowRight" alt="" aria-hidden="true" />
           </button>
-          <form className="media-pagination-jump" onSubmit={handlePageJumpSubmit}>
+          <form className="media-pagination-jump" onSubmit={handlePageJumpSubmit} noValidate>
             <input
               type="number"
               min={1}
@@ -356,6 +356,7 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
               inputMode="numeric"
               value={pageJumpInput}
               onChange={(event) => setPageJumpInput(event.target.value)}
+              onBlur={(event) => setPageJumpInput(normalizePageJumpDisplayValue(event.target.value, currentPage, totalPages))}
               disabled={isMediaLoading || totalPages === 0}
               aria-label="Go to page"
             />

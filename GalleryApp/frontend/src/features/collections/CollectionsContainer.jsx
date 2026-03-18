@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { collectionsApi } from "../../api/collectionsApi";
 import { mediaApi } from "../../api/mediaApi";
 import { tagsApi } from "../../api/tagsApi";
-import { normalizePageJumpInput } from "../shared/utils/pagination";
+import { normalizePageJumpDisplayValue, normalizePageJumpInput } from "../shared/utils/pagination";
 import { createPendingMediaDelete } from "../shared/utils/deleteConfirm";
 import CollectionPickerModal from "./components/CollectionPickerModal";
 import CollectionPickerDialogContent from "./components/CollectionPickerDialogContent";
@@ -384,7 +384,7 @@ export default function CollectionsContainer({ searchQuery = "" }) {
           >
             <AppIcon name="arrowRight" alt="" aria-hidden="true" />
           </button>
-          <form className="media-pagination-jump" onSubmit={handleCollectionFilesPageJumpSubmit}>
+          <form className="media-pagination-jump" onSubmit={handleCollectionFilesPageJumpSubmit} noValidate>
             <input
               type="number"
               min={1}
@@ -393,6 +393,7 @@ export default function CollectionsContainer({ searchQuery = "" }) {
               inputMode="numeric"
               value={collectionFilesPageJumpInput}
               onChange={(event) => setCollectionFilesPageJumpInput(event.target.value)}
+              onBlur={(event) => setCollectionFilesPageJumpInput(normalizePageJumpDisplayValue(event.target.value, collectionFilesPage, collectionFilesTotalPages))}
               disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0}
               aria-label="Go to collection media page"
             />

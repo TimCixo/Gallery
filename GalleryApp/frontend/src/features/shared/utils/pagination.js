@@ -12,3 +12,7 @@ export function normalizePageJumpInput(value, currentPage, totalPages) {
     targetPage: Math.min(Math.max(parsed, 1), Math.max(totalPages, 1))
   };
 }
+
+export function normalizePageJumpDisplayValue(value, currentPage, totalPages) {
+  return String(normalizePageJumpInput(value, currentPage, totalPages).targetPage);
+}

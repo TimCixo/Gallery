@@ -4,7 +4,7 @@ import AppIcon from "../../shared/components/AppIcon";
 import SearchInput from "../../search/components/SearchInput";
 import GalleryMediaTile from "../../gallery/GalleryMediaTile";
 import { buildSearchSuggestions, getSearchTokenRange, parseSearchSegments } from "../../shared/utils/searchUtils";
-import { normalizePageJumpInput } from "../../shared/utils/pagination";
+import { normalizePageJumpDisplayValue, normalizePageJumpInput } from "../../shared/utils/pagination";
 import { buildSearchTagTypeOptions } from "../../shared/utils/tagUtils";
 import { addSearchHistoryItem } from "../../../app/utils/searchHistory";
 import { applySearchSuggestionToValue, getSubmittedSearchText } from "../../../app/utils/searchState";
@@ -183,7 +183,7 @@ export default function MediaRelationPickerDialogContent({
         >
           <AppIcon name="arrowRight" alt="" aria-hidden="true" />
         </button>
-        <form className="media-pagination-jump" onSubmit={handlePageJumpSubmit}>
+        <form className="media-pagination-jump" onSubmit={handlePageJumpSubmit} noValidate>
           <input
             type="number"
             min={1}
@@ -192,6 +192,7 @@ export default function MediaRelationPickerDialogContent({
             inputMode="numeric"
             value={pageJumpInput}
             onChange={(event) => setPageJumpInput(event.target.value)}
+            onBlur={(event) => setPageJumpInput(normalizePageJumpDisplayValue(event.target.value, page, totalPages))}
             disabled={isLoading || totalPages === 0}
             aria-label="Go to page"
           />

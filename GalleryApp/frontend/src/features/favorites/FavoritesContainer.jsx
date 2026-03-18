@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { collectionsApi } from "../../api/collectionsApi";
 import { mediaApi } from "../../api/mediaApi";
 import { tagsApi } from "../../api/tagsApi";
-import { normalizePageJumpInput } from "../shared/utils/pagination";
+import { normalizePageJumpDisplayValue, normalizePageJumpInput } from "../shared/utils/pagination";
 import { createPendingMediaDelete } from "../shared/utils/deleteConfirm";
 import CollectionPickerModal from "../collections/components/CollectionPickerModal";
 import CollectionPickerDialogContent from "../collections/components/CollectionPickerDialogContent";
@@ -277,7 +277,7 @@ export default function FavoritesContainer() {
           >
             <AppIcon name="arrowRight" alt="" aria-hidden="true" />
           </button>
-          <form className="media-pagination-jump" onSubmit={handleFavoritesPageJumpSubmit}>
+          <form className="media-pagination-jump" onSubmit={handleFavoritesPageJumpSubmit} noValidate>
             <input
               type="number"
               min={1}
@@ -286,6 +286,7 @@ export default function FavoritesContainer() {
               inputMode="numeric"
               value={favoritesPageJumpInput}
               onChange={(event) => setFavoritesPageJumpInput(event.target.value)}
+              onBlur={(event) => setFavoritesPageJumpInput(normalizePageJumpDisplayValue(event.target.value, favoritesPage, favoritesTotalPages))}
               disabled={isFavoritesLoading || favoritesTotalPages === 0}
               aria-label="Go to favorites page"
             />
