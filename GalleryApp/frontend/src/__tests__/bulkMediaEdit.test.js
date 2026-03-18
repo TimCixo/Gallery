@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   applyMediaDraftToItem,
+  applyMediaUpdatePayloadToItem,
+  buildChangedMediaUpdatePayloadFromDraft,
   buildMediaUpdatePayloadFromDraft,
   createBulkEditorItems,
   createMediaDraftFromItem
@@ -94,6 +96,73 @@ test("applyMediaDraftToItem replaces media fields with normalized draft values",
       description: null,
       source: null,
       parent: null,
+      child: null,
+      tags: [{ id: 2, name: "NewTag" }]
+    }
+  );
+});
+
+test("buildChangedMediaUpdatePayloadFromDraft returns only changed fields", () => {
+  const item = {
+    id: 8,
+    title: "Old",
+    description: "Keep",
+    source: "https://a.test",
+    parent: 4,
+    child: null,
+    tags: [{ id: 2 }, { id: 5 }]
+  };
+
+  assert.deepEqual(buildChangedMediaUpdatePayloadFromDraft(item, {
+    title: " Old ",
+    description: "Changed",
+    source: "https://a.test",
+    parent: "4",
+    child: "",
+    tagIds: [5, 2]
+  }), {
+    description: "Changed"
+  });
+});
+
+test("buildChangedMediaUpdatePayloadFromDraft returns null when nothing changed", () => {
+  const item = {
+    title: "Old",
+    description: null,
+    source: null,
+    parent: null,
+    child: 12,
+    tags: [{ id: 2 }, { id: 5 }]
+  };
+
+  assert.equal(buildChangedMediaUpdatePayloadFromDraft(item, {
+    title: "Old",
+    description: "",
+    source: "",
+    parent: "",
+    child: "12",
+    tagIds: [2, 5]
+  }), null);
+});
+
+test("applyMediaUpdatePayloadToItem preserves untouched fields", () => {
+  const item = {
+    id: 7,
+    title: "Old",
+    description: "Same",
+    source: "https://a.test",
+    parent: 3,
+    child: 9,
+    tags: [{ id: 4, name: "OldTag" }]
+  };
+
+  assert.deepEqual(
+    applyMediaUpdatePayloadToItem(item, {
+      child: null,
+      tagIds: [2]
+    }, [{ id: 2, name: "NewTag" }]),
+    {
+      ...item,
       child: null,
       tags: [{ id: 2, name: "NewTag" }]
     }

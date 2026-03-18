@@ -43,7 +43,7 @@ test("bulk media action bar exposes cancel delete and edit actions", () => {
   assert.match(bulkModalSource, /media-modal-bulk-header-start/);
   assert.match(bulkModalSource, /media-upload-group-toggle/);
   assert.match(bulkModalSource, /primaryIconName="confirm"/);
-  assert.match(bulkModalSource, /previewTitle=\{`Editing: \$\{modalTitle\}`\}/);
+  assert.match(bulkModalSource, /previewTitle=\{previewTitle\}/);
   assert.match(bulkModalSource, /Add selected media to collections/);
 });
 
@@ -66,6 +66,34 @@ test("bulk media editor resolves and updates parent child media relations", () =
   assert.match(bulkModalSource, /relationPreviewByMode=\{relationPreviewByMode\}/);
   assert.match(bulkModalSource, /onOpenRelationPicker=\{openMediaRelationPicker\}/);
   assert.match(bulkModalSource, /onSelectMediaRelationFromPicker=\{handleSelectMediaRelationFromPicker\}/);
+});
+
+test("bulk media editor group mode locks navigation and shows selection count preview", () => {
+  assert.match(bulkModalSource, /if \(isGroupEditEnabled\) \{\s*return <div className="media-bulk-preview">\{editorItems\.length\}<\/div>/);
+  assert.match(bulkModalSource, /const visibleDraft = isGroupEditEnabled \? groupDraft : activeDraft/);
+  assert.match(bulkModalSource, /const previewTitle = isGroupEditEnabled \? `\$\{editorItems\.length\} selected media` : `Editing: \$\{modalTitle\}`/);
+  assert.match(bulkModalSource, /disabled=\{isGroupEditEnabled \|\| !canNavigatePrev \|\| isSaving\}/);
+  assert.match(bulkModalSource, /disabled=\{isGroupEditEnabled \|\| !canNavigateNext \|\| isSaving\}/);
+  assert.match(bulkModalSource, /setGroupDraft\(createEmptyMediaDraft\(\)\);/);
+  assert.match(bulkModalSource, /onChange=\{\(event\) => setIsGroupEditEnabled\(event\.target\.checked\)\}/);
+});
+
+test("bulk media editor group tags add missing tags to all targeted media", () => {
+  assert.match(bulkModalSource, /const effectiveHasTagEverywhere = targetedItems\.every\(\(item\) => \{/);
+  assert.match(bulkModalSource, /const nextAction = effectiveHasTagEverywhere \? "remove" : "add"/);
+  assert.match(bulkModalSource, /setGroupTagEdits\(\(current\) => \(\{ \.\.\.current, \[tagId\]: nextAction \}\)\)/);
+});
+
+test("bulk save updates only changed fields across media domains", () => {
+  assert.match(galleryContainerSource, /buildChangedMediaUpdatePayloadFromDraft/);
+  assert.match(favoritesContainerSource, /buildChangedMediaUpdatePayloadFromDraft/);
+  assert.match(collectionsContainerSource, /buildChangedMediaUpdatePayloadFromDraft/);
+  assert.match(galleryContainerSource, /const payload = buildChangedMediaUpdatePayloadFromDraft\(item, item\.draft\)/);
+  assert.match(favoritesContainerSource, /const payload = buildChangedMediaUpdatePayloadFromDraft\(item, item\.draft\)/);
+  assert.match(collectionsContainerSource, /const payload = buildChangedMediaUpdatePayloadFromDraft\(item, item\.draft\)/);
+  assert.match(galleryContainerSource, /if \(payload\) \{\s*await mediaApi\.updateMedia\(item\.id, payload\)/);
+  assert.match(favoritesContainerSource, /if \(payload\) \{\s*await mediaApi\.updateMedia\(item\.id, payload\)/);
+  assert.match(collectionsContainerSource, /if \(payload\) \{\s*await mediaApi\.updateMedia\(item\.id, payload\)/);
 });
 
 test("multi-select styles highlight selected media and bulk actions", () => {

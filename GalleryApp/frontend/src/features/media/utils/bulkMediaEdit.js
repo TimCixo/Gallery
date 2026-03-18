@@ -3,11 +3,41 @@ const normalizeOptionalText = (value) => {
   return normalized ? normalized : null;
 };
 
+const normalizeOptionalId = (value) => {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(normalized, 10);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
 const normalizeTagIds = (tagIds) => (
   Array.isArray(tagIds)
     ? Array.from(new Set(tagIds.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)))
     : []
 );
+
+const areTagIdsEqual = (left, right) => {
+  const leftSorted = normalizeTagIds(left).sort((a, b) => a - b);
+  const rightSorted = normalizeTagIds(right).sort((a, b) => a - b);
+
+  if (leftSorted.length !== rightSorted.length) {
+    return false;
+  }
+
+  return leftSorted.every((value, index) => value === rightSorted[index]);
+};
+
+const getNormalizedItemPayload = (item) => ({
+  title: normalizeOptionalText(item?.title),
+  description: normalizeOptionalText(item?.description),
+  source: normalizeOptionalText(item?.source),
+  parent: normalizeOptionalId(item?.parent),
+  child: normalizeOptionalId(item?.child),
+  tagIds: normalizeTagIds(item?.tags?.map((tag) => tag?.id))
+});
 
 export function createMediaDraftFromItem(item) {
   return {
@@ -20,6 +50,17 @@ export function createMediaDraftFromItem(item) {
   };
 }
 
+export function createEmptyMediaDraft() {
+  return {
+    title: "",
+    description: "",
+    source: "",
+    parent: "",
+    child: "",
+    tagIds: []
+  };
+}
+
 export function createBulkEditorItems(items) {
   return (Array.isArray(items) ? items : []).map((item) => ({
     ...item,
@@ -28,30 +69,63 @@ export function createBulkEditorItems(items) {
 }
 
 export function buildMediaUpdatePayloadFromDraft(item, draft) {
-  const normalizedParent = String(draft?.parent || "").trim();
-  const normalizedChild = String(draft?.child || "").trim();
-
   return {
     title: normalizeOptionalText(draft?.title),
     description: normalizeOptionalText(draft?.description),
     source: normalizeOptionalText(draft?.source),
-    parent: normalizedParent ? Number.parseInt(normalizedParent, 10) : null,
-    child: normalizedChild ? Number.parseInt(normalizedChild, 10) : null,
+    parent: normalizeOptionalId(draft?.parent),
+    child: normalizeOptionalId(draft?.child),
     tagIds: normalizeTagIds(draft?.tagIds)
   };
 }
 
-export function applyMediaDraftToItem(item, draft, tagCatalog) {
-  const payload = buildMediaUpdatePayloadFromDraft(item, draft);
+export function buildChangedMediaUpdatePayloadFromDraft(item, draft) {
+  const current = getNormalizedItemPayload(item);
+  const next = buildMediaUpdatePayloadFromDraft(item, draft);
+  const payload = {};
+
+  if (current.title !== next.title) {
+    payload.title = next.title;
+  }
+  if (current.description !== next.description) {
+    payload.description = next.description;
+  }
+  if (current.source !== next.source) {
+    payload.source = next.source;
+  }
+  if (current.parent !== next.parent) {
+    payload.parent = next.parent;
+  }
+  if (current.child !== next.child) {
+    payload.child = next.child;
+  }
+  if (!areTagIdsEqual(current.tagIds, next.tagIds)) {
+    payload.tagIds = next.tagIds;
+  }
+
+  return Object.keys(payload).length > 0 ? payload : null;
+}
+
+export function applyMediaUpdatePayloadToItem(item, payload, tagCatalog) {
+  if (!payload || typeof payload !== "object") {
+    return item;
+  }
+
   return {
     ...item,
-    title: payload.title,
-    description: payload.description,
-    source: payload.source,
-    parent: payload.parent,
-    child: payload.child,
-    tags: Array.isArray(tagCatalog)
-      ? tagCatalog.filter((tag) => payload.tagIds.includes(Number(tag?.id)))
-      : []
+    ...(Object.prototype.hasOwnProperty.call(payload, "title") ? { title: payload.title } : {}),
+    ...(Object.prototype.hasOwnProperty.call(payload, "description") ? { description: payload.description } : {}),
+    ...(Object.prototype.hasOwnProperty.call(payload, "source") ? { source: payload.source } : {}),
+    ...(Object.prototype.hasOwnProperty.call(payload, "parent") ? { parent: payload.parent } : {}),
+    ...(Object.prototype.hasOwnProperty.call(payload, "child") ? { child: payload.child } : {}),
+    ...(Object.prototype.hasOwnProperty.call(payload, "tagIds") ? {
+      tags: Array.isArray(tagCatalog)
+        ? tagCatalog.filter((tag) => payload.tagIds.includes(Number(tag?.id)))
+        : []
+    } : {})
   };
+}
+
+export function applyMediaDraftToItem(item, draft, tagCatalog) {
+  return applyMediaUpdatePayloadToItem(item, buildMediaUpdatePayloadFromDraft(item, draft), tagCatalog);
 }

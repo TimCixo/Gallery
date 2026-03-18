@@ -11,7 +11,7 @@ import BulkMediaEditorModal from "../media/components/BulkMediaEditorModal";
 import MediaDeleteConfirmModal from "../media/components/MediaDeleteConfirmModal";
 import MediaViewerModal from "../media/components/MediaViewerModal";
 import { useMediaMultiSelect } from "../media/hooks/useMediaMultiSelect";
-import { applyMediaDraftToItem, buildMediaUpdatePayloadFromDraft } from "../media/utils/bulkMediaEdit";
+import { applyMediaUpdatePayloadToItem, buildChangedMediaUpdatePayloadFromDraft, buildMediaUpdatePayloadFromDraft } from "../media/utils/bulkMediaEdit";
 import { buildRelatedMediaChain } from "../media/utils/relatedMediaChain";
 import { loadGalleryViewState, persistGalleryViewState } from "./utils/galleryViewState";
 import GalleryPage from "./GalleryPage";
@@ -769,17 +769,17 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
     setIsSavingMedia(true);
     setMediaModalError("");
     try {
+      const updatedItemsById = new Map();
       for (const item of items) {
-        await mediaApi.updateMedia(item.id, buildMediaUpdatePayloadFromDraft(item, item.draft));
+        const payload = buildChangedMediaUpdatePayloadFromDraft(item, item.draft);
+        if (payload) {
+          await mediaApi.updateMedia(item.id, payload);
+          updatedItemsById.set(item.id, applyMediaUpdatePayloadToItem(item, payload, tagCatalog));
+        }
         for (const collectionId of (Array.isArray(collectionIds) ? collectionIds : [])) {
           await collectionsApi.addMediaToCollection(collectionId, item.id);
         }
       }
-
-      const updatedItemsById = new Map(items.map((item) => ([
-        item.id,
-        applyMediaDraftToItem(item, item.draft, tagCatalog)
-      ])));
 
       setMediaFiles((current) => current.map((item) => updatedItemsById.get(item.id) || item));
       setSelectedMedia((current) => (current ? (updatedItemsById.get(current.id) || current) : current));

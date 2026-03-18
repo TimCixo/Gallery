@@ -6,7 +6,7 @@ import { isVideoFile, resolveOriginalMediaUrl, resolvePreviewMediaUrl } from "..
 import CollectionPickerDialogContent from "../../collections/components/CollectionPickerDialogContent";
 import CollectionPickerModal from "../../collections/components/CollectionPickerModal";
 import MediaEditorPanel from "./MediaEditorPanel";
-import { createBulkEditorItems } from "../utils/bulkMediaEdit";
+import { createBulkEditorItems, createEmptyMediaDraft } from "../utils/bulkMediaEdit";
 
 const DEFAULT_RELATION_PREVIEW = Object.freeze({
   parent: { item: null, isLoading: false, error: "" },
@@ -28,6 +28,9 @@ export default function BulkMediaEditorModal({
   const [editorItems, setEditorItems] = useState([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isGroupEditEnabled, setIsGroupEditEnabled] = useState(false);
+  const [groupDraft, setGroupDraft] = useState(createEmptyMediaDraft);
+  const [groupTouchedFields, setGroupTouchedFields] = useState({});
+  const [groupTagEdits, setGroupTagEdits] = useState({});
   const [isCollectionPickerOpen, setIsCollectionPickerOpen] = useState(false);
   const [collectionPickerItems, setCollectionPickerItems] = useState([]);
   const [collectionPickerError, setCollectionPickerError] = useState("");
@@ -53,6 +56,9 @@ export default function BulkMediaEditorModal({
     setEditorItems(createBulkEditorItems(selectedItems));
     setActiveIndex(0);
     setIsGroupEditEnabled(false);
+    setGroupDraft(createEmptyMediaDraft());
+    setGroupTouchedFields({});
+    setGroupTagEdits({});
     setSelectedCollectionIds([]);
     setCollectionPickerItems([]);
     setCollectionPickerError("");
@@ -75,9 +81,14 @@ export default function BulkMediaEditorModal({
   const canNavigatePrev = activeIndex > 0;
   const canNavigateNext = activeIndex < editorItems.length - 1;
   const activeDraft = activeItem?.draft || null;
+  const visibleDraft = isGroupEditEnabled ? groupDraft : activeDraft;
   const modalTitle = activeItem?.name || activeItem?.title || activeItem?.relativePath || `${editorItems.length} selected media`;
 
   const previewNode = useMemo(() => {
+    if (isGroupEditEnabled) {
+      return <div className="media-bulk-preview">{editorItems.length}</div>;
+    }
+
     if (!activeItem) {
       return null;
     }
@@ -101,11 +112,20 @@ export default function BulkMediaEditorModal({
         loading="lazy"
       />
     );
-  }, [activeItem]);
+  }, [activeItem, editorItems.length, isGroupEditEnabled]);
 
   const updateDraft = (patch) => {
+    if (isGroupEditEnabled) {
+      setGroupDraft((current) => ({ ...current, ...patch }));
+      setGroupTouchedFields((current) => ({
+        ...current,
+        ...Object.keys(patch).reduce((result, key) => ({ ...result, [key]: true }), {})
+      }));
+      return;
+    }
+
     setEditorItems((current) => current.map((item, index) => (
-      isGroupEditEnabled || index === activeIndex
+      index === activeIndex
         ? { ...item, draft: { ...item.draft, ...patch } }
         : item
     )));
@@ -148,18 +168,48 @@ export default function BulkMediaEditorModal({
   };
 
   const toggleTag = (tagId) => {
+    if (isGroupEditEnabled) {
+      const targetedItems = editorItems;
+      const effectiveHasTagEverywhere = targetedItems.every((item) => {
+        const currentIds = Array.isArray(item.draft?.tagIds) ? item.draft.tagIds : [];
+        const pendingAction = groupTagEdits[tagId] || null;
+        if (pendingAction === "add") {
+          return true;
+        }
+        if (pendingAction === "remove") {
+          return false;
+        }
+        return currentIds.includes(tagId);
+      });
+      const nextAction = effectiveHasTagEverywhere ? "remove" : "add";
+      setGroupTagEdits((current) => ({ ...current, [tagId]: nextAction }));
+      setGroupDraft((current) => {
+        const currentIds = Array.isArray(current.tagIds) ? current.tagIds : [];
+        return {
+          ...current,
+          tagIds: nextAction === "add"
+            ? [...new Set([...currentIds, tagId])]
+            : currentIds.filter((id) => id !== tagId)
+        };
+      });
+      return;
+    }
+
     setEditorItems((current) => current.map((item, index) => {
-      if (!isGroupEditEnabled && index !== activeIndex) {
+      if (index !== activeIndex) {
         return item;
       }
 
       const currentIds = Array.isArray(item.draft?.tagIds) ? item.draft.tagIds : [];
-      const hasTag = currentIds.includes(tagId);
+      const targetedItems = current.filter((candidate, candidateIndex) => candidateIndex === activeIndex);
+      const shouldRemoveTag = targetedItems.every((candidate) => (
+        Array.isArray(candidate.draft?.tagIds) && candidate.draft.tagIds.includes(tagId)
+      ));
       return {
         ...item,
         draft: {
           ...item.draft,
-          tagIds: hasTag ? currentIds.filter((id) => id !== tagId) : [...currentIds, tagId]
+          tagIds: shouldRemoveTag ? currentIds.filter((id) => id !== tagId) : [...new Set([...currentIds, tagId])]
         }
       };
     }));
@@ -224,14 +274,14 @@ export default function BulkMediaEditorModal({
   }, [editorItems, isOpen]);
 
   useEffect(() => {
-    if (!activeDraft) {
+    if (!visibleDraft) {
       setRelationPreviewByMode(DEFAULT_RELATION_PREVIEW);
       return undefined;
     }
 
     let cancelled = false;
     const resolveMode = async (mode) => {
-      const rawValue = String(mode === "parent" ? (activeDraft.parent || "") : (activeDraft.child || "")).trim();
+      const rawValue = String(mode === "parent" ? (visibleDraft.parent || "") : (visibleDraft.child || "")).trim();
       if (!rawValue) {
         if (!cancelled) {
           setRelationPreviewByMode((current) => ({
@@ -294,7 +344,7 @@ export default function BulkMediaEditorModal({
     return () => {
       cancelled = true;
     };
-  }, [activeDraft]);
+  }, [visibleDraft]);
 
   const openMediaRelationPicker = (mode) => {
     setMediaRelationPickerMode(mode === "child" ? "child" : "parent");
@@ -363,9 +413,47 @@ export default function BulkMediaEditorModal({
     closeMediaRelationPicker();
   };
 
+  const getItemsForSave = () => {
+    if (!isGroupEditEnabled) {
+      return editorItems;
+    }
+
+    return editorItems.map((item) => {
+      const nextDraft = { ...item.draft };
+
+      Object.entries(groupTouchedFields).forEach(([fieldKey, isTouched]) => {
+        if (!isTouched) {
+          return;
+        }
+        nextDraft[fieldKey] = groupDraft[fieldKey] ?? "";
+      });
+
+      if (Object.keys(groupTagEdits).length > 0) {
+        let nextTagIds = Array.isArray(item.draft?.tagIds) ? [...item.draft.tagIds] : [];
+        Object.entries(groupTagEdits).forEach(([tagId, action]) => {
+          const normalizedTagId = Number(tagId);
+          if (!Number.isInteger(normalizedTagId) || normalizedTagId <= 0) {
+            return;
+          }
+          if (action === "add") {
+            nextTagIds = [...new Set([...nextTagIds, normalizedTagId])];
+          }
+          if (action === "remove") {
+            nextTagIds = nextTagIds.filter((id) => id !== normalizedTagId);
+          }
+        });
+        nextDraft.tagIds = nextTagIds;
+      }
+
+      return { ...item, draft: nextDraft };
+    });
+  };
+
   if (!isOpen || !activeItem) {
     return null;
   }
+
+  const previewTitle = isGroupEditEnabled ? `${editorItems.length} selected media` : `Editing: ${modalTitle}`;
 
   return (
     <>
@@ -389,7 +477,7 @@ export default function BulkMediaEditorModal({
                 type="button"
                 className="media-action-btn app-button-icon-only"
                 onClick={() => setActiveIndex((current) => Math.max(current - 1, 0))}
-                disabled={!canNavigatePrev || isSaving}
+                disabled={isGroupEditEnabled || !canNavigatePrev || isSaving}
                 aria-label="Previous selected media"
                 title="Previous selected media"
               >
@@ -399,7 +487,7 @@ export default function BulkMediaEditorModal({
                 type="button"
                 className="media-action-btn app-button-icon-only"
                 onClick={() => setActiveIndex((current) => Math.min(current + 1, editorItems.length - 1))}
-                disabled={!canNavigateNext || isSaving}
+                disabled={isGroupEditEnabled || !canNavigateNext || isSaving}
                 aria-label="Next selected media"
                 title="Next selected media"
               >
@@ -430,14 +518,14 @@ export default function BulkMediaEditorModal({
             previewNode={previewNode}
             previewClassName="media-edit-thumbnail media-bulk-preview-wrap"
             errorMessage={errorMessage}
-            draft={activeDraft}
+            draft={visibleDraft}
             onDraftChange={updateDraft}
             isSavingMedia={isSaving}
             isDeletingMedia={false}
             tagCatalog={tagCatalog}
             tagTypes={tagTypes}
             isTagCatalogLoading={isTagCatalogLoading}
-            selectedTagIds={Array.isArray(activeDraft?.tagIds) ? activeDraft.tagIds : []}
+            selectedTagIds={Array.isArray(visibleDraft?.tagIds) ? visibleDraft.tagIds : []}
             onToggleTag={toggleTag}
             onRefreshTagCatalog={onRefreshTagCatalog}
             relationPreviewByMode={relationPreviewByMode}
@@ -479,10 +567,10 @@ export default function BulkMediaEditorModal({
             )}
             primaryActionLabel="Apply"
             primaryActionBusyLabel="Applying..."
-            previewTitle={`Editing: ${modalTitle}`}
+            previewTitle={previewTitle}
             primaryIconName="confirm"
             isPrimaryActionBusy={isSaving}
-            onPrimaryAction={() => onSave?.({ items: editorItems, collectionIds: selectedCollectionIds })}
+            onPrimaryAction={() => onSave?.({ items: getItemsForSave(), collectionIds: selectedCollectionIds })}
             secondaryActionLabel="Cancel"
             onSecondaryAction={onClose}
             actionLeadingSlot={(
