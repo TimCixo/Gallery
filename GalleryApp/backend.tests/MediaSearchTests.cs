@@ -1,5 +1,6 @@
 using GalleryApp.Api.Data.Search;
 using Microsoft.Data.Sqlite;
+using Xunit;
 
 namespace GalleryApp.Api.Tests;
 

@@ -134,7 +134,7 @@ public sealed class MediaProcessingService(ILogger<MediaProcessingService> logge
             var processStartInfo = new ProcessStartInfo
             {
                 FileName = ResolveFfmpegExecutable(),
-                Arguments = $"-y -i \"{tempInputPath}\" -c:v libx264 -preset fast -crf 23 -c:a aac -movflags +faststart \"{destinationPath}\"",
+                Arguments = FfmpegArguments.BuildVideoConversion(tempInputPath, destinationPath),
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -213,7 +213,7 @@ public sealed class MediaProcessingService(ILogger<MediaProcessingService> logge
                 var processStartInfo = new ProcessStartInfo
                 {
                     FileName = ResolveFfmpegExecutable(),
-                    Arguments = $"-y -ss 00:00:00.500 -i \"{sourcePath}\" -frames:v 1 -q:v 3 -vf \"scale=640:-1\" \"{tempPreviewPath}\"",
+                    Arguments = FfmpegArguments.BuildVideoPreview(sourcePath, tempPreviewPath),
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
