@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { buildRelatedMediaChain } from "../features/media/utils/relatedMediaChain.js";
 
-test("buildRelatedMediaChain returns descendants current item and ancestors in display order", async () => {
+test("buildRelatedMediaChain returns ancestors current item and descendants in display order", async () => {
   const items = new Map([
     [1, { id: 1, parent: null, child: 2, relativePath: "1.webp" }],
     [2, { id: 2, parent: 1, child: 3, relativePath: "2.webp" }],
@@ -15,8 +15,12 @@ test("buildRelatedMediaChain returns descendants current item and ancestors in d
     findMediaById: async (id) => items.get(id) || null
   });
 
-  assert.deepEqual(chain.map((item) => item.id), [4, 3, 2, 1]);
-  assert.equal(chain[1].isCurrent, true);
+  assert.deepEqual(chain.map((item) => item.id), [1, 2, 3, 4]);
+  assert.equal(chain[2].isCurrent, true);
+  assert.deepEqual(
+    chain.map((item) => item.relationSide),
+    ["parent", "parent", "current", "child"]
+  );
 });
 
 test("buildRelatedMediaChain stops when it detects a cycle", async () => {
@@ -30,5 +34,5 @@ test("buildRelatedMediaChain stops when it detects a cycle", async () => {
     findMediaById: async (id) => items.get(id) || null
   });
 
-  assert.deepEqual(chain.map((item) => item.id), [11, 10]);
+  assert.deepEqual(chain.map((item) => item.id), [10, 11]);
 });

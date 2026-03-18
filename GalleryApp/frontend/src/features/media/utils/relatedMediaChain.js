@@ -66,8 +66,8 @@ export async function buildRelatedMediaChain({ media, findMediaById, maxDepth = 
   }
 
   return [
-    ...descendants.reverse().map((item) => ({ ...item, relationSide: "child", isCurrent: false })),
+    ...ancestors.reverse().map((item) => ({ ...item, relationSide: "parent", isCurrent: false })),
     { ...media, relationSide: "current", isCurrent: true },
-    ...ancestors.map((item) => ({ ...item, relationSide: "parent", isCurrent: false }))
+    ...descendants.map((item) => ({ ...item, relationSide: "child", isCurrent: false }))
   ];
 }
