@@ -21,3 +21,14 @@ test("tags container delays collapsing the active tag type until drag is underwa
   assert.match(tagsContainerSource, /onTagDragEnd=\{handleTagDragEnd\}/);
   assert.match(tagsContainerSource, /onTagDragStart=\{handleTagDragStart\}/);
 });
+
+test("tags container does not fetch API tags for the static base tag type", () => {
+  assert.match(tagsContainerSource, /if \(activeTagTypeId === BASE_TAG_TYPE_ID\) \{/);
+  assert.match(tagsContainerSource, /return;/);
+  assert.match(tagsContainerSource, /void tagItemsState\.loadTagsForTagType\(activeTagTypeId\);/);
+});
+
+test("tags container keeps the static base tag type open even though it is not part of API tag types", () => {
+  assert.match(tagsContainerSource, /if \(activeTagTypeId === BASE_TAG_TYPE_ID\) \{\s*return;\s*\}/);
+  assert.match(tagsContainerSource, /if \(!tagTypesState\.tagTypes\.some\(\(item\) => item\.id === activeTagTypeId\)\) \{\s*setActiveTagTypeId\(null\);\s*\}/);
+});

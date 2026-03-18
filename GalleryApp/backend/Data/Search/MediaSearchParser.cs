@@ -137,6 +137,9 @@ public static class MediaSearchParser
                 case "title": criteria.TitleTerms.Add(value); break;
                 case "description": criteria.DescriptionTerms.Add(value); break;
                 case "source": criteria.SourceTerms.Add(value); break;
+                case "filetype":
+                    criteria.FileTypes.Add(value);
+                    break;
                 case "id":
                     if (long.TryParse(value, out var parsedId) && parsedId > 0)
                     {

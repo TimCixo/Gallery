@@ -1044,6 +1044,20 @@
   flex: 0 0 auto;
 }
 
+.tag-type-card-static-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.85rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
 .tag-type-edit-row {
   min-width: 0;
   flex: 1;

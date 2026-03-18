@@ -3,6 +3,7 @@ import AppIcon from "../shared/components/AppIcon";
 const getCountLabel = (count) => `${count} tag${count === 1 ? "" : "s"}`;
 
 export default function TagsPage({
+  baseTagType,
   tagTypeForm,
   tagEditState,
   isTagTypesLoading,
@@ -38,6 +39,7 @@ export default function TagsPage({
   onTagDragEnd
 }) {
   const createDisabled = !tagTypeForm.name.trim() || tagTypeForm.isSaving;
+  const isBaseActive = activeTagTypeId === baseTagType.id;
 
   return (
     <section className="tags-page">
@@ -85,10 +87,62 @@ export default function TagsPage({
       </div>
 
       {isTagTypesLoading ? <p className="tags-state">Loading TagTypes...</p> : null}
-      {!isTagTypesLoading && tagTypes.length === 0 ? <p className="tags-state">No TagTypes yet.</p> : null}
+      {!isTagTypesLoading && tagTypes.length === 0 ? <p className="tags-state">No custom TagTypes yet.</p> : null}
 
-      {!isTagTypesLoading && tagTypes.length > 0 ? (
+      {!isTagTypesLoading ? (
         <ul className="tag-type-card-list">
+          <li key={baseTagType.id} className={`tag-type-card-item${isBaseActive ? " is-expanded" : ""}`}>
+            <article
+              className={`tag-type-card${isBaseActive ? " is-active" : ""}`}
+              style={{ "--tag-type-accent": baseTagType.color }}
+            >
+              <div className="tag-type-card-header">
+                <button
+                  type="button"
+                  className="tag-type-card-trigger"
+                  onClick={() => onToggleTagType(isBaseActive ? null : baseTagType.id)}
+                  aria-expanded={isBaseActive}
+                >
+                  <span className="tag-type-card-trigger-main">
+                    <span className="tag-type-color-chip" aria-hidden="true" />
+                    <span className="tag-type-card-title-group">
+                      <span className="tag-type-card-title">{baseTagType.name}</span>
+                      <span className="tag-type-card-meta">{getCountLabel(baseTagType.tags.length)}</span>
+                    </span>
+                  </span>
+                  <span className={`tag-type-card-chevron${isBaseActive ? " is-open" : ""}`} aria-hidden="true">
+                    <AppIcon name="arrowRight" alt="" />
+                  </span>
+                </button>
+                <div className="tag-type-card-actions">
+                  <span className="tag-type-card-static-badge">Static</span>
+                </div>
+              </div>
+
+              {isBaseActive ? (
+                <div className="tag-type-card-body">
+                  <div className="tag-table-wrap">
+                    <table className="tag-table">
+                      <tbody>
+                        {baseTagType.tags.map((tagItem) => (
+                          <tr key={tagItem.id} className="tag-table-row">
+                            <td>{tagItem.name}</td>
+                            <td>{tagItem.description}</td>
+                            <td>
+                              <div className="tag-table-actions">
+                                <span className="tag-type-card-static-badge">Locked</span>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
+            </article>
+          </li>
+
           {tagTypes.map((item) => {
             const isActive = activeTagTypeId === item.id;
             const isEditingTagType = tagEditState.editingTagTypeId === item.id;

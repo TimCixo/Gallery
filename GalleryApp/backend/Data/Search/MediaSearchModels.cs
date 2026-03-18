@@ -6,6 +6,7 @@ public sealed class MediaSearchCriteria
     public List<string> TitleTerms { get; } = [];
     public List<string> DescriptionTerms { get; } = [];
     public List<string> SourceTerms { get; } = [];
+    public List<string> FileTypes { get; } = [];
     public List<long> Ids { get; } = [];
     public List<MediaSearchTagFilter> TagFilters { get; } = [];
 
@@ -14,6 +15,7 @@ public sealed class MediaSearchCriteria
         || TitleTerms.Count > 0
         || DescriptionTerms.Count > 0
         || SourceTerms.Count > 0
+        || FileTypes.Count > 0
         || Ids.Count > 0
         || TagFilters.Count > 0;
 }

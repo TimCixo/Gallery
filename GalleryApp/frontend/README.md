@@ -111,7 +111,7 @@ npm test
 
 - За замовчуванням frontend працює з backend на `http://localhost:5000`.
 - Основні API-групи: media, favorites, collections, tag types, tags, upload.
-- Пошук у gallery підтримує формат `tag:value`, включно з базовими полями (`title`, `path`, `description`, `id`, `source`) і динамічними тегами.
+- Пошук у gallery підтримує формат `tag:value`, включно з базовими полями (`title`, `path`, `description`, `id`, `source`, `filetype`), де `filetype` підтримує значення `image`, `video`, `gif`.
 - `AppShell.jsx` керує полем пошуку і suggestions, а feature/container-рівень виконує конкретні API-виклики.
 
 ## Пов'язана документація

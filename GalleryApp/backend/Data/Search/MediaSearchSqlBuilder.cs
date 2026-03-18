@@ -33,6 +33,7 @@ public static class MediaSearchSqlBuilder
         AddContainsClauses(criteria.TitleTerms, "IFNULL(m.Title, '')");
         AddContainsClauses(criteria.DescriptionTerms, "IFNULL(m.Description, '')");
         AddContainsClauses(criteria.SourceTerms, "IFNULL(m.Source, '')");
+        AddFileTypeClauses(criteria.FileTypes);
         AddTagClauses(criteria.TagFilters);
 
         if (criteria.Ids.Count > 0)
@@ -87,6 +88,38 @@ public static class MediaSearchSqlBuilder
                     )
                     """;
                 whereClauses.Add(filter.Exclude ? $"NOT {existsClause}" : existsClause);
+            }
+        }
+
+        void AddFileTypeClauses(IEnumerable<string> fileTypes)
+        {
+            foreach (var fileType in fileTypes)
+            {
+                var normalizedFileType = fileType.Trim().ToLowerInvariant();
+                string[] extensions = normalizedFileType switch
+                {
+                    "image" => [".webp"],
+                    "video" => [".mp4"],
+                    "gif" => [".gif"],
+                    _ => []
+                };
+
+                if (extensions.Length == 0)
+                {
+                    continue;
+                }
+
+                var extensionClauses = new List<string>();
+                foreach (var extension in extensions)
+                {
+                    var paramName = $"$p{parameterIndex++}";
+                    command.Parameters.AddWithValue(paramName, $"%{extension}");
+                    extensionClauses.Add($"LOWER(m.Path) LIKE {paramName}");
+                }
+
+                whereClauses.Add(extensionClauses.Count == 1
+                    ? extensionClauses[0]
+                    : $"({string.Join(" OR ", extensionClauses)})");
             }
         }
     }

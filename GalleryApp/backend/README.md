@@ -106,7 +106,7 @@ dotnet run --urls http://localhost:5000
 ## Пошук і медіа-сценарії
 
 - `/api/media` підтримує пошук у форматі `tag:value`.
-- Базові теги пошуку: `path`, `title`, `description`, `id`, `source`.
+- Базові теги пошуку: `path`, `title`, `description`, `id`, `source`, `filetype` (`image`, `video`, `gif`).
 - Також підтримуються динамічні теги за назвами tag type.
 - Media endpoint-и обробляють favorite state, parent/child зв'язки й прив'язку тегів до медіа.
 

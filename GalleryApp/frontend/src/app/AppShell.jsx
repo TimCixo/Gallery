@@ -6,6 +6,7 @@ import CollectionsContainer from "../features/collections/CollectionsContainer";
 import TagsContainer from "../features/tags/TagsContainer";
 import UploadManagerContainer from "../features/upload/UploadManagerContainer";
 import SearchInput from "../features/search/components/SearchInput";
+import { BASE_SEARCH_TAG_NAMES, BASE_SEARCH_TAG_OPTIONS } from "../features/search/searchTags";
 import AppIcon from "../features/shared/components/AppIcon";
 import {
   buildSearchSuggestions,
@@ -20,9 +21,6 @@ import {
 } from "./utils/searchState";
 import { addSearchHistoryItem } from "./utils/searchHistory";
 import { loadPersistedShellState, persistShellState } from "./utils/persistedShellState";
-
-const BASE_SEARCH_TAG_OPTIONS = ["path", "title", "description", "id", "source"];
-const BASE_SEARCH_TAG_NAMES = new Set(BASE_SEARCH_TAG_OPTIONS);
 
 export default function AppShell() {
   const initialShellState = useMemo(() => loadPersistedShellState(), []);
@@ -172,10 +170,10 @@ export default function AppShell() {
     setIsSlideMenuOpen(false);
   };
 
-  const searchPlaceholder = activePage === "collections" ? "collection name" : "title:cat id:42";
+  const searchPlaceholder = activePage === "collections" ? "collection name" : "title:cat filetype:image";
   const searchHelpText = activePage === "collections"
     ? "Search collections by name."
-    : "Use filters like title:cat or id:42.";
+    : "Use filters like title:cat, id:42, or filetype:image.";
 
   const handleSearchSuggestionApply = ({ suggestion, searchTokenRange: nextSearchTokenRange }) => {
     const nextState = applySearchSuggestionToValue({

@@ -19,6 +19,14 @@ public class MediaSearchTests
     }
 
     [Fact]
+    public void ParseMediaSearchCriteria_includes_filetype_filters()
+    {
+        var criteria = MediaSearchParser.ParseMediaSearchCriteria("filetype:image filetype:gif");
+
+        Assert.Equal(["image", "gif"], criteria.FileTypes);
+    }
+
+    [Fact]
     public void BuildMediaSearchWhereClauses_uses_not_exists_for_negative_tag_filters()
     {
         using var connection = new SqliteConnection("Data Source=:memory:");
@@ -33,5 +41,23 @@ public class MediaSearchTests
         Assert.Single(whereClauses);
         Assert.Contains("NOT EXISTS", whereClauses[0]);
         Assert.Equal(2, command.Parameters.Count);
+    }
+
+    [Fact]
+    public void BuildMediaSearchWhereClauses_maps_filetype_to_path_extension_clause()
+    {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        connection.Open();
+        using var command = connection.CreateCommand();
+
+        var criteria = new MediaSearchCriteria();
+        criteria.FileTypes.Add("gif");
+
+        var whereClauses = MediaSearchSqlBuilder.BuildMediaSearchWhereClauses(command, criteria);
+
+        Assert.Single(whereClauses);
+        Assert.Contains("LOWER(m.Path) LIKE", whereClauses[0]);
+        Assert.Single(command.Parameters);
+        Assert.Equal("%.gif", command.Parameters[0].Value);
     }
 }

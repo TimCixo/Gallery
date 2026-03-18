@@ -15,6 +15,9 @@ const appCss = readFileSync(appCssPath, "utf8");
 test("tags page renders create callout before the tag type card list", () => {
   assert.match(tagsPageSource, /className="tags-callout"/);
   assert.match(tagsPageSource, /Create a tag group, then open it to manage its tags\./);
+  assert.match(tagsPageSource, /baseTagType/);
+  assert.match(tagsPageSource, /tag-type-card-static-badge/);
+  assert.match(tagsPageSource, /Locked/);
   assert.match(tagsPageSource, /className="tag-type-card-list"/);
   assert.match(tagsPageSource, /"tag-type-card"/);
   assert.match(tagsPageSource, /className=\{cardClassName\}/);
@@ -22,7 +25,7 @@ test("tags page renders create callout before the tag type card list", () => {
 
 test("tags page exposes explicit loading and empty states", () => {
   assert.match(tagsPageSource, /Loading TagTypes\.\.\./);
-  assert.match(tagsPageSource, /No TagTypes yet\./);
+  assert.match(tagsPageSource, /No custom TagTypes yet\./);
   assert.match(tagsPageSource, /Loading tags\.\.\./);
   assert.match(tagsPageSource, /No tags found\./);
 });
@@ -34,6 +37,7 @@ test("tags page styles tag types as cards", () => {
   assert.match(appCss, /\.tag-type-card-item\.is-expanded\s*\{/);
   assert.match(appCss, /\.tag-type-card-header\s*\{/);
   assert.match(appCss, /\.tag-type-card-body\s*\{/);
+  assert.match(appCss, /\.tag-type-card-static-badge\s*\{/);
 });
 
 test("tags page keeps create form and card actions on one row on mobile", () => {

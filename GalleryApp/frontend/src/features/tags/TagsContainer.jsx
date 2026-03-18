@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BASE_SEARCH_TAG_DEFINITIONS, BASE_TAG_TYPE_ID } from "../search/searchTags";
 import TagsPage from "./TagsPage";
 import TagDeleteConfirmModal from "./components/TagDeleteConfirmModal";
 import { useTagItemsManager } from "./hooks/useTagItemsManager";
@@ -18,6 +19,10 @@ export default function TagsContainer() {
       return;
     }
 
+    if (activeTagTypeId === BASE_TAG_TYPE_ID) {
+      return;
+    }
+
     if (!tagTypesState.tagTypes.some((item) => item.id === activeTagTypeId)) {
       setActiveTagTypeId(null);
     }
@@ -25,6 +30,10 @@ export default function TagsContainer() {
 
   useEffect(() => {
     if (activeTagTypeId === null) {
+      return;
+    }
+
+    if (activeTagTypeId === BASE_TAG_TYPE_ID) {
       return;
     }
 
@@ -61,6 +70,16 @@ export default function TagsContainer() {
     tagTypesState.isTagTypeUpdating,
     tagTypesState.tagTypesError
   ]);
+  const baseTagType = useMemo(() => ({
+    id: BASE_TAG_TYPE_ID,
+    name: "base",
+    color: "#64748B",
+    tags: BASE_SEARCH_TAG_DEFINITIONS.map((item, index) => ({
+      id: `base-${index}`,
+      name: item.name,
+      description: item.syntax
+    }))
+  }), []);
 
   const openTagDeleteConfirm = (payload) => {
     setPendingTagDelete(payload);
@@ -139,6 +158,7 @@ export default function TagsContainer() {
   return (
     <>
       <TagsPage
+        baseTagType={baseTagType}
         tagTypeForm={tagTypeForm}
         tagEditState={tagEditState}
         isTagTypesLoading={tagTypesState.isTagTypesLoading}

@@ -6,6 +6,7 @@ import {
   getSearchTokenRange,
   parseSearchSegments
 } from "../features/shared/utils/searchUtils.js";
+import { BASE_SEARCH_TAG_NAMES, BASE_SEARCH_TAG_OPTIONS } from "../features/search/searchTags.js";
 
 test("buildSearchSuggestions suggests tag names by prefix", () => {
   const suggestions = buildSearchSuggestions({
@@ -19,6 +20,11 @@ test("buildSearchSuggestions suggests tag names by prefix", () => {
   assert.equal(suggestions.length > 0, true);
   assert.equal(suggestions[0].label, "title:");
   assert.equal(suggestions[0].kind, "tagName");
+});
+
+test("base search tags include filetype", () => {
+  assert.equal(BASE_SEARCH_TAG_OPTIONS.includes("filetype"), true);
+  assert.equal(BASE_SEARCH_TAG_NAMES.has("filetype"), true);
 });
 
 test("buildSearchSuggestions stays empty for an empty token and limits autocomplete results", () => {
