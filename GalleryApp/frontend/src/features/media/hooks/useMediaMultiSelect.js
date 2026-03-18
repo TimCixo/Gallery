@@ -24,9 +24,19 @@ export function useMediaMultiSelect(items) {
   }, [selectableIds]);
 
   const selectedMediaIdSet = useMemo(() => new Set(selectedMediaIds), [selectedMediaIds]);
+  const itemsById = useMemo(() => {
+    const map = new Map();
+    (Array.isArray(items) ? items : []).forEach((item) => {
+      const id = normalizeMediaId(item?.id);
+      if (id !== null) {
+        map.set(id, item);
+      }
+    });
+    return map;
+  }, [items]);
   const selectedMediaItems = useMemo(
-    () => (Array.isArray(items) ? items.filter((item) => selectedMediaIdSet.has(Number(item?.id))) : []),
-    [items, selectedMediaIdSet]
+    () => selectedMediaIds.map((id) => itemsById.get(id)).filter(Boolean),
+    [itemsById, selectedMediaIds]
   );
 
   const clearSelection = useCallback(() => {
@@ -60,12 +70,23 @@ export function useMediaMultiSelect(items) {
     return id !== null && selectedMediaIdSet.has(id);
   }, [selectedMediaIdSet]);
 
+  const getSelectionIndex = useCallback((itemOrId) => {
+    const id = normalizeMediaId(typeof itemOrId === "object" ? itemOrId?.id : itemOrId);
+    if (id === null) {
+      return null;
+    }
+
+    const index = selectedMediaIds.indexOf(id);
+    return index >= 0 ? index + 1 : null;
+  }, [selectedMediaIds]);
+
   return {
     selectedMediaIds,
     selectedMediaItems,
     selectedCount: selectedMediaIds.length,
     isSelectionMode: selectedMediaIds.length > 0,
     isSelected,
+    getSelectionIndex,
     clearSelection,
     startSelection,
     toggleSelection

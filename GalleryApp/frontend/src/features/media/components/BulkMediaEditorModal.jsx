@@ -6,7 +6,7 @@ import { isVideoFile, resolveOriginalMediaUrl, resolvePreviewMediaUrl } from "..
 import CollectionPickerDialogContent from "../../collections/components/CollectionPickerDialogContent";
 import CollectionPickerModal from "../../collections/components/CollectionPickerModal";
 import MediaEditorPanel from "./MediaEditorPanel";
-import { createBulkEditorItems, createEmptyMediaDraft } from "../utils/bulkMediaEdit";
+import { applyOrderedRelationChainToItems, createBulkEditorItems, createEmptyMediaDraft } from "../utils/bulkMediaEdit";
 
 const DEFAULT_RELATION_PREVIEW = Object.freeze({
   parent: { item: null, isLoading: false, error: "" },
@@ -31,6 +31,7 @@ export default function BulkMediaEditorModal({
   const [groupDraft, setGroupDraft] = useState(createEmptyMediaDraft);
   const [groupTouchedFields, setGroupTouchedFields] = useState({});
   const [groupTagEdits, setGroupTagEdits] = useState({});
+  const [isGroupSelectionChainEnabled, setIsGroupSelectionChainEnabled] = useState(false);
   const [isCollectionPickerOpen, setIsCollectionPickerOpen] = useState(false);
   const [collectionPickerItems, setCollectionPickerItems] = useState([]);
   const [collectionPickerError, setCollectionPickerError] = useState("");
@@ -59,6 +60,7 @@ export default function BulkMediaEditorModal({
     setGroupDraft(createEmptyMediaDraft());
     setGroupTouchedFields({});
     setGroupTagEdits({});
+    setIsGroupSelectionChainEnabled(false);
     setSelectedCollectionIds([]);
     setCollectionPickerItems([]);
     setCollectionPickerError("");
@@ -418,7 +420,7 @@ export default function BulkMediaEditorModal({
       return editorItems;
     }
 
-    return editorItems.map((item) => {
+    const draftAppliedItems = editorItems.map((item) => {
       const nextDraft = { ...item.draft };
 
       Object.entries(groupTouchedFields).forEach(([fieldKey, isTouched]) => {
@@ -447,6 +449,8 @@ export default function BulkMediaEditorModal({
 
       return { ...item, draft: nextDraft };
     });
+
+    return isGroupSelectionChainEnabled ? applyOrderedRelationChainToItems(draftAppliedItems) : draftAppliedItems;
   };
 
   if (!isOpen || !activeItem) {
@@ -522,6 +526,7 @@ export default function BulkMediaEditorModal({
             onDraftChange={updateDraft}
             isSavingMedia={isSaving}
             isDeletingMedia={false}
+            showRelations={!isGroupEditEnabled}
             tagCatalog={tagCatalog}
             tagTypes={tagTypes}
             isTagCatalogLoading={isTagCatalogLoading}
@@ -574,15 +579,28 @@ export default function BulkMediaEditorModal({
             secondaryActionLabel="Cancel"
             onSecondaryAction={onClose}
             actionLeadingSlot={(
-              <label className="media-upload-group-toggle">
-                <input
-                  type="checkbox"
-                  checked={isGroupEditEnabled}
-                  onChange={(event) => setIsGroupEditEnabled(event.target.checked)}
-                  disabled={isSaving}
-                />
-                group
-              </label>
+              <div className="media-bulk-group-options">
+                <label className="media-upload-group-toggle">
+                  <input
+                    type="checkbox"
+                    checked={isGroupEditEnabled}
+                    onChange={(event) => setIsGroupEditEnabled(event.target.checked)}
+                    disabled={isSaving}
+                  />
+                  group
+                </label>
+                {isGroupEditEnabled ? (
+                  <label className="media-upload-group-toggle">
+                    <input
+                      type="checkbox"
+                      checked={isGroupSelectionChainEnabled}
+                      onChange={(event) => setIsGroupSelectionChainEnabled(event.target.checked)}
+                      disabled={isSaving || editorItems.length < 2}
+                    />
+                    link order
+                  </label>
+                ) : null}
+              </div>
             )}
           />
         </div>

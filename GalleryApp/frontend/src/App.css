@@ -2778,6 +2778,19 @@
   margin: 0;
 }
 
+.media-bulk-group-options {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-right: auto;
+}
+
+.media-bulk-group-options .media-upload-group-toggle {
+  margin-right: 0;
+}
+
 .media-action-btn {
   border: 1px solid #c6ccd2;
   background-color: #ffffff;

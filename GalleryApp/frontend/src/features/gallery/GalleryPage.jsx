@@ -45,6 +45,7 @@ export default function GalleryPage({
                 onStartSelection={mediaSelection?.startSelection}
                 onToggleSelection={mediaSelection?.toggleSelection}
                 isSelected={mediaSelection?.isSelected(file)}
+                selectionIndex={mediaSelection?.getSelectionIndex(file)}
                 isSelectionMode={mediaSelection?.isSelectionMode}
                 onPreviewError={(relativePath) => {
                   setFailedPreviewPaths((prev) => new Set(prev).add(relativePath));

@@ -15,7 +15,6 @@ test("gallery page renders tiles through memoized media tile component", () => {
   assert.match(pageSource, /import GalleryMediaTile from "\.\/GalleryMediaTile";/);
   assert.match(pageSource, /<GalleryMediaTile/);
   assert.match(tileSource, /import \{ memo, useRef \} from "react";/);
-  assert.match(tileSource, /import AppIcon from "\.\.\/shared\/components\/AppIcon";/);
   assert.match(tileSource, /export default memo\(GalleryMediaTile\);/);
   assert.match(tileSource, /onPreviewError\(file\.relativePath\)/);
   assert.match(tileSource, /LONG_PRESS_DELAY_MS = 450/);
@@ -27,5 +26,7 @@ test("gallery page renders tiles through memoized media tile component", () => {
   assert.match(tileSource, /onTouchStart=\{\(\) => \{/);
   assert.match(tileSource, /handleStartSelection\(\{ suppressClick: true \}\)/);
   assert.match(tileSource, /className=\{`media-tile\$\{isSelected \? " is-selected" : ""\}\$\{isSelectionMode \? " is-selection-mode" : ""\}`\}/);
-  assert.match(tileSource, /<AppIcon name="confirm" alt="" aria-hidden="true" \/>/);
+  assert.match(pageSource, /selectionIndex=\{mediaSelection\?\.getSelectionIndex\(file\)\}/);
+  assert.match(tileSource, /selectionIndex = null/);
+  assert.match(tileSource, /isSelected && Number\.isInteger\(selectionIndex\) \? selectionIndex : null/);
 });

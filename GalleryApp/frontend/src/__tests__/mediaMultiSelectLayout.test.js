@@ -23,6 +23,7 @@ test("media multi-select is wired into gallery favorites and collections flows",
   assert.match(collectionsContainerSource, /useMediaMultiSelect/);
   assert.match(collectionsContainerSource, /BulkMediaActionBar/);
   assert.match(collectionsContainerSource, /GalleryMediaTile/);
+  assert.match(collectionsContainerSource, /selectionIndex=\{mediaSelection\.getSelectionIndex\(file\)\}/);
 });
 
 test("top pagination and bulk actions share the same toolbar row", () => {
@@ -42,6 +43,7 @@ test("bulk media action bar exposes cancel delete and edit actions", () => {
   assert.match(bulkModalSource, /media-modal-header-bulk/);
   assert.match(bulkModalSource, /media-modal-bulk-header-start/);
   assert.match(bulkModalSource, /media-upload-group-toggle/);
+  assert.match(bulkModalSource, /media-bulk-group-options/);
   assert.match(bulkModalSource, /primaryIconName="confirm"/);
   assert.match(bulkModalSource, /previewTitle=\{previewTitle\}/);
   assert.match(bulkModalSource, /Add selected media to collections/);
@@ -76,6 +78,8 @@ test("bulk media editor group mode locks navigation and shows selection count pr
   assert.match(bulkModalSource, /disabled=\{isGroupEditEnabled \|\| !canNavigateNext \|\| isSaving\}/);
   assert.match(bulkModalSource, /setGroupDraft\(createEmptyMediaDraft\(\)\);/);
   assert.match(bulkModalSource, /onChange=\{\(event\) => setIsGroupEditEnabled\(event\.target\.checked\)\}/);
+  assert.match(bulkModalSource, /showRelations=\{!isGroupEditEnabled\}/);
+  assert.match(bulkModalSource, /link order/);
 });
 
 test("bulk media editor group tags add missing tags to all targeted media", () => {
@@ -105,5 +109,8 @@ test("multi-select styles highlight selected media and bulk actions", () => {
   assert.match(appCss, /\.media-pagination-toolbar/);
   assert.match(appCss, /min-height:\s*3\.9rem/);
   assert.match(appCss, /\.media-modal-header-bulk/);
+  assert.match(appCss, /\.media-bulk-group-options/);
+  assert.match(appCss, /\.media-bulk-group-options\s*\{[\s\S]*justify-content:\s*flex-start/);
+  assert.match(appCss, /\.media-bulk-group-options \.media-upload-group-toggle\s*\{[\s\S]*margin-right:\s*0/);
   assert.match(appCss, /\.media-bulk-preview-wrap/);
 });

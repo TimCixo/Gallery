@@ -1,5 +1,4 @@
 import { memo, useRef } from "react";
-import AppIcon from "../shared/components/AppIcon";
 
 const LONG_PRESS_DELAY_MS = 450;
 
@@ -8,6 +7,7 @@ function GalleryMediaTile({
   alt,
   hasPreviewError,
   isSelected = false,
+  selectionIndex = null,
   isSelectionMode = false,
   onSelect,
   onStartSelection,
@@ -87,7 +87,7 @@ function GalleryMediaTile({
       </div>
       {isSelectionMode ? (
         <span className={`media-selection-indicator${isSelected ? " is-selected" : ""}`} aria-hidden="true">
-          {isSelected ? <AppIcon name="confirm" alt="" aria-hidden="true" /> : null}
+          {isSelected && Number.isInteger(selectionIndex) ? selectionIndex : null}
         </span>
       ) : null}
     </article>

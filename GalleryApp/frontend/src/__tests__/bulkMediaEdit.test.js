@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  applyOrderedRelationChainToItems,
   applyMediaDraftToItem,
   applyMediaUpdatePayloadToItem,
   buildChangedMediaUpdatePayloadFromDraft,
@@ -166,5 +167,20 @@ test("applyMediaUpdatePayloadToItem preserves untouched fields", () => {
       child: null,
       tags: [{ id: 2, name: "NewTag" }]
     }
+  );
+});
+
+test("applyOrderedRelationChainToItems links selected media in order", () => {
+  assert.deepEqual(
+    applyOrderedRelationChainToItems([
+      { id: 10, draft: { title: "A", parent: "", child: "" } },
+      { id: 11, draft: { title: "B", parent: "", child: "" } },
+      { id: 12, draft: { title: "C", parent: "", child: "" } }
+    ]).map((item) => ({ id: item.id, parent: item.draft.parent, child: item.draft.child })),
+    [
+      { id: 10, parent: "", child: "11" },
+      { id: 11, parent: "10", child: "12" },
+      { id: 12, parent: "11", child: "" }
+    ]
   );
 });

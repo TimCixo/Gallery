@@ -68,6 +68,25 @@ export function createBulkEditorItems(items) {
   }));
 }
 
+export function applyOrderedRelationChainToItems(items) {
+  const normalizedItems = Array.isArray(items) ? items : [];
+  return normalizedItems.map((item, index) => {
+    const previousItem = normalizedItems[index - 1] || null;
+    const nextItem = normalizedItems[index + 1] || null;
+    const previousId = Number(previousItem?.id);
+    const nextId = Number(nextItem?.id);
+
+    return {
+      ...item,
+      draft: {
+        ...item.draft,
+        parent: Number.isSafeInteger(previousId) && previousId > 0 ? String(previousId) : "",
+        child: Number.isSafeInteger(nextId) && nextId > 0 ? String(nextId) : ""
+      }
+    };
+  });
+}
+
 export function buildMediaUpdatePayloadFromDraft(item, draft) {
   return {
     title: normalizeOptionalText(draft?.title),
