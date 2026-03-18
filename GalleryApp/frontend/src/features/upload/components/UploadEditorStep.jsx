@@ -2,6 +2,7 @@ import MediaEditorPanel from "../../media/components/MediaEditorPanel";
 
 export default function UploadEditorStep({
   activeUploadItem,
+  visibleDraft,
   isUploading,
   collections,
   settings,
@@ -9,12 +10,15 @@ export default function UploadEditorStep({
   onDraftChange,
   onOpenCollectionPicker,
   onToggleGroupUpload,
+  isGroupSelectionChainEnabled,
+  onToggleGroupSelectionChain,
   onBack,
   onUpload,
-  renderUploadPreview,
+  previewNode,
+  previewTitle,
   editorData
 }) {
-  const activeDraft = activeUploadItem?.draft || {};
+  const activeDraft = visibleDraft || {};
 
   return (
     <>
@@ -38,6 +42,7 @@ export default function UploadEditorStep({
         showFavoriteButton={false}
         showCloseButton={false}
         allowOpenRelatedMedia={false}
+        showRelations={!settings.isGroupUploadEnabled}
         tagCatalog={editorData.tagCatalog}
         tagTypes={editorData.tagTypesCatalog}
         isTagCatalogLoading={editorData.isTagCatalogLoading}
@@ -72,19 +77,32 @@ export default function UploadEditorStep({
         secondaryActionLabel="Back"
         onSecondaryAction={onBack}
         actionLeadingSlot={(
-          <label className="media-upload-group-toggle">
-            <input
-              type="checkbox"
-              checked={settings.isGroupUploadEnabled}
-              onChange={(event) => onToggleGroupUpload(event.target.checked)}
-              disabled={isUploading}
-            />
-            group
-          </label>
+          <div className="media-bulk-group-options">
+            <label className="media-upload-group-toggle">
+              <input
+                type="checkbox"
+                checked={settings.isGroupUploadEnabled}
+                onChange={(event) => onToggleGroupUpload(event.target.checked)}
+                disabled={isUploading}
+              />
+              group
+            </label>
+            {settings.isGroupUploadEnabled ? (
+              <label className="media-upload-group-toggle">
+                <input
+                  type="checkbox"
+                  checked={isGroupSelectionChainEnabled}
+                  onChange={(event) => onToggleGroupSelectionChain(event.target.checked)}
+                  disabled={isUploading || !activeUploadItem}
+                />
+                link order
+              </label>
+            ) : null}
+          </div>
         )}
-        previewNode={renderUploadPreview()}
+        previewNode={previewNode}
         previewClassName="upload-edit-thumbnail"
-        previewTitle={String(activeDraft.title || activeUploadItem?.file?.name || "")}
+        previewTitle={previewTitle}
         uploadFile={activeUploadItem?.file || null}
       />
 

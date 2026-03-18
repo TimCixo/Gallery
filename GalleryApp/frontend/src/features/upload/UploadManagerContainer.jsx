@@ -13,6 +13,8 @@ import UploadCollectionPicker from "./components/UploadCollectionPicker";
 import { useUploadCollections } from "./hooks/useUploadCollections";
 import { useUploadEditorData } from "./hooks/useUploadEditorData";
 import { useUploadQueue } from "./hooks/useUploadQueue";
+import { createEmptyMediaDraft } from "../media/utils/bulkMediaEdit";
+import { applyGroupDraftToUploadItems } from "./utils/groupUploadDraft";
 import { parseNullableId } from "./utils/uploadHelpers";
 import AppIcon from "../shared/components/AppIcon";
 
@@ -21,13 +23,20 @@ export default function UploadManagerContainer() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadTaskStatuses, setUploadTaskStatuses] = useState([]);
+  const [groupDraft, setGroupDraft] = useState(createEmptyMediaDraft);
+  const [groupTouchedFields, setGroupTouchedFields] = useState({});
+  const [groupTagEdits, setGroupTagEdits] = useState({});
+  const [isGroupSelectionChainEnabled, setIsGroupSelectionChainEnabled] = useState(false);
   const inputRef = useRef(null);
   const backgroundUploadQueueRef = useRef([]);
   const isBackgroundUploadWorkerRunningRef = useRef(false);
   const uploadTaskSequenceRef = useRef(1);
+  const uploadLinkGroupSequenceRef = useRef(1);
   const activeUploadTaskIdRef = useRef(null);
   const activeUploadXhrRef = useRef(null);
+  const linkOrderGroupStateRef = useRef(new Map());
   const activeUploadItem = queue.items[queue.activeUploadIndex] || null;
+  const visibleDraft = settings.isGroupUploadEnabled ? groupDraft : (activeUploadItem?.draft || null);
 
   const setQueueState = (payload) => {
     dispatch({ type: actions.SET_QUEUE, payload });
@@ -65,6 +74,10 @@ export default function UploadManagerContainer() {
     setCollectionsState({ entities: [], loading: false, error: "", isPickerOpen: false });
     setDragAndDrop({ isQueueDragOver: false, isPageDragOver: false });
     setIsUploading(false);
+    setGroupDraft(createEmptyMediaDraft());
+    setGroupTouchedFields({});
+    setGroupTagEdits({});
+    setIsGroupSelectionChainEnabled(false);
   };
 
   const closeModal = ({ force = false } = {}) => {
@@ -111,10 +124,64 @@ export default function UploadManagerContainer() {
     loadUploadCollections
   });
 
+  const handleUploadDraftChange = (patch) => {
+    if (settings.isGroupUploadEnabled) {
+      setGroupDraft((current) => ({ ...current, ...patch }));
+      setGroupTouchedFields((current) => ({
+        ...current,
+        ...Object.keys(patch || {}).reduce((result, key) => ({ ...result, [key]: true }), {})
+      }));
+      return;
+    }
+
+    updateActiveUploadDraft(patch);
+  };
+
+  const handleToggleUploadTag = (tagId) => {
+    const normalizedTagId = Number(tagId);
+    if (!Number.isInteger(normalizedTagId) || normalizedTagId <= 0) {
+      return;
+    }
+
+    if (!settings.isGroupUploadEnabled) {
+      const currentIds = Array.isArray(activeUploadItem?.draft?.tagIds) ? activeUploadItem.draft.tagIds : [];
+      const hasTag = currentIds.includes(normalizedTagId);
+      updateActiveUploadDraft({
+        tagIds: hasTag ? currentIds.filter((id) => id !== normalizedTagId) : [...currentIds, normalizedTagId]
+      });
+      return;
+    }
+
+    const effectiveHasTagEverywhere = queue.items.every((item) => {
+      const currentIds = Array.isArray(item?.draft?.tagIds) ? item.draft.tagIds : [];
+      const pendingAction = groupTagEdits[normalizedTagId] || null;
+      if (pendingAction === "add") {
+        return true;
+      }
+      if (pendingAction === "remove") {
+        return false;
+      }
+      return currentIds.includes(normalizedTagId);
+    });
+    const nextAction = effectiveHasTagEverywhere ? "remove" : "add";
+
+    setGroupTagEdits((current) => ({ ...current, [normalizedTagId]: nextAction }));
+    setGroupDraft((current) => {
+      const currentIds = Array.isArray(current.tagIds) ? current.tagIds : [];
+      return {
+        ...current,
+        tagIds: nextAction === "add"
+          ? [...new Set([...currentIds, normalizedTagId])]
+          : currentIds.filter((id) => id !== normalizedTagId)
+      };
+    });
+  };
+
   const uploadEditorData = useUploadEditorData({
     isEditorOpen: isUploadOpen && queue.step === "editor" && !!activeUploadItem,
-    activeDraft: activeUploadItem?.draft || null,
-    onDraftChange: updateActiveUploadDraft
+    activeDraft: visibleDraft,
+    onDraftChange: handleUploadDraftChange,
+    onToggleTag: handleToggleUploadTag
   });
 
   const openPicker = () => {
@@ -148,15 +215,19 @@ export default function UploadManagerContainer() {
   const uploadModalContextValue = useMemo(() => ({
     isOpen: isUploadOpen,
     onClose: closeModal,
-    onPrev: queue.step === "editor" ? () => {
+    onPrev: queue.step === "editor" && !settings.isGroupUploadEnabled ? () => {
       setQueueState({ activeUploadIndex: Math.max(queue.activeUploadIndex - 1, 0) });
     } : undefined,
-    onNext: queue.step === "editor" ? () => {
+    onNext: queue.step === "editor" && !settings.isGroupUploadEnabled ? () => {
       setQueueState({ activeUploadIndex: Math.min(queue.activeUploadIndex + 1, Math.max(queue.items.length - 1, 0)) });
     } : undefined
-  }), [isUploadOpen, queue.step, queue.activeUploadIndex, queue.items.length]);
+  }), [isUploadOpen, queue.step, queue.activeUploadIndex, queue.items.length, settings.isGroupUploadEnabled]);
 
   const renderUploadPreview = () => {
+    if (settings.isGroupUploadEnabled) {
+      return <div className="media-bulk-preview">{queue.items.length}</div>;
+    }
+
     if (!activeUploadItem) {
       return null;
     }
@@ -166,6 +237,36 @@ export default function UploadManagerContainer() {
     }
 
     return <img src={activeUploadItem.previewUrl} alt={activeUploadItem.file.name} loading="lazy" />;
+  };
+
+  const buildUploadItemsForSubmission = () => {
+    return settings.isGroupUploadEnabled
+      ? applyGroupDraftToUploadItems(queue.items, groupDraft, groupTouchedFields, groupTagEdits)
+      : (activeUploadItem ? [activeUploadItem] : []);
+  };
+
+  const normalizeUploadDraft = (draft) => {
+    const title = String(draft?.title || "").trim();
+    const description = String(draft?.description || "").trim();
+    const source = String(draft?.source || "").trim();
+
+    if (source) {
+      const url = new URL(source);
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        throw new Error("Source URL must start with http:// or https://");
+      }
+    }
+
+    return {
+      title: title || null,
+      description: description || null,
+      source: source || null,
+      parent: parseNullableId(draft?.parent, "Parent"),
+      child: parseNullableId(draft?.child, "Child"),
+      tagIds: Array.isArray(draft?.tagIds)
+        ? draft.tagIds.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)
+        : []
+    };
   };
 
   const hasUploadHistory = uploadTaskStatuses.length > 0 || background.total > 0;
@@ -248,6 +349,42 @@ export default function UploadManagerContainer() {
           const uploadedRelativePath = uploaded?.relativePath || "";
           const uploadedExtension = getExtensionFromPath(uploadedRelativePath || task.file.name);
           const encodedRelativePath = encodeURIComponent(uploadedRelativePath).replace(/%2F/g, "/");
+          let resolvedDraft = task.draft;
+
+          if (uploaded?.id) {
+            if (Number.isSafeInteger(task.linkOrderGroupId) && task.linkOrderGroupId > 0) {
+              const groupState = linkOrderGroupStateRef.current.get(task.linkOrderGroupId) || {
+                previousUploadedMediaId: null,
+                previousUploadedDraft: null
+              };
+              const previousUploadedMediaId = Number(groupState.previousUploadedMediaId);
+
+              resolvedDraft = {
+                ...task.draft,
+                parent: Number.isSafeInteger(previousUploadedMediaId) && previousUploadedMediaId > 0 ? previousUploadedMediaId : null,
+                child: null
+              };
+
+              if (Number.isSafeInteger(previousUploadedMediaId) && previousUploadedMediaId > 0) {
+                await uploadApi.updateUploadedMedia(previousUploadedMediaId, {
+                  ...(groupState.previousUploadedDraft || {}),
+                  child: uploaded.id
+                });
+              }
+
+              groupState.previousUploadedMediaId = uploaded.id;
+              groupState.previousUploadedDraft = resolvedDraft;
+
+              if (task.linkOrderIndex === task.linkOrderSize - 1) {
+                linkOrderGroupStateRef.current.delete(task.linkOrderGroupId);
+              } else {
+                linkOrderGroupStateRef.current.set(task.linkOrderGroupId, groupState);
+              }
+            }
+
+            await uploadApi.updateUploadedMedia(uploaded.id, resolvedDraft);
+          }
+
           const uploadedMedia = uploadedRelativePath
             ? {
               id: uploaded?.id ?? null,
@@ -255,17 +392,16 @@ export default function UploadManagerContainer() {
               relativePath: uploadedRelativePath,
               originalUrl: `/media/${encodedRelativePath}`,
               mediaType: VIDEO_EXTENSIONS.has(uploadedExtension) ? "video" : "image",
-              title: task.draft.title || null,
-              description: task.draft.description || null,
-              source: task.draft.source || null,
-              parent: task.draft.parent ?? null,
-              child: task.draft.child ?? null,
+              title: resolvedDraft.title || null,
+              description: resolvedDraft.description || null,
+              source: resolvedDraft.source || null,
+              parent: resolvedDraft.parent ?? null,
+              child: resolvedDraft.child ?? null,
               _tileUrl: `/api/media/preview?path=${encodeURIComponent(uploadedRelativePath)}`
             }
             : null;
 
           if (uploaded?.id) {
-            await uploadApi.updateUploadedMedia(uploaded.id, task.draft);
             const collectionIds = Array.isArray(task.collectionIds) ? task.collectionIds : [];
             for (const collectionId of collectionIds) {
               await collectionsApi.addMediaToCollection(collectionId, uploaded.id);
@@ -330,7 +466,10 @@ export default function UploadManagerContainer() {
     const uploadTaskPayload = {
       file: task.file,
       draft: task.draft,
-      collectionIds: Array.isArray(task.collectionIds) ? [...task.collectionIds] : []
+      collectionIds: Array.isArray(task.collectionIds) ? [...task.collectionIds] : [],
+      linkOrderGroupId: Number.isSafeInteger(task.linkOrderGroupId) ? task.linkOrderGroupId : null,
+      linkOrderIndex: Number.isSafeInteger(task.linkOrderIndex) ? task.linkOrderIndex : null,
+      linkOrderSize: Number.isSafeInteger(task.linkOrderSize) ? task.linkOrderSize : null
     };
 
     backgroundUploadQueueRef.current.push({ ...uploadTaskPayload, taskId });
@@ -443,35 +582,20 @@ export default function UploadManagerContainer() {
       return;
     }
 
-    let normalizedDraft;
+    let normalizedUploadItems;
     let normalizedCollectionIds = [];
     try {
-      const title = String(activeItem.draft.title || "").trim();
-      const description = String(activeItem.draft.description || "").trim();
-      const source = String(activeItem.draft.source || "").trim();
+      const uploadItems = buildUploadItemsForSubmission();
       normalizedCollectionIds = Array.from(new Set(
         settings.uploadCollectionIds
           .map((value) => Number(value))
           .filter((value) => Number.isSafeInteger(value) && value > 0)
       ));
 
-      if (source) {
-        const url = new URL(source);
-        if (url.protocol !== "http:" && url.protocol !== "https:") {
-          throw new Error("Source URL must start with http:// or https://");
-        }
-      }
-
-      normalizedDraft = {
-        title: title || null,
-        description: description || null,
-        source: source || null,
-        parent: parseNullableId(activeItem.draft.parent, "Parent"),
-        child: parseNullableId(activeItem.draft.child, "Child"),
-        tagIds: Array.isArray(activeItem.draft.tagIds)
-          ? activeItem.draft.tagIds.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)
-          : []
-      };
+      normalizedUploadItems = uploadItems.map((item) => ({
+        file: item.file,
+        draft: normalizeUploadDraft(item.draft)
+      }));
     } catch (error) {
       setUiState({
         type: "error",
@@ -487,11 +611,15 @@ export default function UploadManagerContainer() {
         return;
       }
 
-      queue.items.forEach((item) => {
+      const linkOrderGroupId = isGroupSelectionChainEnabled ? uploadLinkGroupSequenceRef.current++ : null;
+      normalizedUploadItems.forEach((item, index) => {
         enqueueBackgroundUpload({
           file: item.file,
-          draft: normalizedDraft,
-          collectionIds: normalizedCollectionIds
+          draft: item.draft,
+          collectionIds: normalizedCollectionIds,
+          linkOrderGroupId,
+          linkOrderIndex: linkOrderGroupId ? index : null,
+          linkOrderSize: linkOrderGroupId ? normalizedUploadItems.length : null
         });
       });
 
@@ -500,8 +628,8 @@ export default function UploadManagerContainer() {
     }
 
     enqueueBackgroundUpload({
-      file: activeItem.file,
-      draft: normalizedDraft,
+      file: normalizedUploadItems[0].file,
+      draft: normalizedUploadItems[0].draft,
       collectionIds: normalizedCollectionIds
     });
 
@@ -632,7 +760,7 @@ export default function UploadManagerContainer() {
                     type="button"
                     className="media-action-btn app-button-icon-only"
                     onClick={() => setQueueState({ activeUploadIndex: Math.max(queue.activeUploadIndex - 1, 0) })}
-                    disabled={queue.items.length === 0 || queue.activeUploadIndex === 0 || isUploading}
+                    disabled={settings.isGroupUploadEnabled || queue.items.length === 0 || queue.activeUploadIndex === 0 || isUploading}
                     aria-label="Previous upload item"
                   >
                     <AppIcon name="arrowLeft" alt="" aria-hidden="true" />
@@ -641,7 +769,7 @@ export default function UploadManagerContainer() {
                     type="button"
                     className="media-action-btn app-button-icon-only"
                     onClick={() => setQueueState({ activeUploadIndex: Math.min(queue.activeUploadIndex + 1, queue.items.length - 1) })}
-                    disabled={queue.items.length === 0 || queue.activeUploadIndex >= queue.items.length - 1 || isUploading}
+                    disabled={settings.isGroupUploadEnabled || queue.items.length === 0 || queue.activeUploadIndex >= queue.items.length - 1 || isUploading}
                     aria-label="Next upload item"
                   >
                     <AppIcon name="arrowRight" alt="" aria-hidden="true" />
@@ -681,16 +809,22 @@ export default function UploadManagerContainer() {
             ) : (
               <UploadEditorStep
                 activeUploadItem={activeUploadItem}
+                visibleDraft={visibleDraft}
                 isUploading={isUploading}
                 collections={collections}
                 settings={settings}
                 state={state}
-                onDraftChange={updateActiveUploadDraft}
+                onDraftChange={handleUploadDraftChange}
                 onOpenCollectionPicker={() => void openUploadCollectionPicker()}
                 onToggleGroupUpload={(checked) => setSettings({ isGroupUploadEnabled: checked })}
+                isGroupSelectionChainEnabled={isGroupSelectionChainEnabled}
+                onToggleGroupSelectionChain={(checked) => setIsGroupSelectionChainEnabled(checked)}
                 onBack={() => setQueueState({ step: "queue" })}
                 onUpload={handleUpload}
-                renderUploadPreview={renderUploadPreview}
+                previewNode={renderUploadPreview()}
+                previewTitle={settings.isGroupUploadEnabled
+                  ? `${queue.items.length} selected media`
+                  : String(visibleDraft?.title || activeUploadItem?.file?.name || "")}
                 editorData={uploadEditorData}
               />
             )}

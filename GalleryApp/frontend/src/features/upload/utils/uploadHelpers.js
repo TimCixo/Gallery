@@ -1,12 +1,3 @@
-export const createMediaDraft = () => ({
-  title: "",
-  description: "",
-  source: "",
-  parent: "",
-  child: "",
-  tagIds: []
-});
-
 export const getFileKey = (file) => `${file.name}::${file.size}::${file.lastModified}::${file.type}`;
 
 export const isFileDragEvent = (event) => Array.from(event.dataTransfer?.types || []).includes("Files");

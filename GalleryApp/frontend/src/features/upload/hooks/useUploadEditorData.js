@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { mediaApi } from "../../../api/mediaApi";
 import { tagsApi } from "../../../api/tagsApi";
 
-export function useUploadEditorData({ isEditorOpen, activeDraft, onDraftChange }) {
+export function useUploadEditorData({ isEditorOpen, activeDraft, onDraftChange, onToggleTag }) {
   const [tagCatalog, setTagCatalog] = useState([]);
   const [tagTypesCatalog, setTagTypesCatalog] = useState([]);
   const [isTagCatalogLoading, setIsTagCatalogLoading] = useState(false);
@@ -177,6 +177,11 @@ export function useUploadEditorData({ isEditorOpen, activeDraft, onDraftChange }
   }, [mediaRelationPickerMode, onDraftChange, closeMediaRelationPicker]);
 
   const toggleTag = useCallback((tagId) => {
+    if (typeof onToggleTag === "function") {
+      onToggleTag(tagId);
+      return;
+    }
+
     const normalizedTagId = Number(tagId);
     if (!Number.isInteger(normalizedTagId) || normalizedTagId <= 0) {
       return;
@@ -185,7 +190,7 @@ export function useUploadEditorData({ isEditorOpen, activeDraft, onDraftChange }
     const currentIds = Array.isArray(activeDraft?.tagIds) ? activeDraft.tagIds : [];
     const hasTag = currentIds.includes(normalizedTagId);
     onDraftChange?.({ tagIds: hasTag ? currentIds.filter((id) => id !== normalizedTagId) : [...currentIds, normalizedTagId] });
-  }, [activeDraft?.tagIds, onDraftChange]);
+  }, [activeDraft?.tagIds, onDraftChange, onToggleTag]);
 
   return {
     tagCatalog,

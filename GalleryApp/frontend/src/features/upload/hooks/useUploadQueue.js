@@ -1,6 +1,7 @@
 import { useCallback } from "react";
+import { createEmptyMediaDraft } from "../../media/utils/bulkMediaEdit";
 import { VIDEO_EXTENSIONS, getExtensionFromPath } from "../../../utils/mediaIdentity";
-import { createMediaDraft, getFileKey } from "../utils/uploadHelpers";
+import { getFileKey } from "../utils/uploadHelpers";
 
 export function useUploadQueue({
   queue,
@@ -25,7 +26,7 @@ export function useUploadQueue({
       file,
       previewUrl: URL.createObjectURL(file),
       mediaType: VIDEO_EXTENSIONS.has(getExtensionFromPath(file.name)) ? "video" : "image",
-      draft: createMediaDraft()
+      draft: createEmptyMediaDraft()
     }));
 
     const existingKeys = new Set(queue.items.map((item) => item.key));
