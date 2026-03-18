@@ -38,6 +38,16 @@ test("media editor shows preview title below thumbnail and supports icon primary
   assert.match(appCss, /\.media-edit-preview-title/);
 });
 
+test("mobile media editor keeps preview in normal document flow above metadata", () => {
+  const mobileEditorStyles = appCss.match(/@media \(max-width: 760px\) \{[\s\S]*?\.media-edit-thumbnail \{/);
+  assert.ok(mobileEditorStyles, "Expected mobile editor styles to exist");
+  assert.match(appCss, /@media \(max-width: 760px\)[\s\S]*\.media-meta-primary\.is-editing\s*\{[\s\S]*flex-direction:\s*column-reverse/);
+  assert.match(appCss, /@media \(max-width: 760px\)[\s\S]*\.media-edit-preview-stack\s*\{[\s\S]*position:\s*static/);
+  assert.match(appCss, /@media \(max-width: 760px\)[\s\S]*\.media-edit-preview-stack\s*\{[\s\S]*top:\s*auto/);
+  assert.match(appCss, /@media \(max-width: 760px\)[\s\S]*\.media-edit-preview-stack\s*\{[\s\S]*width:\s*132px/);
+  assert.match(appCss, /@media \(max-width: 760px\)[\s\S]*\.media-edit-thumbnail\s*\{[\s\S]*width:\s*132px/);
+});
+
 test("media relation picker dialog is shared between editor panel and viewer modal", () => {
   assert.match(editorPanelSource, /MediaRelationPickerDialogContent/);
   assert.match(editorPanelSource, /MediaRelationPickerModal/);

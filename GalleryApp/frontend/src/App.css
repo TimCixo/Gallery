@@ -3122,8 +3122,16 @@
     gap: 0.65rem;
   }
 
+  .media-edit-preview-stack {
+    width: 132px;
+    max-width: 100%;
+    position: static;
+    top: auto;
+  }
+
   .media-edit-thumbnail {
-    width: min(100%, 220px);
+    width: 132px;
+    max-width: 100%;
     height: auto;
     aspect-ratio: 1 / 1;
     position: static;
