@@ -47,6 +47,27 @@ test("bulk media action bar exposes cancel delete and edit actions", () => {
   assert.match(bulkModalSource, /Add selected media to collections/);
 });
 
+test("bulk media editor resolves and updates parent child media relations", () => {
+  assert.match(bulkModalSource, /const \[relationPreviewByMode, setRelationPreviewByMode\] = useState\(DEFAULT_RELATION_PREVIEW\)/);
+  assert.match(bulkModalSource, /const mediaCacheRef = useRef\(new Map\(\)\)/);
+  assert.match(bulkModalSource, /const findMediaById = async \(mediaId\) =>/);
+  assert.match(bulkModalSource, /const cachedCandidate = mediaCacheRef\.current\.get\(normalizedId\) \|\| null/);
+  assert.match(bulkModalSource, /const localCandidate = selectedItems\.find\(\(item\) => Number\(item\?\.id\) === normalizedId\) \|\| null/);
+  assert.match(bulkModalSource, /mediaApi\.listMedia\(\{ page: 1, pageSize: 40, search: `id:\$\{normalizedId\}` \}\)/);
+  assert.match(bulkModalSource, /const preloadRelationMedia = async \(\) =>/);
+  assert.match(bulkModalSource, /await Promise\.all\(relationIds\.map\(async \(relationId\) =>/);
+  assert.match(bulkModalSource, /void resolveMode\("parent"\)/);
+  assert.match(bulkModalSource, /void resolveMode\("child"\)/);
+  assert.match(bulkModalSource, /const cachedCandidate = mediaCacheRef\.current\.get\(parsed\) \|\| null/);
+  assert.match(bulkModalSource, /const openMediaRelationPicker = \(mode\) =>/);
+  assert.match(bulkModalSource, /setIsMediaRelationPickerOpen\(true\)/);
+  assert.match(bulkModalSource, /const handleSelectMediaRelationFromPicker = \(item\) =>/);
+  assert.match(bulkModalSource, /updateDraft\(\{ \[key\]: String\(selectedId\) \}\)/);
+  assert.match(bulkModalSource, /relationPreviewByMode=\{relationPreviewByMode\}/);
+  assert.match(bulkModalSource, /onOpenRelationPicker=\{openMediaRelationPicker\}/);
+  assert.match(bulkModalSource, /onSelectMediaRelationFromPicker=\{handleSelectMediaRelationFromPicker\}/);
+});
+
 test("multi-select styles highlight selected media and bulk actions", () => {
   assert.match(appCss, /\.media-tile\.is-selected/);
   assert.match(appCss, /\.media-selection-indicator/);

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { mediaApi } from "../../../api/mediaApi";
 import { collectionsApi } from "../../../api/collectionsApi";
 import AppIcon from "../../shared/components/AppIcon";
 import { isVideoFile, resolveOriginalMediaUrl, resolvePreviewMediaUrl } from "../../shared/utils/mediaPredicates";
@@ -7,7 +8,7 @@ import CollectionPickerModal from "../../collections/components/CollectionPicker
 import MediaEditorPanel from "./MediaEditorPanel";
 import { createBulkEditorItems } from "../utils/bulkMediaEdit";
 
-const EMPTY_RELATION_PREVIEW = Object.freeze({
+const DEFAULT_RELATION_PREVIEW = Object.freeze({
   parent: { item: null, isLoading: false, error: "" },
   child: { item: null, isLoading: false, error: "" }
 });
@@ -32,6 +33,17 @@ export default function BulkMediaEditorModal({
   const [collectionPickerError, setCollectionPickerError] = useState("");
   const [isCollectionPickerLoading, setIsCollectionPickerLoading] = useState(false);
   const [selectedCollectionIds, setSelectedCollectionIds] = useState([]);
+  const [relationPreviewByMode, setRelationPreviewByMode] = useState(DEFAULT_RELATION_PREVIEW);
+  const [isMediaRelationPickerOpen, setIsMediaRelationPickerOpen] = useState(false);
+  const [mediaRelationPickerMode, setMediaRelationPickerMode] = useState("parent");
+  const [mediaRelationPickerQuery, setMediaRelationPickerQuery] = useState("");
+  const [mediaRelationPickerItems, setMediaRelationPickerItems] = useState([]);
+  const [mediaRelationPickerPage, setMediaRelationPickerPage] = useState(1);
+  const [mediaRelationPickerTotalPages, setMediaRelationPickerTotalPages] = useState(0);
+  const [mediaRelationPickerTotalCount, setMediaRelationPickerTotalCount] = useState(0);
+  const [isMediaRelationPickerLoading, setIsMediaRelationPickerLoading] = useState(false);
+  const [mediaRelationPickerError, setMediaRelationPickerError] = useState("");
+  const mediaCacheRef = useRef(new Map());
 
   useEffect(() => {
     if (!isOpen) {
@@ -46,6 +58,17 @@ export default function BulkMediaEditorModal({
     setCollectionPickerError("");
     setIsCollectionPickerLoading(false);
     setIsCollectionPickerOpen(false);
+    setRelationPreviewByMode(DEFAULT_RELATION_PREVIEW);
+    setIsMediaRelationPickerOpen(false);
+    setMediaRelationPickerMode("parent");
+    setMediaRelationPickerQuery("");
+    setMediaRelationPickerItems([]);
+    setMediaRelationPickerPage(1);
+    setMediaRelationPickerTotalPages(0);
+    setMediaRelationPickerTotalCount(0);
+    setIsMediaRelationPickerLoading(false);
+    setMediaRelationPickerError("");
+    mediaCacheRef.current = new Map();
   }, [isOpen, selectedItems]);
 
   const activeItem = editorItems[activeIndex] || null;
@@ -88,6 +111,42 @@ export default function BulkMediaEditorModal({
     )));
   };
 
+  const findMediaById = async (mediaId) => {
+    const normalizedId = Number(mediaId);
+    if (!Number.isSafeInteger(normalizedId) || normalizedId <= 0) {
+      return null;
+    }
+
+    const cachedCandidate = mediaCacheRef.current.get(normalizedId) || null;
+    if (cachedCandidate) {
+      return cachedCandidate;
+    }
+
+    const localCandidate = selectedItems.find((item) => Number(item?.id) === normalizedId) || null;
+    if (localCandidate) {
+      const normalizedCandidate = {
+        ...localCandidate,
+        _tileUrl: localCandidate.tileUrl || localCandidate.previewUrl || localCandidate.originalUrl || localCandidate.url || ""
+      };
+      mediaCacheRef.current.set(normalizedId, normalizedCandidate);
+      return normalizedCandidate;
+    }
+
+    const response = await mediaApi.listMedia({ page: 1, pageSize: 40, search: `id:${normalizedId}` });
+    const items = Array.isArray(response?.items) ? response.items : [];
+    const remoteCandidate = items.find((item) => Number(item?.id) === normalizedId) || null;
+    if (remoteCandidate) {
+      const normalizedCandidate = {
+        ...remoteCandidate,
+        _tileUrl: remoteCandidate.tileUrl || remoteCandidate.previewUrl || remoteCandidate.originalUrl || remoteCandidate.url || ""
+      };
+      mediaCacheRef.current.set(normalizedId, normalizedCandidate);
+      return normalizedCandidate;
+    }
+
+    return null;
+  };
+
   const toggleTag = (tagId) => {
     setEditorItems((current) => current.map((item, index) => {
       if (!isGroupEditEnabled && index !== activeIndex) {
@@ -127,6 +186,181 @@ export default function BulkMediaEditorModal({
     } finally {
       setIsCollectionPickerLoading(false);
     }
+  };
+
+  useEffect(() => {
+    if (!isOpen || editorItems.length === 0) {
+      return undefined;
+    }
+
+    const relationIds = Array.from(new Set(editorItems.flatMap((item) => {
+      const parentId = Number.parseInt(String(item?.draft?.parent || "").trim(), 10);
+      const childId = Number.parseInt(String(item?.draft?.child || "").trim(), 10);
+      return [parentId, childId].filter((value) => Number.isSafeInteger(value) && value > 0);
+    })));
+
+    if (relationIds.length === 0) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const preloadRelationMedia = async () => {
+      await Promise.all(relationIds.map(async (relationId) => {
+        if (cancelled || mediaCacheRef.current.has(relationId)) {
+          return;
+        }
+        try {
+          await findMediaById(relationId);
+        } catch {
+          // Ignore preload failures and let active preview resolution expose errors when needed.
+        }
+      }));
+    };
+
+    void preloadRelationMedia();
+    return () => {
+      cancelled = true;
+    };
+  }, [editorItems, isOpen]);
+
+  useEffect(() => {
+    if (!activeDraft) {
+      setRelationPreviewByMode(DEFAULT_RELATION_PREVIEW);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const resolveMode = async (mode) => {
+      const rawValue = String(mode === "parent" ? (activeDraft.parent || "") : (activeDraft.child || "")).trim();
+      if (!rawValue) {
+        if (!cancelled) {
+          setRelationPreviewByMode((current) => ({
+            ...current,
+            [mode]: { item: null, isLoading: false, error: "" }
+          }));
+        }
+        return;
+      }
+
+      const parsed = Number.parseInt(rawValue, 10);
+      if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+        if (!cancelled) {
+          setRelationPreviewByMode((current) => ({
+            ...current,
+            [mode]: { item: null, isLoading: false, error: "Invalid media id." }
+          }));
+        }
+        return;
+      }
+
+      const cachedCandidate = mediaCacheRef.current.get(parsed) || null;
+      if (cachedCandidate) {
+        if (!cancelled) {
+          setRelationPreviewByMode((current) => ({
+            ...current,
+            [mode]: { item: cachedCandidate, isLoading: false, error: "" }
+          }));
+        }
+        return;
+      }
+
+      setRelationPreviewByMode((current) => ({
+        ...current,
+        [mode]: { item: null, isLoading: true, error: "" }
+      }));
+
+      try {
+        const candidate = await findMediaById(parsed);
+        if (!cancelled) {
+          setRelationPreviewByMode((current) => ({
+            ...current,
+            [mode]: candidate
+              ? { item: candidate, isLoading: false, error: "" }
+              : { item: null, isLoading: false, error: "Media not found." }
+          }));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setRelationPreviewByMode((current) => ({
+            ...current,
+            [mode]: { item: null, isLoading: false, error: error instanceof Error ? error.message : "Failed to resolve media." }
+          }));
+        }
+      }
+    };
+
+    void resolveMode("parent");
+    void resolveMode("child");
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDraft]);
+
+  const openMediaRelationPicker = (mode) => {
+    setMediaRelationPickerMode(mode === "child" ? "child" : "parent");
+    setMediaRelationPickerQuery("");
+    setMediaRelationPickerPage(1);
+    setMediaRelationPickerError("");
+    setIsMediaRelationPickerOpen(true);
+  };
+
+  const closeMediaRelationPicker = () => {
+    setIsMediaRelationPickerOpen(false);
+    setMediaRelationPickerError("");
+  };
+
+  useEffect(() => {
+    if (!isMediaRelationPickerOpen) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const loadItems = async () => {
+      setIsMediaRelationPickerLoading(true);
+      setMediaRelationPickerError("");
+      try {
+        const response = await mediaApi.listMedia({
+          page: mediaRelationPickerPage,
+          pageSize: 24,
+          search: mediaRelationPickerQuery.trim() || undefined
+        });
+        if (cancelled) {
+          return;
+        }
+
+        const items = Array.isArray(response?.items) ? response.items : [];
+        setMediaRelationPickerItems(items);
+        setMediaRelationPickerTotalPages(Number(response?.totalPages || 0));
+        setMediaRelationPickerTotalCount(Number(response?.totalCount || items.length));
+      } catch (error) {
+        if (!cancelled) {
+          setMediaRelationPickerItems([]);
+          setMediaRelationPickerTotalPages(0);
+          setMediaRelationPickerTotalCount(0);
+          setMediaRelationPickerError(error instanceof Error ? error.message : "Failed to load media.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsMediaRelationPickerLoading(false);
+        }
+      }
+    };
+
+    void loadItems();
+    return () => {
+      cancelled = true;
+    };
+  }, [isMediaRelationPickerOpen, mediaRelationPickerPage, mediaRelationPickerQuery]);
+
+  const handleSelectMediaRelationFromPicker = (item) => {
+    const selectedId = Number(item?.id);
+    if (!Number.isSafeInteger(selectedId) || selectedId <= 0) {
+      return;
+    }
+
+    const key = mediaRelationPickerMode === "child" ? "child" : "parent";
+    updateDraft({ [key]: String(selectedId) });
+    closeMediaRelationPicker();
   };
 
   if (!isOpen || !activeItem) {
@@ -206,15 +440,25 @@ export default function BulkMediaEditorModal({
             selectedTagIds={Array.isArray(activeDraft?.tagIds) ? activeDraft.tagIds : []}
             onToggleTag={toggleTag}
             onRefreshTagCatalog={onRefreshTagCatalog}
-            relationPreviewByMode={EMPTY_RELATION_PREVIEW}
-            mediaRelationPickerMode="parent"
-            mediaRelationPickerQuery=""
-            mediaRelationPickerItems={[]}
-            mediaRelationPickerPage={1}
-            mediaRelationPickerTotalPages={0}
-            mediaRelationPickerTotalCount={0}
-            isMediaRelationPickerLoading={false}
-            mediaRelationPickerError=""
+            relationPreviewByMode={relationPreviewByMode}
+            onOpenRelationPicker={openMediaRelationPicker}
+            isMediaRelationPickerOpen={isMediaRelationPickerOpen}
+            mediaRelationPickerMode={mediaRelationPickerMode}
+            mediaRelationPickerQuery={mediaRelationPickerQuery}
+            onMediaRelationPickerQueryChange={setMediaRelationPickerQuery}
+            mediaRelationPickerItems={mediaRelationPickerItems}
+            mediaRelationPickerPage={mediaRelationPickerPage}
+            mediaRelationPickerTotalPages={mediaRelationPickerTotalPages}
+            mediaRelationPickerTotalCount={mediaRelationPickerTotalCount}
+            isMediaRelationPickerLoading={isMediaRelationPickerLoading}
+            mediaRelationPickerError={mediaRelationPickerError}
+            onMediaRelationPickerPrev={() => setMediaRelationPickerPage((current) => Math.max(current - 1, 1))}
+            onMediaRelationPickerNext={() => setMediaRelationPickerPage((current) => (
+              mediaRelationPickerTotalPages > 0 ? Math.min(current + 1, mediaRelationPickerTotalPages) : current + 1
+            ))}
+            onMediaRelationPickerPageChange={setMediaRelationPickerPage}
+            onCloseMediaRelationPicker={closeMediaRelationPicker}
+            onSelectMediaRelationFromPicker={handleSelectMediaRelationFromPicker}
             systemDetailsNode={(
               <table className="media-system-table">
                 <tbody>
