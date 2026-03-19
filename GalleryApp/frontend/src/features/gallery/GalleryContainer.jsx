@@ -13,6 +13,8 @@ import MediaViewerModal from "../media/components/MediaViewerModal";
 import { useMediaMultiSelect } from "../media/hooks/useMediaMultiSelect";
 import { saveBulkMediaItems } from "../media/utils/bulkMediaSave";
 import { buildRelatedMediaChain } from "../media/utils/relatedMediaChain";
+import { fetchAllMediaItems } from "./utils/fetchAllMediaItems";
+import { buildGroupedMediaPagination } from "./utils/groupRelatedMediaPagination";
 import { loadGalleryViewState, persistGalleryViewState } from "./utils/galleryViewState";
 import GalleryPage from "./GalleryPage";
 import AppIcon from "../shared/components/AppIcon";
@@ -29,7 +31,12 @@ const getDisplayName = (value) => {
   return normalized.replace(/\.[^./]+$/, "") || normalized;
 };
 
-export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0, openMediaRequest = null }) {
+export default function GalleryContainer({
+  searchQuery = "",
+  searchSubmitSeq = 0,
+  openMediaRequest = null,
+  groupRelatedMedia = false
+}) {
   const initialViewState = useMemo(() => loadGalleryViewState(), []);
   const mediaCacheRef = useRef(new Map());
   const relatedMediaChainCacheRef = useRef(new Map());
@@ -106,6 +113,26 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
     setIsMediaLoading(true);
     setMediaError("");
     try {
+      if (groupRelatedMedia) {
+        const items = await fetchAllMediaItems({ listMedia: mediaApi.listMedia, search: searchText, pageSize: 200 });
+        const normalizedItems = items.map((item) => ({ ...item, _tileUrl: item.tileUrl || item.previewUrl || item.originalUrl || item.url || "" }));
+        normalizedItems.forEach((item) => {
+          const normalizedId = Number(item?.id);
+          if (Number.isSafeInteger(normalizedId) && normalizedId > 0) {
+            mediaCacheRef.current.set(normalizedId, item);
+          }
+        });
+
+        const groupedPage = buildGroupedMediaPagination(normalizedItems, page, PAGE_SIZE);
+        setMediaFiles(groupedPage.items);
+        setTotalPages(groupedPage.totalPages);
+        setTotalFiles(groupedPage.totalCount);
+        if (groupedPage.page !== page) {
+          setCurrentPage(groupedPage.page);
+        }
+        return;
+      }
+
       const response = await mediaApi.listMedia({ page, pageSize: PAGE_SIZE, search: searchText || undefined });
       const items = Array.isArray(response?.items) ? response.items : [];
       const normalizedItems = items.map((item) => ({ ...item, _tileUrl: item.tileUrl || item.previewUrl || item.originalUrl || item.url || "" }));
@@ -117,13 +144,13 @@ export default function GalleryContainer({ searchQuery = "", searchSubmitSeq = 0
       });
       setMediaFiles(normalizedItems);
       setTotalPages(Number(response?.totalPages || 0));
-      setTotalFiles(Number(response?.totalCount || items.length));
+      setTotalFiles(Number(response?.totalCount || normalizedItems.length));
     } catch (error) {
       setMediaError(error instanceof Error ? error.message : "Failed to load media.");
     } finally {
       setIsMediaLoading(false);
     }
-  }, [searchQuery]);
+  }, [groupRelatedMedia, searchQuery]);
 
   useEffect(() => {
     void loadMedia(currentPage, searchQuery);

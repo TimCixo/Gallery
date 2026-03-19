@@ -113,6 +113,7 @@ npm test
 - Основні API-групи: media, favorites, collections, tag types, tags, upload.
 - Пошук у gallery підтримує формат `tag:value`, включно з базовими полями (`title`, `path`, `description`, `id`, `source`, `filetype`), де `filetype` підтримує значення `image`, `video`, `gif`.
 - `AppShell.jsx` керує полем пошуку і suggestions, а feature/container-рівень виконує конкретні API-виклики.
+- У верхній панелі gallery доступний popover-фільтр з опцією `Групувати медіа`, яка групує зв'язані parent/child media в один tile з клієнтською пагінацією груп.
 
 ## Пов'язана документація
 

@@ -129,6 +129,40 @@
   align-items: center;
 }
 
+.top-filter-control {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.top-filter-popover-wrap {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  right: 0;
+  z-index: 20;
+}
+
+.top-filter-popover {
+  min-width: 13rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid #d5dbe1;
+  border-radius: 0.7rem;
+  background: #ffffff;
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.16);
+}
+
+.top-filter-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: #0f172a;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.top-filter-checkbox input {
+  margin: 0;
+}
+
 .top-search-field {
   flex: 1;
   min-width: 0;
@@ -2790,6 +2824,24 @@
 
 .media-upload-group-toggle input {
   margin: 0;
+}
+
+.media-group-indicator {
+  position: absolute;
+  top: 0.45rem;
+  left: 0.45rem;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.82);
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .media-bulk-group-options {

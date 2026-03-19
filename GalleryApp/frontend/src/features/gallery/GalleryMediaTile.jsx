@@ -6,6 +6,7 @@ function GalleryMediaTile({
   file,
   alt,
   hasPreviewError,
+  groupCount = 1,
   isSelected = false,
   selectionIndex = null,
   isSelectionMode = false,
@@ -85,6 +86,11 @@ function GalleryMediaTile({
           <div className="media-fallback">Preview unavailable</div>
         )}
       </div>
+      {groupCount > 1 ? (
+        <span className="media-group-indicator" aria-label={`Grouped media count: ${groupCount}`}>
+          {groupCount}
+        </span>
+      ) : null}
       {isSelectionMode ? (
         <span className={`media-selection-indicator${isSelected ? " is-selected" : ""}`} aria-hidden="true">
           {isSelected && Number.isInteger(selectionIndex) ? selectionIndex : null}

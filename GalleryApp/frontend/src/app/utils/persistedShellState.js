@@ -6,7 +6,8 @@ const DEFAULT_SHELL_STATE = {
   activePage: "gallery",
   inputValue: "",
   submittedText: "",
-  searchHistory: []
+  searchHistory: [],
+  groupRelatedMedia: false
 };
 
 export function loadPersistedShellState(storage = globalThis?.sessionStorage) {
@@ -29,7 +30,8 @@ export function loadPersistedShellState(storage = globalThis?.sessionStorage) {
       activePage,
       inputValue: String(parsed?.inputValue || ""),
       submittedText: String(parsed?.submittedText || ""),
-      searchHistory: normalizeSearchHistory(parsed?.searchHistory)
+      searchHistory: normalizeSearchHistory(parsed?.searchHistory),
+      groupRelatedMedia: parsed?.groupRelatedMedia === true
     };
   } catch {
     return { ...DEFAULT_SHELL_STATE };
@@ -45,6 +47,7 @@ export function persistShellState(state, storage = globalThis?.sessionStorage) {
     activePage: state?.activePage || DEFAULT_SHELL_STATE.activePage,
     inputValue: String(state?.inputValue || ""),
     submittedText: String(state?.submittedText || ""),
-    searchHistory: normalizeSearchHistory(state?.searchHistory)
+    searchHistory: normalizeSearchHistory(state?.searchHistory),
+    groupRelatedMedia: state?.groupRelatedMedia === true
   }));
 }

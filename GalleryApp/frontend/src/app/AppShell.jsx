@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { tagsApi } from "../api/tagsApi";
+import MediaFilterPopover from "./components/MediaFilterPopover";
 import GalleryContainer from "../features/gallery/GalleryContainer";
 import FavoritesContainer from "../features/favorites/FavoritesContainer";
 import CollectionsContainer from "../features/collections/CollectionsContainer";
@@ -34,7 +35,11 @@ export default function AppShell() {
   const [searchTagCatalog, setSearchTagCatalog] = useState([]);
   const [searchSubmitSeq, setSearchSubmitSeq] = useState(0);
   const [openMediaRequest, setOpenMediaRequest] = useState({ token: 0, media: null });
+  const [groupRelatedMedia, setGroupRelatedMedia] = useState(initialShellState.groupRelatedMedia);
+  const [isMediaFilterOpen, setIsMediaFilterOpen] = useState(false);
   const prevActivePageRef = useRef("gallery");
+  const mediaFilterButtonRef = useRef(null);
+  const mediaFilterWrapRef = useRef(null);
 
   const loadSearchMetadata = useCallback(async () => {
     try {
@@ -59,9 +64,10 @@ export default function AppShell() {
       activePage,
       inputValue,
       submittedText,
-      searchHistory
+      searchHistory,
+      groupRelatedMedia
     });
-  }, [activePage, inputValue, submittedText, searchHistory]);
+  }, [activePage, groupRelatedMedia, inputValue, submittedText, searchHistory]);
 
   useEffect(() => {
     const previousPage = prevActivePageRef.current;
@@ -131,6 +137,22 @@ export default function AppShell() {
     window.addEventListener("gallery:open-media", handleOpenMedia);
     return () => window.removeEventListener("gallery:open-media", handleOpenMedia);
   }, []);
+
+  useEffect(() => {
+    if (!isMediaFilterOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      const filterWrap = mediaFilterWrapRef.current;
+      if (filterWrap instanceof HTMLElement && !filterWrap.contains(event.target)) {
+        setIsMediaFilterOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", handlePointerDown);
+    return () => window.removeEventListener("mousedown", handlePointerDown);
+  }, [isMediaFilterOpen]);
 
   const openGalleryPage = (event) => {
     event.preventDefault();
@@ -237,6 +259,27 @@ export default function AppShell() {
           <button type="submit" className="media-action-btn app-button-icon-only top-search-submit-btn" aria-label="Search" title="Search">
             <AppIcon name="search" alt="" aria-hidden="true" />
           </button>
+          <div ref={mediaFilterWrapRef} className="top-filter-control">
+            <button
+              ref={mediaFilterButtonRef}
+              type="button"
+              className="media-action-btn app-button-icon-only top-search-submit-btn"
+              aria-label="Open media filters"
+              aria-expanded={isMediaFilterOpen}
+              aria-haspopup="dialog"
+              title="Media filters"
+              onClick={() => setIsMediaFilterOpen((current) => !current)}
+            >
+              <AppIcon name="filter" alt="" aria-hidden="true" />
+            </button>
+            <MediaFilterPopover
+              isOpen={isMediaFilterOpen}
+              buttonRef={mediaFilterButtonRef}
+              onClose={() => setIsMediaFilterOpen(false)}
+              groupRelatedMedia={groupRelatedMedia}
+              onGroupRelatedMediaChange={setGroupRelatedMedia}
+            />
+          </div>
         </form>
 
         <div className="top-upload-group">
@@ -275,7 +318,14 @@ export default function AppShell() {
         </div>
       ) : null}
 
-      {activePage === "gallery" ? <GalleryContainer searchQuery={submittedText} searchSubmitSeq={searchSubmitSeq} openMediaRequest={openMediaRequest} /> : null}
+      {activePage === "gallery" ? (
+        <GalleryContainer
+          searchQuery={submittedText}
+          searchSubmitSeq={searchSubmitSeq}
+          openMediaRequest={openMediaRequest}
+          groupRelatedMedia={groupRelatedMedia}
+        />
+      ) : null}
       {activePage === "favorites" ? <FavoritesContainer /> : null}
       {activePage === "collections" ? <CollectionsContainer searchQuery={submittedText} /> : null}
       {activePage === "tags" ? <TagsContainer /> : null}

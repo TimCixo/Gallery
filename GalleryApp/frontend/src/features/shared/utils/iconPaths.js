@@ -10,6 +10,7 @@ export const ICON_PATHS = Object.freeze({
   edit: "/icons/edit.png",
   favoriteDisabled: "/icons/favorite_disable.png",
   favoriteEnabled: "/icons/favorite_enable.png",
+  filter: "/icons/filter.png",
   height: "/icons/height.png",
   home: "/icons/home.png",
   menu: "/icons/menu.png",

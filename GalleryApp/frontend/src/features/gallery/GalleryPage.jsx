@@ -41,6 +41,7 @@ export default function GalleryPage({
                 file={file}
                 alt={getDisplayName(file.name)}
                 hasPreviewError={failedPreviewPaths.has(file.relativePath)}
+                groupCount={Number(file._groupCount) || 1}
                 onSelect={setSelectedMedia}
                 onStartSelection={mediaSelection?.startSelection}
                 onToggleSelection={mediaSelection?.toggleSelection}
