@@ -46,6 +46,18 @@ app.MapGet("/api/media", (int? page, int? pageSize, string? search) =>
     return Results.Ok(pagedResult);
 });
 
+app.MapGet("/api/media/{id:long}/similar", async (long id, MediaSimilarityService mediaSimilarityService, MediaQueryService mediaQueryService, HttpContext httpContext) =>
+{
+    if (id <= 0)
+    {
+        return Results.BadRequest(new { error = "Invalid media id." });
+    }
+
+    var items = await mediaSimilarityService.GetSimilarMediaAsync(id, cancellationToken: httpContext.RequestAborted);
+    mediaQueryService.WarmPagePreviews(items.Select(item => item.Item.RelativePath));
+    return Results.Ok(new { items });
+});
+
 app.MapGet("/api/favorites", (int? page, int? pageSize) =>
 {
     var mediaQueryService = app.ServiceProvider.GetRequiredService<MediaQueryService>();
@@ -505,6 +517,7 @@ var uploadEndpoint = app.MapPost("/api/upload", async (HttpRequest request, Prev
     var savedFiles = new List<object>();
     await using var dbConnection = new SqliteConnection(connectionString);
     await dbConnection.OpenAsync();
+    var mediaSimilarityService = app.ServiceProvider.GetRequiredService<MediaSimilarityService>();
 
     foreach (var file in form.Files)
     {
@@ -558,6 +571,10 @@ var uploadEndpoint = app.MapPost("/api/upload", async (HttpRequest request, Prev
 
             relativePath = Path.Combine(dateFolderName, uniqueName).Replace("\\", "/");
             UpdateMediaPath(dbConnection, mediaId, relativePath);
+            if (MediaFileHelper.IsImageFile(Path.GetExtension(destinationPath).ToLowerInvariant()))
+            {
+                await mediaSimilarityService.UpdateImageHashAsync(mediaId, relativePath, request.HttpContext.RequestAborted);
+            }
             await previewCacheService.WarmAsync(relativePath, destinationPath, Path.GetExtension(destinationPath).ToLowerInvariant(), request.HttpContext.RequestAborted);
         }
         catch (LegacyHelpers.MediaConversionException ex)

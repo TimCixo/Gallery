@@ -73,6 +73,9 @@ export default function GalleryContainer({
     child: { item: null, isLoading: false, error: "" }
   });
   const [relatedMediaItems, setRelatedMediaItems] = useState([]);
+  const [similarMediaItems, setSimilarMediaItems] = useState([]);
+  const [isSimilarMediaLoading, setIsSimilarMediaLoading] = useState(false);
+  const [similarMediaError, setSimilarMediaError] = useState("");
   const [isMediaRelationPickerOpen, setIsMediaRelationPickerOpen] = useState(false);
   const [mediaRelationPickerMode, setMediaRelationPickerMode] = useState("parent");
   const [mediaRelationPickerQuery, setMediaRelationPickerQuery] = useState("");
@@ -284,6 +287,9 @@ export default function GalleryContainer({
         child: { item: null, isLoading: false, error: "" }
       });
       setRelatedMediaItems([]);
+      setSimilarMediaItems([]);
+      setIsSimilarMediaLoading(false);
+      setSimilarMediaError("");
     }
   }, [selectedMedia]);
 
@@ -690,6 +696,65 @@ export default function GalleryContainer({
     };
   }, [selectedMedia, findMediaById]);
 
+  useEffect(() => {
+    if (!selectedMedia?.id) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const loadSimilarMedia = async () => {
+      setIsSimilarMediaLoading(true);
+      setSimilarMediaError("");
+      try {
+        const response = await mediaApi.listSimilarMedia(selectedMedia.id);
+        if (cancelled) {
+          return;
+        }
+
+        const items = Array.isArray(response?.items) ? response.items : [];
+        const normalizedItems = items
+          .map((entry) => {
+            const media = entry?.item;
+            if (!media || !Number.isSafeInteger(Number(media.id)) || Number(media.id) <= 0) {
+              return null;
+            }
+
+            return {
+              ...entry,
+              item: {
+                ...media,
+                _tileUrl: media.tileUrl || media.previewUrl || media.originalUrl || media.url || ""
+              }
+            };
+          })
+          .filter(Boolean);
+
+        normalizedItems.forEach((entry) => {
+          const normalizedId = Number(entry?.item?.id);
+          if (Number.isSafeInteger(normalizedId) && normalizedId > 0) {
+            mediaCacheRef.current.set(normalizedId, entry.item);
+          }
+        });
+
+        setSimilarMediaItems(normalizedItems);
+      } catch (error) {
+        if (!cancelled) {
+          setSimilarMediaItems([]);
+          setSimilarMediaError(error instanceof Error ? error.message : "Failed to load similar media.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsSimilarMediaLoading(false);
+        }
+      }
+    };
+
+    void loadSimilarMedia();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMedia]);
+
   const handleOpenRelatedMediaById = async (targetId) => {
     const normalizedId = Number(targetId);
     if (!Number.isSafeInteger(normalizedId) || normalizedId <= 0 || selectedMedia?.id === normalizedId) {
@@ -945,6 +1010,9 @@ export default function GalleryContainer({
             return { ...current, tagIds: hasTag ? currentIds.filter((id) => id !== tagId) : [...currentIds, tagId] };
           })}
           relatedMediaItems={relatedMediaItems}
+          similarMediaItems={similarMediaItems}
+          isSimilarMediaLoading={isSimilarMediaLoading}
+          similarMediaError={similarMediaError}
           relationPreviewByMode={mediaRelationPreviewByMode}
           onOpenRelationPicker={openMediaRelationPicker}
           onOpenRelatedMediaById={handleOpenRelatedMediaById}

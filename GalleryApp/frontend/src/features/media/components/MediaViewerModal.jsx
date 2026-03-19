@@ -84,6 +84,9 @@ export default function MediaViewerModal({
   onToggleTag,
   onRefreshTagCatalog,
   relatedMediaItems,
+  similarMediaItems,
+  isSimilarMediaLoading,
+  similarMediaError,
   relationPreviewByMode,
   onOpenRelationPicker,
   onOpenRelatedMediaById,
@@ -170,6 +173,7 @@ export default function MediaViewerModal({
   const visibleRelatedMediaItems = Array.isArray(relatedMediaItems) && relatedMediaItems.length > 0
     ? relatedMediaItems
     : [{ ...file, relationSide: "current", isCurrent: true }];
+  const visibleSimilarMediaItems = Array.isArray(similarMediaItems) ? similarMediaItems : [];
 
   const getDraftTagNamesByType = (tagTypeId) => {
     const typeTags = catalogTagsByType.get(tagTypeId) || [];
@@ -932,6 +936,66 @@ export default function MediaViewerModal({
               </>
             )}
           </div>
+
+          {!isEditing ? (
+            <section className="media-similar-section" aria-label="Similar images">
+              <div className="media-similar-header">
+                <h3 className="media-similar-title">Similar images</h3>
+              </div>
+              {isSimilarMediaLoading ? (
+                <p className="media-similar-state">Loading similar images...</p>
+              ) : null}
+              {!isSimilarMediaLoading && similarMediaError ? (
+                <p className="media-similar-state media-similar-state-error">{similarMediaError}</p>
+              ) : null}
+              {!isSimilarMediaLoading && !similarMediaError && visibleSimilarMediaItems.length === 0 ? (
+                <p className="media-similar-state">No similar images found.</p>
+              ) : null}
+              {!isSimilarMediaLoading && !similarMediaError && visibleSimilarMediaItems.length > 0 ? (
+                <div className="media-similar-strip">
+                  {visibleSimilarMediaItems.map((entry) => {
+                    const item = entry?.item;
+                    const mediaId = Number(item?.id);
+                    const previewUrl = resolvePreviewMediaUrl(item);
+                    const similarityTitle = item?.title || item?.relativePath || (Number.isSafeInteger(mediaId) ? `#${mediaId}` : "Similar image");
+
+                    return (
+                      <button
+                        key={`similar-media-${mediaId || item?.relativePath || "unknown"}`}
+                        type="button"
+                        className="media-similar-card"
+                        onClick={() => {
+                          if (Number.isSafeInteger(mediaId) && mediaId > 0) {
+                            onOpenRelatedMediaById?.(mediaId, "similar");
+                          }
+                        }}
+                        title={similarityTitle}
+                        aria-label={`Open similar image ${mediaId}.`}
+                      >
+                        <span className="media-similar-card-thumb-wrap" aria-hidden="true">
+                          {previewUrl ? (
+                            <img
+                              src={previewUrl}
+                              alt=""
+                              className="media-similar-card-thumb"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <span className="media-linked-editor-placeholder">
+                              <AppIcon name="create" alt="" aria-hidden="true" />
+                            </span>
+                          )}
+                        </span>
+                        <span className="media-similar-card-meta">
+                          <span className="media-similar-card-id">#{mediaId}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
         </div>
       </div>

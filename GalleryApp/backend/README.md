@@ -64,6 +64,7 @@ dotnet run --urls http://localhost:5000
 - Preview cache зберігається в `App_Data/PreviewCache`; нові прев'ю створюються під час upload, а при завантаженні списків media/favorites кеш догрівається фоново.
 - Preview для відео та GIF віддається через окремий API endpoint і залежить від доступності `ffmpeg`.
 - Спискові media endpoint-и повертають `tileUrl` для стисненого preview; повний файл лишається доступним через `originalUrl` і завантажується окремо під час відкриття.
+- Для зображень backend обчислює та зберігає `dHash`; під час старту застосунку відсутні hash-значення для вже наявних зображень добудовуються фоново, а нові upload-и хешуються одразу.
 
 ## Основні API-групи
 
@@ -76,6 +77,7 @@ dotnet run --urls http://localhost:5000
 - `GET /api/media?page=1&pageSize=36&search=...`
 - `GET /api/favorites?page=1&pageSize=36`
 - `GET /api/media/preview?path=...`
+- `GET /api/media/{id}/similar`
 - `PUT /api/media/{id}`
 - `PUT /api/media/{id}/favorite`
 - `DELETE /api/media/{id}`

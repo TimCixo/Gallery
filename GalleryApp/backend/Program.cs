@@ -39,8 +39,10 @@ public class Program
         builder.Services.AddSingleton(connectionString);
         builder.Services.AddSingleton(new MediaStorageOptions(mediaRootPath, previewCachePath));
         builder.Services.AddSingleton<MediaRepository>();
+        builder.Services.AddSingleton<ImageHashService>();
         builder.Services.AddSingleton<IMediaProcessingService, MediaProcessingService>();
         builder.Services.AddSingleton<MediaQueryService>();
+        builder.Services.AddSingleton<MediaSimilarityService>();
         builder.Services.AddSingleton<PreviewCacheService>();
         builder.Services.AddSingleton<CollectionService>();
 
@@ -57,6 +59,7 @@ public class Program
 
         var app = builder.Build();
         DatabaseInitializer.EnsureDatabase(app.Services);
+        app.Services.GetRequiredService<MediaSimilarityService>().BackfillMissingHashesAsync().GetAwaiter().GetResult();
 
         app.UseCors("Frontend");
         app.UseStaticFiles(new StaticFileOptions

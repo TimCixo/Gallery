@@ -7,6 +7,7 @@ namespace GalleryApp.Api.Data.Repositories;
 public sealed class MediaRepository(string connectionString)
 {
     public sealed record MediaRow(long Id, string Path, string? Title, string? Description, string? Source, long? Parent, long? Child, bool IsFavorite);
+    public sealed record MediaHashRow(long Id, string Path, string? ImageHash);
     public sealed record PagedMediaRows(int Page, int PageSize, int TotalCount, int TotalPages, List<MediaRow> Rows);
 
     public List<MediaRow> GetMedia(MediaSearchCriteria? criteria, bool favoritesOnly)
@@ -435,6 +436,155 @@ public sealed class MediaRepository(string connectionString)
         return pathCommand.ExecuteScalar() as string;
     }
 
+    public MediaRow? GetMediaById(long id)
+    {
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT
+                m.Id,
+                m.Path,
+                m.Title,
+                m.Description,
+                m.Source,
+                m.Parent,
+                m.Child,
+                EXISTS (
+                    SELECT 1
+                    FROM CollectionsMedia cm
+                    INNER JOIN Collections c ON c.Id = cm.CollectionId
+                    WHERE cm.MediaId = m.Id AND c.Lable = 'Favorites'
+                ) AS IsFavorite
+            FROM Media m
+            WHERE m.Id = $id
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$id", id);
+        return ReadMediaRows(command).FirstOrDefault();
+    }
+
+    public List<MediaRow> GetMediaByIds(IReadOnlyCollection<long> mediaIds)
+    {
+        if (mediaIds.Count == 0)
+        {
+            return [];
+        }
+
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+
+        var idParameters = new List<string>();
+        var index = 0;
+        foreach (var mediaId in mediaIds.Distinct())
+        {
+            var parameterName = $"$mediaId{index++}";
+            idParameters.Add(parameterName);
+            command.Parameters.AddWithValue(parameterName, mediaId);
+        }
+
+        command.CommandText = $"""
+            SELECT
+                m.Id,
+                m.Path,
+                m.Title,
+                m.Description,
+                m.Source,
+                m.Parent,
+                m.Child,
+                EXISTS (
+                    SELECT 1
+                    FROM CollectionsMedia cm
+                    INNER JOIN Collections c ON c.Id = cm.CollectionId
+                    WHERE cm.MediaId = m.Id AND c.Lable = 'Favorites'
+                ) AS IsFavorite
+            FROM Media m
+            WHERE m.Id IN ({string.Join(", ", idParameters)});
+            """;
+
+        return ReadMediaRows(command);
+    }
+
+    public MediaHashRow? GetMediaImageHashRecord(long id)
+    {
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Id, Path, ImageHash
+            FROM Media
+            WHERE Id = $id
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$id", id);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return null;
+        }
+
+        return new MediaHashRow(
+            reader.GetInt64(reader.GetOrdinal("Id")),
+            reader.GetString(reader.GetOrdinal("Path")),
+            reader.IsDBNull(reader.GetOrdinal("ImageHash")) ? null : reader.GetString(reader.GetOrdinal("ImageHash")));
+    }
+
+    public List<MediaHashRow> GetMediaWithoutImageHash()
+    {
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Id, Path, ImageHash
+            FROM Media
+            WHERE (ImageHash IS NULL OR TRIM(ImageHash) = '')
+              AND (
+                  LOWER(Path) LIKE '%.jpg' OR
+                  LOWER(Path) LIKE '%.jpeg' OR
+                  LOWER(Path) LIKE '%.jfif' OR
+                  LOWER(Path) LIKE '%.png' OR
+                  LOWER(Path) LIKE '%.gif' OR
+                  LOWER(Path) LIKE '%.webp' OR
+                  LOWER(Path) LIKE '%.bmp'
+              )
+            ORDER BY Id ASC;
+            """;
+        return ReadMediaHashRows(command);
+    }
+
+    public List<MediaHashRow> GetMediaWithImageHashExcluding(long excludedMediaId)
+    {
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Id, Path, ImageHash
+            FROM Media
+            WHERE Id <> $excludedMediaId
+              AND ImageHash IS NOT NULL
+              AND TRIM(ImageHash) <> ''
+            ORDER BY Id DESC;
+            """;
+        command.Parameters.AddWithValue("$excludedMediaId", excludedMediaId);
+        return ReadMediaHashRows(command);
+    }
+
+    public void UpdateImageHash(long mediaId, string? imageHash)
+    {
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE Media
+            SET ImageHash = $imageHash
+            WHERE Id = $id;
+            """;
+        command.Parameters.AddWithValue("$imageHash", imageHash ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$id", mediaId);
+        command.ExecuteNonQuery();
+    }
+
     public void DeleteMediaRecordAndRelations(long id)
     {
         using var connection = new SqliteConnection(connectionString);
@@ -477,6 +627,24 @@ public sealed class MediaRepository(string connectionString)
                 reader.IsDBNull(parentOrdinal) ? null : reader.GetInt64(parentOrdinal),
                 reader.IsDBNull(childOrdinal) ? null : reader.GetInt64(childOrdinal),
                 !reader.IsDBNull(favoriteOrdinal) && reader.GetInt64(favoriteOrdinal) == 1));
+        }
+
+        return result;
+    }
+
+    private static List<MediaHashRow> ReadMediaHashRows(SqliteCommand command)
+    {
+        using var reader = command.ExecuteReader();
+        var idOrdinal = reader.GetOrdinal("Id");
+        var pathOrdinal = reader.GetOrdinal("Path");
+        var hashOrdinal = reader.GetOrdinal("ImageHash");
+        var result = new List<MediaHashRow>();
+        while (reader.Read())
+        {
+            result.Add(new MediaHashRow(
+                reader.GetInt64(idOrdinal),
+                reader.IsDBNull(pathOrdinal) ? string.Empty : reader.GetString(pathOrdinal),
+                reader.IsDBNull(hashOrdinal) ? null : reader.GetString(hashOrdinal)));
         }
 
         return result;
