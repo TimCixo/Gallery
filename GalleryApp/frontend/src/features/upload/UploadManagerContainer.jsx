@@ -14,6 +14,7 @@ import { useUploadCollections } from "./hooks/useUploadCollections";
 import { useUploadEditorData } from "./hooks/useUploadEditorData";
 import { useUploadQueue } from "./hooks/useUploadQueue";
 import { createEmptyMediaDraft } from "../media/utils/bulkMediaEdit";
+import { getGroupSelectedTagIds } from "../media/utils/groupTagSelection";
 import { applyGroupDraftToUploadItems } from "./utils/groupUploadDraft";
 import { parseNullableId } from "./utils/uploadHelpers";
 import AppIcon from "../shared/components/AppIcon";
@@ -37,6 +38,9 @@ export default function UploadManagerContainer() {
   const linkOrderGroupStateRef = useRef(new Map());
   const activeUploadItem = queue.items[queue.activeUploadIndex] || null;
   const visibleDraft = settings.isGroupUploadEnabled ? groupDraft : (activeUploadItem?.draft || null);
+  const selectedTagIds = settings.isGroupUploadEnabled
+    ? getGroupSelectedTagIds(queue.items, groupTagEdits)
+    : (Array.isArray(visibleDraft?.tagIds) ? visibleDraft.tagIds : []);
 
   const setQueueState = (payload) => {
     dispatch({ type: actions.SET_QUEUE, payload });
@@ -810,6 +814,7 @@ export default function UploadManagerContainer() {
               <UploadEditorStep
                 activeUploadItem={activeUploadItem}
                 visibleDraft={visibleDraft}
+                selectedTagIds={selectedTagIds}
                 isUploading={isUploading}
                 collections={collections}
                 settings={settings}

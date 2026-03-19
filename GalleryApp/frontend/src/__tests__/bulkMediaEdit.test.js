@@ -173,14 +173,14 @@ test("applyMediaUpdatePayloadToItem preserves untouched fields", () => {
 test("applyOrderedRelationChainToItems links selected media in order", () => {
   assert.deepEqual(
     applyOrderedRelationChainToItems([
-      { id: 10, draft: { title: "A", parent: "", child: "" } },
+      { id: 10, draft: { title: "A", parent: "7", child: "" } },
       { id: 11, draft: { title: "B", parent: "", child: "" } },
-      { id: 12, draft: { title: "C", parent: "", child: "" } }
+      { id: 12, draft: { title: "C", parent: "", child: "19" } }
     ]).map((item) => ({ id: item.id, parent: item.draft.parent, child: item.draft.child })),
     [
-      { id: 10, parent: "", child: "11" },
+      { id: 10, parent: "7", child: "11" },
       { id: 11, parent: "10", child: "12" },
-      { id: 12, parent: "11", child: "" }
+      { id: 12, parent: "11", child: "19" }
     ]
   );
 });

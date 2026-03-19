@@ -11,7 +11,7 @@ import BulkMediaEditorModal from "../media/components/BulkMediaEditorModal";
 import MediaDeleteConfirmModal from "../media/components/MediaDeleteConfirmModal";
 import MediaViewerModal from "../media/components/MediaViewerModal";
 import { useMediaMultiSelect } from "../media/hooks/useMediaMultiSelect";
-import { applyMediaUpdatePayloadToItem, buildChangedMediaUpdatePayloadFromDraft, buildMediaUpdatePayloadFromDraft } from "../media/utils/bulkMediaEdit";
+import { saveBulkMediaItems } from "../media/utils/bulkMediaSave";
 import { buildRelatedMediaChain } from "../media/utils/relatedMediaChain";
 import FavoritesPage from "./FavoritesPage";
 import AppIcon from "../shared/components/AppIcon";
@@ -643,7 +643,7 @@ export default function FavoritesContainer() {
     await refreshTagCatalog();
   };
 
-  const handleBulkSaveMedia = async ({ items, collectionIds }) => {
+  const handleBulkSaveMedia = async ({ items, collectionIds, relationStrategy }) => {
     if (!Array.isArray(items) || items.length === 0 || isSavingMedia || isDeletingMedia) {
       return;
     }
@@ -651,17 +651,14 @@ export default function FavoritesContainer() {
     setIsSavingMedia(true);
     setMediaModalError("");
     try {
-      const updatedItemsById = new Map();
-      for (const item of items) {
-        const payload = buildChangedMediaUpdatePayloadFromDraft(item, item.draft);
-        if (payload) {
-          await mediaApi.updateMedia(item.id, payload);
-          updatedItemsById.set(item.id, applyMediaUpdatePayloadToItem(item, payload, tagCatalog));
-        }
-        for (const collectionId of (Array.isArray(collectionIds) ? collectionIds : [])) {
-          await collectionsApi.addMediaToCollection(collectionId, item.id);
-        }
-      }
+      const updatedItemsById = await saveBulkMediaItems({
+        items,
+        relationStrategy,
+        collectionIds,
+        tagCatalog,
+        updateMedia: mediaApi.updateMedia,
+        addMediaToCollection: collectionsApi.addMediaToCollection
+      });
 
       setFavoritesFiles((current) => current.map((item) => updatedItemsById.get(item.id) || item));
       setSelectedMedia((current) => (current ? (updatedItemsById.get(current.id) || current) : current));
@@ -819,7 +816,7 @@ export default function FavoritesContainer() {
         isSaving={isSavingMedia}
         errorMessage={mediaModalError}
         onClose={() => setIsBulkEditing(false)}
-        onSave={({ items, collectionIds }) => void handleBulkSaveMedia({ items, collectionIds })}
+        onSave={({ items, collectionIds, relationStrategy }) => void handleBulkSaveMedia({ items, collectionIds, relationStrategy })}
       />
       <MediaDeleteConfirmModal
         pendingMediaDelete={pendingBulkDelete}

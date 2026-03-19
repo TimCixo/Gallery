@@ -12,6 +12,7 @@ const favoritesContainerSource = readFileSync(path.resolve(__dirname, "../featur
 const collectionsContainerSource = readFileSync(path.resolve(__dirname, "../features/collections/CollectionsContainer.jsx"), "utf8");
 const bulkActionBarSource = readFileSync(path.resolve(__dirname, "../features/media/components/BulkMediaActionBar.jsx"), "utf8");
 const bulkModalSource = readFileSync(path.resolve(__dirname, "../features/media/components/BulkMediaEditorModal.jsx"), "utf8");
+const linkOrderConfirmModalSource = readFileSync(path.resolve(__dirname, "../features/media/components/LinkOrderOverwriteConfirmModal.jsx"), "utf8");
 const appCss = readFileSync(path.resolve(__dirname, "../App.css"), "utf8");
 
 test("media multi-select is wired into gallery favorites and collections flows", () => {
@@ -73,6 +74,7 @@ test("bulk media editor resolves and updates parent child media relations", () =
 test("bulk media editor group mode locks navigation and shows selection count preview", () => {
   assert.match(bulkModalSource, /if \(isGroupEditEnabled\) \{\s*return <div className="media-bulk-preview">\{editorItems\.length\}<\/div>/);
   assert.match(bulkModalSource, /const visibleDraft = isGroupEditEnabled \? groupDraft : activeDraft/);
+  assert.match(bulkModalSource, /const selectedTagIds = isGroupEditEnabled\s*\? getGroupSelectedTagIds\(editorItems, groupTagEdits\)/);
   assert.match(bulkModalSource, /const previewTitle = isGroupEditEnabled \? `\$\{editorItems\.length\} selected media` : `Editing: \$\{modalTitle\}`/);
   assert.match(bulkModalSource, /if \(event\.key !== "ArrowLeft" && event\.key !== "ArrowRight"\) \{/);
   assert.match(bulkModalSource, /if \(isGroupEditEnabled \|\| isSaving\) \{/);
@@ -81,10 +83,27 @@ test("bulk media editor group mode locks navigation and shows selection count pr
   assert.match(bulkModalSource, /window\.addEventListener\("keydown", handleKeyDown\)/);
   assert.match(bulkModalSource, /disabled=\{isGroupEditEnabled \|\| !canNavigatePrev \|\| isSaving\}/);
   assert.match(bulkModalSource, /disabled=\{isGroupEditEnabled \|\| !canNavigateNext \|\| isSaving\}/);
+  assert.match(bulkModalSource, /const nextEditorItems = createBulkEditorItems\(selectedItems\);/);
   assert.match(bulkModalSource, /setGroupDraft\(createEmptyMediaDraft\(\)\);/);
+  assert.match(bulkModalSource, /setIsGroupSelectionChainEnabled\(hasLinkedSelectionInOrder\(nextEditorItems\)\);/);
   assert.match(bulkModalSource, /onChange=\{\(event\) => setIsGroupEditEnabled\(event\.target\.checked\)\}/);
   assert.match(bulkModalSource, /showRelations=\{!isGroupEditEnabled\}/);
+  assert.match(bulkModalSource, /selectedTagIds=\{selectedTagIds\}/);
   assert.match(bulkModalSource, /link order/);
+});
+
+test("bulk media editor confirms before overwriting existing link order relations", () => {
+  assert.match(bulkModalSource, /const \[isLinkOrderOverwriteConfirmOpen, setIsLinkOrderOverwriteConfirmOpen\] = useState\(false\)/);
+  assert.match(bulkModalSource, /const shouldConfirmLinkOrderOverwrite = isGroupEditEnabled\s*&& isGroupSelectionChainEnabled\s*&& hasLinkOrderOverwrite\(editorItems\)/);
+  assert.match(bulkModalSource, /if \(shouldConfirmLinkOrderOverwrite\) \{\s*setIsLinkOrderOverwriteConfirmOpen\(true\);/);
+  assert.match(bulkModalSource, /<LinkOrderOverwriteConfirmModal/);
+  assert.match(linkOrderConfirmModalSource, /Current parent and child links will be overwritten by the new link order\. Continue\?/);
+  assert.match(linkOrderConfirmModalSource, /Confirm link order overwrite/);
+});
+
+test("bulk media editor disconnects only relations inside the selected chain when link order is disabled", () => {
+  assert.match(bulkModalSource, /const isInitiallyLinkedSelection = useMemo\(\(\) => hasLinkedSelectionInOrder\(editorItems\), \[editorItems\]\)/);
+  assert.match(bulkModalSource, /return isInitiallyLinkedSelection \? disconnectSelectedLinkOrder\(draftAppliedItems\) : draftAppliedItems;/);
 });
 
 test("bulk media editor group tags add missing tags to all targeted media", () => {
@@ -94,15 +113,18 @@ test("bulk media editor group tags add missing tags to all targeted media", () =
 });
 
 test("bulk save updates only changed fields across media domains", () => {
-  assert.match(galleryContainerSource, /buildChangedMediaUpdatePayloadFromDraft/);
-  assert.match(favoritesContainerSource, /buildChangedMediaUpdatePayloadFromDraft/);
-  assert.match(collectionsContainerSource, /buildChangedMediaUpdatePayloadFromDraft/);
-  assert.match(galleryContainerSource, /const payload = buildChangedMediaUpdatePayloadFromDraft\(item, item\.draft\)/);
-  assert.match(favoritesContainerSource, /const payload = buildChangedMediaUpdatePayloadFromDraft\(item, item\.draft\)/);
-  assert.match(collectionsContainerSource, /const payload = buildChangedMediaUpdatePayloadFromDraft\(item, item\.draft\)/);
-  assert.match(galleryContainerSource, /if \(payload\) \{\s*await mediaApi\.updateMedia\(item\.id, payload\)/);
-  assert.match(favoritesContainerSource, /if \(payload\) \{\s*await mediaApi\.updateMedia\(item\.id, payload\)/);
-  assert.match(collectionsContainerSource, /if \(payload\) \{\s*await mediaApi\.updateMedia\(item\.id, payload\)/);
+  assert.match(galleryContainerSource, /saveBulkMediaItems/);
+  assert.match(favoritesContainerSource, /saveBulkMediaItems/);
+  assert.match(collectionsContainerSource, /saveBulkMediaItems/);
+  assert.match(galleryContainerSource, /const updatedItemsById = await saveBulkMediaItems\(\{/);
+  assert.match(favoritesContainerSource, /const updatedItemsById = await saveBulkMediaItems\(\{/);
+  assert.match(collectionsContainerSource, /const updatedItemsById = await saveBulkMediaItems\(\{/);
+  assert.match(galleryContainerSource, /relationStrategy,/);
+  assert.match(favoritesContainerSource, /relationStrategy,/);
+  assert.match(collectionsContainerSource, /relationStrategy,/);
+  assert.match(galleryContainerSource, /updateMedia: mediaApi\.updateMedia/);
+  assert.match(favoritesContainerSource, /updateMedia: mediaApi\.updateMedia/);
+  assert.match(collectionsContainerSource, /updateMedia: mediaApi\.updateMedia/);
 });
 
 test("multi-select styles highlight selected media and bulk actions", () => {

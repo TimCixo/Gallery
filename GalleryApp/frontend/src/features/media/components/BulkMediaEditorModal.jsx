@@ -6,7 +6,10 @@ import { isVideoFile, resolveOriginalMediaUrl, resolvePreviewMediaUrl } from "..
 import CollectionPickerDialogContent from "../../collections/components/CollectionPickerDialogContent";
 import CollectionPickerModal from "../../collections/components/CollectionPickerModal";
 import MediaEditorPanel from "./MediaEditorPanel";
+import LinkOrderOverwriteConfirmModal from "./LinkOrderOverwriteConfirmModal";
 import { applyOrderedRelationChainToItems, createBulkEditorItems, createEmptyMediaDraft } from "../utils/bulkMediaEdit";
+import { getGroupSelectedTagIds } from "../utils/groupTagSelection";
+import { disconnectSelectedLinkOrder, hasLinkedSelectionInOrder, hasLinkOrderOverwrite } from "../utils/linkOrderSelection";
 
 const DEFAULT_RELATION_PREVIEW = Object.freeze({
   parent: { item: null, isLoading: false, error: "" },
@@ -32,6 +35,7 @@ export default function BulkMediaEditorModal({
   const [groupTouchedFields, setGroupTouchedFields] = useState({});
   const [groupTagEdits, setGroupTagEdits] = useState({});
   const [isGroupSelectionChainEnabled, setIsGroupSelectionChainEnabled] = useState(false);
+  const [isLinkOrderOverwriteConfirmOpen, setIsLinkOrderOverwriteConfirmOpen] = useState(false);
   const [isCollectionPickerOpen, setIsCollectionPickerOpen] = useState(false);
   const [collectionPickerItems, setCollectionPickerItems] = useState([]);
   const [collectionPickerError, setCollectionPickerError] = useState("");
@@ -54,13 +58,15 @@ export default function BulkMediaEditorModal({
       return;
     }
 
-    setEditorItems(createBulkEditorItems(selectedItems));
+    const nextEditorItems = createBulkEditorItems(selectedItems);
+    setEditorItems(nextEditorItems);
     setActiveIndex(0);
     setIsGroupEditEnabled(false);
     setGroupDraft(createEmptyMediaDraft());
     setGroupTouchedFields({});
     setGroupTagEdits({});
-    setIsGroupSelectionChainEnabled(false);
+    setIsGroupSelectionChainEnabled(hasLinkedSelectionInOrder(nextEditorItems));
+    setIsLinkOrderOverwriteConfirmOpen(false);
     setSelectedCollectionIds([]);
     setCollectionPickerItems([]);
     setCollectionPickerError("");
@@ -84,7 +90,11 @@ export default function BulkMediaEditorModal({
   const canNavigateNext = activeIndex < editorItems.length - 1;
   const activeDraft = activeItem?.draft || null;
   const visibleDraft = isGroupEditEnabled ? groupDraft : activeDraft;
+  const selectedTagIds = isGroupEditEnabled
+    ? getGroupSelectedTagIds(editorItems, groupTagEdits)
+    : (Array.isArray(visibleDraft?.tagIds) ? visibleDraft.tagIds : []);
   const modalTitle = activeItem?.name || activeItem?.title || activeItem?.relativePath || `${editorItems.length} selected media`;
+  const isInitiallyLinkedSelection = useMemo(() => hasLinkedSelectionInOrder(editorItems), [editorItems]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -492,7 +502,30 @@ export default function BulkMediaEditorModal({
       return { ...item, draft: nextDraft };
     });
 
-    return isGroupSelectionChainEnabled ? applyOrderedRelationChainToItems(draftAppliedItems) : draftAppliedItems;
+    if (isGroupSelectionChainEnabled) {
+      return applyOrderedRelationChainToItems(draftAppliedItems);
+    }
+
+    return isInitiallyLinkedSelection ? disconnectSelectedLinkOrder(draftAppliedItems) : draftAppliedItems;
+  };
+
+  const shouldConfirmLinkOrderOverwrite = isGroupEditEnabled
+    && isGroupSelectionChainEnabled
+    && hasLinkOrderOverwrite(editorItems);
+
+  const handleSave = () => {
+    if (shouldConfirmLinkOrderOverwrite) {
+      setIsLinkOrderOverwriteConfirmOpen(true);
+      return;
+    }
+
+    onSave?.({
+      items: getItemsForSave(),
+      collectionIds: selectedCollectionIds,
+      relationStrategy: isGroupEditEnabled
+        ? (isGroupSelectionChainEnabled ? "relink" : (isInitiallyLinkedSelection ? "disconnect" : "preserve"))
+        : "preserve"
+    });
   };
 
   if (!isOpen || !activeItem) {
@@ -572,7 +605,7 @@ export default function BulkMediaEditorModal({
             tagCatalog={tagCatalog}
             tagTypes={tagTypes}
             isTagCatalogLoading={isTagCatalogLoading}
-            selectedTagIds={Array.isArray(visibleDraft?.tagIds) ? visibleDraft.tagIds : []}
+            selectedTagIds={selectedTagIds}
             onToggleTag={toggleTag}
             onRefreshTagCatalog={onRefreshTagCatalog}
             relationPreviewByMode={relationPreviewByMode}
@@ -617,7 +650,7 @@ export default function BulkMediaEditorModal({
             previewTitle={previewTitle}
             primaryIconName="confirm"
             isPrimaryActionBusy={isSaving}
-            onPrimaryAction={() => onSave?.({ items: getItemsForSave(), collectionIds: selectedCollectionIds })}
+            onPrimaryAction={handleSave}
             secondaryActionLabel="Cancel"
             onSecondaryAction={onClose}
             actionLeadingSlot={(
@@ -669,6 +702,24 @@ export default function BulkMediaEditorModal({
           selectedIds={selectedCollectionIds}
         />
       </CollectionPickerModal>
+
+      <LinkOrderOverwriteConfirmModal
+        isOpen={isLinkOrderOverwriteConfirmOpen}
+        isSaving={isSaving}
+        onConfirm={() => {
+          setIsLinkOrderOverwriteConfirmOpen(false);
+          onSave?.({
+            items: getItemsForSave(),
+            collectionIds: selectedCollectionIds,
+            relationStrategy: "relink"
+          });
+        }}
+        onClose={() => {
+          if (!isSaving) {
+            setIsLinkOrderOverwriteConfirmOpen(false);
+          }
+        }}
+      />
     </>
   );
 }

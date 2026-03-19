@@ -80,8 +80,12 @@ export function applyOrderedRelationChainToItems(items) {
       ...item,
       draft: {
         ...item.draft,
-        parent: Number.isSafeInteger(previousId) && previousId > 0 ? String(previousId) : "",
-        child: Number.isSafeInteger(nextId) && nextId > 0 ? String(nextId) : ""
+        parent: Number.isSafeInteger(previousId) && previousId > 0
+          ? String(previousId)
+          : String(item?.draft?.parent || ""),
+        child: Number.isSafeInteger(nextId) && nextId > 0
+          ? String(nextId)
+          : String(item?.draft?.child || "")
       }
     };
   });

@@ -3,6 +3,7 @@ import MediaEditorPanel from "../../media/components/MediaEditorPanel";
 export default function UploadEditorStep({
   activeUploadItem,
   visibleDraft,
+  selectedTagIds,
   isUploading,
   collections,
   settings,
@@ -46,7 +47,7 @@ export default function UploadEditorStep({
         tagCatalog={editorData.tagCatalog}
         tagTypes={editorData.tagTypesCatalog}
         isTagCatalogLoading={editorData.isTagCatalogLoading}
-        selectedTagIds={Array.isArray(activeDraft.tagIds) ? activeDraft.tagIds : []}
+        selectedTagIds={Array.isArray(selectedTagIds) ? selectedTagIds : []}
         onToggleTag={editorData.toggleTag}
         onRefreshTagCatalog={editorData.refreshTagCatalog}
         relationPreviewByMode={editorData.relationPreviewByMode}

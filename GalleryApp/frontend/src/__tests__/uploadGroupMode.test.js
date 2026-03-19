@@ -40,6 +40,7 @@ test("upload manager uses visible group draft and locks navigation in group mode
   assert.match(uploadManagerSource, /const uploadLinkGroupSequenceRef = useRef\(1\)/);
   assert.match(uploadManagerSource, /const linkOrderGroupStateRef = useRef\(new Map\(\)\)/);
   assert.match(uploadManagerSource, /const visibleDraft = settings\.isGroupUploadEnabled \? groupDraft : \(activeUploadItem\?\.draft \|\| null\)/);
+  assert.match(uploadManagerSource, /const selectedTagIds = settings\.isGroupUploadEnabled\s*\? getGroupSelectedTagIds\(queue\.items, groupTagEdits\)/);
   assert.match(uploadManagerSource, /activeDraft: visibleDraft/);
   assert.match(uploadManagerSource, /onDraftChange: handleUploadDraftChange/);
   assert.match(uploadManagerSource, /onToggleTag: handleToggleUploadTag/);
@@ -59,6 +60,7 @@ test("upload manager uses visible group draft and locks navigation in group mode
 test("upload editor step switches to shared draft and exposes link order in group mode", () => {
   assert.match(uploadEditorStepSource, /const activeDraft = visibleDraft \|\| \{\}/);
   assert.match(uploadEditorStepSource, /showRelations=\{!settings\.isGroupUploadEnabled\}/);
+  assert.match(uploadEditorStepSource, /selectedTagIds=\{Array\.isArray\(selectedTagIds\) \? selectedTagIds : \[\]\}/);
   assert.match(uploadEditorStepSource, /className="media-bulk-group-options"/);
   assert.match(uploadEditorStepSource, /link order/);
   assert.match(uploadEditorStepSource, /previewNode=\{previewNode\}/);
