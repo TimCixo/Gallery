@@ -641,197 +641,227 @@ export default function MediaViewerModal({
           {errorMessage ? <p className="media-action-error">{errorMessage}</p> : null}
 
           <div className={`media-meta-primary${isEditing ? " is-editing" : ""}`}>
-            <table className="media-meta-table">
-              <tbody>
-              <tr>
-                <th scope="row">Source</th>
-                <td>
-                  {isEditing ? (
-                    <input
-                      type="url"
-                      className="media-edit-input"
-                      value={draft?.source ?? ""}
-                      onChange={(event) => onDraftChange?.({ source: event.target.value })}
-                      placeholder="https://example.com"
-                    />
-                  ) : renderSource(file.source)}
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">Title</th>
-                <td>
-                  {isEditing ? (
-                    <input
-                      type="text"
-                      className="media-edit-input"
-                      value={draft?.title ?? ""}
-                      onChange={(event) => onDraftChange?.({ title: event.target.value })}
-                    />
-                  ) : (file.title || "-")}
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">Description</th>
-                <td>
-                  {isEditing ? (
-                    <textarea
-                      className="media-edit-input media-edit-textarea"
-                      value={draft?.description ?? ""}
-                      onChange={(event) => onDraftChange?.({ description: event.target.value })}
-                    />
-                  ) : (file.description || "-")}
-                </td>
-              </tr>
-                {normalizedTagTypes.map((tagType, index) => {
-                const typeId = Number(tagType?.id);
-                const typeName = String(tagType?.name || `Tag type ${index + 1}`);
-                const rowStyles = getTagTypeCellStyles(tagType?.color);
-                const typeSelectedTags = Number.isInteger(typeId) ? (selectedTagsByType.get(typeId) || []) : [];
-                const typeCatalogTags = Number.isInteger(typeId) ? (catalogTagsByType.get(typeId) || []) : [];
-                if (!isEditing && typeSelectedTags.length === 0) {
-                  return null;
-                }
+            <div className="media-meta-stack">
+              <table className="media-meta-table">
+                <tbody>
+                <tr>
+                  <th scope="row">Source</th>
+                  <td>
+                    {isEditing ? (
+                      <input
+                        type="url"
+                        className="media-edit-input"
+                        value={draft?.source ?? ""}
+                        onChange={(event) => onDraftChange?.({ source: event.target.value })}
+                        placeholder="https://example.com"
+                      />
+                    ) : renderSource(file.source)}
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Title</th>
+                  <td>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        className="media-edit-input"
+                        value={draft?.title ?? ""}
+                        onChange={(event) => onDraftChange?.({ title: event.target.value })}
+                      />
+                    ) : (file.title || "-")}
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Description</th>
+                  <td>
+                    {isEditing ? (
+                      <textarea
+                        className="media-edit-input media-edit-textarea"
+                        value={draft?.description ?? ""}
+                        onChange={(event) => onDraftChange?.({ description: event.target.value })}
+                      />
+                    ) : (file.description || "-")}
+                  </td>
+                </tr>
+                  {normalizedTagTypes.map((tagType, index) => {
+                  const typeId = Number(tagType?.id);
+                  const typeName = String(tagType?.name || `Tag type ${index + 1}`);
+                  const rowStyles = getTagTypeCellStyles(tagType?.color);
+                  const typeSelectedTags = Number.isInteger(typeId) ? (selectedTagsByType.get(typeId) || []) : [];
+                  const typeCatalogTags = Number.isInteger(typeId) ? (catalogTagsByType.get(typeId) || []) : [];
+                  if (!isEditing && typeSelectedTags.length === 0) {
+                    return null;
+                  }
 
-                return (
-                  <tr key={`tag-type-row-${tagType.id ?? typeName}`}>
-                    <th scope="row" style={rowStyles.header}>
-                      <span className="media-tagtype-label">
-                        <span className="media-tagtype-heading">
-                          <span>{typeName}</span>
-                          {isEditing ? (
-                            <button
-                              type="button"
-                              className="media-tagtype-manage-btn"
-                              aria-label={`Manage tags for ${typeName}`}
-                              title={`Manage tags for ${typeName}`}
-                              disabled={!Number.isInteger(typeId) || typeId <= 0}
-                              onClick={() => {
-                                setTagManagerError("");
-                                if (Number.isInteger(typeId) && typeId > 0) {
-                                  setActiveTagManagerTagTypeId(typeId);
-                                }
-                              }}
-                            >
-                              {"\u2026"}
-                            </button>
-                          ) : null}
-                        </span>
-                      </span>
-                    </th>
-                    <td style={rowStyles.value}>
-                      {!isEditing ? (
-                        typeSelectedTags.length > 0 ? (
-                          <div className="media-tag-view-list">
-                            {typeSelectedTags.map((tag) => (
-                              <span key={`tag-${tag.id}`} className="media-tag-view-pill">
-                                {tag.name}
-                              </span>
-                            ))}
-                          </div>
-                        ) : "-"
-                      ) : (
-                        <>
-                          {isTagCatalogLoading ? (
-                            <span>Loading tags...</span>
-                          ) : (
-                            <div className="media-tagtype-edit-wrap">
-                              <div
-                                className="media-tagtype-field"
-                                onMouseDown={(event) => {
-                                  if (event.target instanceof HTMLElement && event.target.tagName === "BUTTON") {
-                                    return;
-                                  }
-                                  const input = event.currentTarget.querySelector("input");
-                                  if (input instanceof HTMLInputElement) {
-                                    input.focus();
+                  return (
+                    <tr key={`tag-type-row-${tagType.id ?? typeName}`}>
+                      <th scope="row" style={rowStyles.header}>
+                        <span className="media-tagtype-label">
+                          <span className="media-tagtype-heading">
+                            <span>{typeName}</span>
+                            {isEditing ? (
+                              <button
+                                type="button"
+                                className="media-tagtype-manage-btn"
+                                aria-label={`Manage tags for ${typeName}`}
+                                title={`Manage tags for ${typeName}`}
+                                disabled={!Number.isInteger(typeId) || typeId <= 0}
+                                onClick={() => {
+                                  setTagManagerError("");
+                                  if (Number.isInteger(typeId) && typeId > 0) {
+                                    setActiveTagManagerTagTypeId(typeId);
                                   }
                                 }}
                               >
-                                {getDraftTagNamesByType(typeId).map((name) => (
-                                  <span key={`${typeId}-${name}`} className="media-tag-view-pill media-tag-edit-pill">
-                                    <span>{name}</span>
-                                    <button
-                                      type="button"
-                                      className="media-tag-pill-remove"
-                                      aria-label={`Remove ${name}`}
-                                      onClick={() => removeTagFromSelectionByName(typeId, name)}
-                                    >
-                                      x
-                                    </button>
-                                  </span>
-                                ))}
-                                <input
-                                  type="text"
-                                  className="media-tagtype-input"
-                                  value={String(tagTypeQueryById[typeId] || "")}
-                                  onFocus={() => setActiveTagTypeDropdownId(typeId)}
-                                  onBlur={() => {
-                                    window.setTimeout(() => {
-                                      setActiveTagTypeDropdownId((current) => (current === typeId ? null : current));
-                                    }, 120);
-                                  }}
-                                  onChange={(event) => {
-                                    setTagTypeQueryById((current) => ({ ...current, [typeId]: event.target.value }));
-                                    setActiveTagTypeDropdownId(typeId);
-                                  }}
-                                  onKeyDown={(event) => {
-                                    const inputValue = String(tagTypeQueryById[typeId] || "");
-                                    const draftValue = getDraftTagNamesByType(typeId);
-                                    const suggestions = getTagTypeSuggestionNames(typeId, draftValue, inputValue);
-                                    if (event.key === "Escape") {
-                                      setActiveTagTypeDropdownId(null);
-                                      return;
-                                    }
-                                    if (event.key === "Backspace" && !inputValue && draftValue.length > 0) {
-                                      event.preventDefault();
-                                      removeTagFromSelectionByName(typeId, draftValue[draftValue.length - 1]);
-                                      return;
-                                    }
-                                    if ((event.key === "Enter" || event.key === "Tab") && suggestions.length > 0) {
-                                      event.preventDefault();
-                                      addTagToSelectionByName(typeId, suggestions[0]);
-                                      setTagTypeQueryById((current) => ({ ...current, [typeId]: "" }));
-                                      setActiveTagTypeDropdownId(typeId);
-                                    }
-                                  }}
-                                  placeholder="Add tag..."
-                                />
-                              </div>
-
-                              {activeTagTypeDropdownId === typeId ? (
-                                <ul className="media-tag-dropdown">
-                                  {getTagTypeSuggestionNames(typeId, getDraftTagNamesByType(typeId), String(tagTypeQueryById[typeId] || "")).length > 0 ? (
-                                    getTagTypeSuggestionNames(typeId, getDraftTagNamesByType(typeId), String(tagTypeQueryById[typeId] || "")).map((name) => (
-                                      <li key={`${typeId}-suggestion-${name}`}>
-                                        <button
-                                          type="button"
-                                          className="media-tag-dropdown-item"
-                                          onMouseDown={(event) => event.preventDefault()}
-                                          onClick={() => {
-                                            addTagToSelectionByName(typeId, name);
-                                            setTagTypeQueryById((current) => ({ ...current, [typeId]: "" }));
-                                            setActiveTagTypeDropdownId(typeId);
-                                          }}
-                                        >
-                                          <span>{name}</span>
-                                        </button>
-                                      </li>
-                                    ))
-                                  ) : (
-                                    <li className="media-tag-dropdown-empty">No matches</li>
-                                  )}
-                                </ul>
-                              ) : null}
+                                {"\u2026"}
+                              </button>
+                            ) : null}
+                          </span>
+                        </span>
+                      </th>
+                      <td style={rowStyles.value}>
+                        {!isEditing ? (
+                          typeSelectedTags.length > 0 ? (
+                            <div className="media-tag-view-list">
+                              {typeSelectedTags.map((tag) => (
+                                <span key={`tag-${tag.id}`} className="media-tag-view-pill">
+                                  {tag.name}
+                                </span>
+                              ))}
                             </div>
-                          )}
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                );
-                })}
-              </tbody>
-            </table>
+                          ) : "-"
+                        ) : (
+                          <>
+                            {isTagCatalogLoading ? (
+                              <span>Loading tags...</span>
+                            ) : (
+                              <div className="media-tagtype-edit-wrap">
+                                <div
+                                  className="media-tagtype-field"
+                                  onMouseDown={(event) => {
+                                    if (event.target instanceof HTMLElement && event.target.tagName === "BUTTON") {
+                                      return;
+                                    }
+                                    const input = event.currentTarget.querySelector("input");
+                                    if (input instanceof HTMLInputElement) {
+                                      input.focus();
+                                    }
+                                  }}
+                                >
+                                  {getDraftTagNamesByType(typeId).map((name) => (
+                                    <span key={`${typeId}-${name}`} className="media-tag-view-pill media-tag-edit-pill">
+                                      <span>{name}</span>
+                                      <button
+                                        type="button"
+                                        className="media-tag-pill-remove"
+                                        aria-label={`Remove ${name}`}
+                                        onClick={() => removeTagFromSelectionByName(typeId, name)}
+                                      >
+                                        x
+                                      </button>
+                                    </span>
+                                  ))}
+                                  <input
+                                    type="text"
+                                    className="media-tagtype-input"
+                                    value={String(tagTypeQueryById[typeId] || "")}
+                                    onFocus={() => setActiveTagTypeDropdownId(typeId)}
+                                    onBlur={() => {
+                                      window.setTimeout(() => {
+                                        setActiveTagTypeDropdownId((current) => (current === typeId ? null : current));
+                                      }, 120);
+                                    }}
+                                    onChange={(event) => {
+                                      setTagTypeQueryById((current) => ({ ...current, [typeId]: event.target.value }));
+                                      setActiveTagTypeDropdownId(typeId);
+                                    }}
+                                    onKeyDown={(event) => {
+                                      const inputValue = String(tagTypeQueryById[typeId] || "");
+                                      const draftValue = getDraftTagNamesByType(typeId);
+                                      const suggestions = getTagTypeSuggestionNames(typeId, draftValue, inputValue);
+                                      if (event.key === "Escape") {
+                                        setActiveTagTypeDropdownId(null);
+                                        return;
+                                      }
+                                      if (event.key === "Backspace" && !inputValue && draftValue.length > 0) {
+                                        event.preventDefault();
+                                        removeTagFromSelectionByName(typeId, draftValue[draftValue.length - 1]);
+                                        return;
+                                      }
+                                      if ((event.key === "Enter" || event.key === "Tab") && suggestions.length > 0) {
+                                        event.preventDefault();
+                                        addTagToSelectionByName(typeId, suggestions[0]);
+                                        setTagTypeQueryById((current) => ({ ...current, [typeId]: "" }));
+                                        setActiveTagTypeDropdownId(typeId);
+                                      }
+                                    }}
+                                    placeholder="Add tag..."
+                                  />
+                                </div>
+
+                                {activeTagTypeDropdownId === typeId ? (
+                                  <ul className="media-tag-dropdown">
+                                    {getTagTypeSuggestionNames(typeId, getDraftTagNamesByType(typeId), String(tagTypeQueryById[typeId] || "")).length > 0 ? (
+                                      getTagTypeSuggestionNames(typeId, getDraftTagNamesByType(typeId), String(tagTypeQueryById[typeId] || "")).map((name) => (
+                                        <li key={`${typeId}-suggestion-${name}`}>
+                                          <button
+                                            type="button"
+                                            className="media-tag-dropdown-item"
+                                            onMouseDown={(event) => event.preventDefault()}
+                                            onClick={() => {
+                                              addTagToSelectionByName(typeId, name);
+                                              setTagTypeQueryById((current) => ({ ...current, [typeId]: "" }));
+                                              setActiveTagTypeDropdownId(typeId);
+                                            }}
+                                          >
+                                            <span>{name}</span>
+                                          </button>
+                                        </li>
+                                      ))
+                                    ) : (
+                                      <li className="media-tag-dropdown-empty">No matches</li>
+                                    )}
+                                  </ul>
+                                ) : null}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                  })}
+                </tbody>
+              </table>
+
+              <details className="media-system-callout">
+                <summary className="media-system-summary">System details</summary>
+                <table className="media-system-table">
+                  <tbody>
+                    <tr>
+                      <th scope="row">Id</th>
+                      <td>{file.id ?? "-"}</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Path</th>
+                      <td>{file.relativePath || "-"}</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Created At</th>
+                      <td>{formatMediaDate(file.createdAtUtc || file.modifiedAtUtc)}</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Name</th>
+                      <td>{file.name || "-"}</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">File Size</th>
+                      <td>{formatFileSize(file.sizeBytes)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </details>
+            </div>
             {isEditing ? (
               <div className="media-edit-thumbnail" aria-label="Current media thumbnail">
                 {isVideoFile(file) ? (
@@ -903,33 +933,6 @@ export default function MediaViewerModal({
             )}
           </div>
 
-          <details className="media-system-callout">
-            <summary className="media-system-summary">System details</summary>
-            <table className="media-system-table">
-              <tbody>
-                <tr>
-                  <th scope="row">Id</th>
-                  <td>{file.id ?? "-"}</td>
-                </tr>
-                <tr>
-                  <th scope="row">Path</th>
-                  <td>{file.relativePath || "-"}</td>
-                </tr>
-                <tr>
-                  <th scope="row">Created At</th>
-                  <td>{formatMediaDate(file.createdAtUtc || file.modifiedAtUtc)}</td>
-                </tr>
-                <tr>
-                  <th scope="row">Name</th>
-                  <td>{file.name || "-"}</td>
-                </tr>
-                <tr>
-                  <th scope="row">File Size</th>
-                  <td>{formatFileSize(file.sizeBytes)}</td>
-                </tr>
-              </tbody>
-            </table>
-          </details>
         </div>
       </div>
       </div>

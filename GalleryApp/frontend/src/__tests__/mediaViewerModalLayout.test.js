@@ -49,6 +49,7 @@ test("media viewer shows related media in thumbnail strip instead of metadata ta
   assert.match(modalSource, /className="media-related-strip"/);
   assert.match(modalSource, /key=\{relatedId \|\| item\.relativePath \|\| "unknown"\}/);
   assert.match(modalSource, /visibleRelatedMediaItems\.map/);
+  assert.match(modalSource, /<div className="media-meta-stack">[\s\S]*<table className="media-meta-table">[\s\S]*<details className="media-system-callout">[\s\S]*<summary className="media-system-summary">System details<\/summary>[\s\S]*<\/details>[\s\S]*<\/div>[\s\S]*<div className="media-action-row media-action-row-spaced">/);
   assert.doesNotMatch(modalSource, /media-related-card-label/);
   assert.doesNotMatch(modalSource, /<th scope="row">Parent<\/th>/);
   assert.doesNotMatch(modalSource, /<th scope="row">Child<\/th>/);
@@ -59,6 +60,8 @@ test("media viewer defines related media strip styles", () => {
 
   assert.ok(mobileMediaViewerStyles, "Expected mobile media viewer styles to exist");
   assert.match(appCss, /\.media-fit-btn/);
+  assert.match(appCss, /\.media-meta-stack/);
+  assert.match(appCss, /\.media-meta-stack > \.media-system-callout/);
   assert.match(appCss, /\.media-fit-btn \.app-icon/);
   assert.match(appCss, /\.media-modal-asset-frame/);
   assert.match(appCss, /\.media-modal-asset-frame-height,/);

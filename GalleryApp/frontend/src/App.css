@@ -1966,6 +1966,11 @@
   display: block;
 }
 
+.media-meta-stack {
+  display: grid;
+  gap: 0;
+}
+
 .media-meta-primary.is-editing {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 132px;
@@ -2384,6 +2389,12 @@
   border-radius: 0.55rem;
   background-color: #f8fafc;
   overflow: hidden;
+}
+
+.media-meta-stack > .media-system-callout {
+  margin-top: -1px;
+  border-top: none;
+  border-radius: 0 0 0.55rem 0.55rem;
 }
 
 .media-system-summary {
