@@ -133,17 +133,25 @@ public static class MediaSearchParser
 
             switch (tag)
             {
-                case "path": criteria.PathTerms.Add(value); break;
-                case "title": criteria.TitleTerms.Add(value); break;
-                case "description": criteria.DescriptionTerms.Add(value); break;
-                case "source": criteria.SourceTerms.Add(value); break;
+                case "path":
+                    (isExcluded ? criteria.ExcludedPathTerms : criteria.PathTerms).Add(value);
+                    break;
+                case "title":
+                    (isExcluded ? criteria.ExcludedTitleTerms : criteria.TitleTerms).Add(value);
+                    break;
+                case "description":
+                    (isExcluded ? criteria.ExcludedDescriptionTerms : criteria.DescriptionTerms).Add(value);
+                    break;
+                case "source":
+                    (isExcluded ? criteria.ExcludedSourceTerms : criteria.SourceTerms).Add(value);
+                    break;
                 case "filetype":
-                    criteria.FileTypes.Add(value);
+                    (isExcluded ? criteria.ExcludedFileTypes : criteria.FileTypes).Add(value);
                     break;
                 case "id":
                     if (long.TryParse(value, out var parsedId) && parsedId > 0)
                     {
-                        criteria.Ids.Add(parsedId);
+                        (isExcluded ? criteria.ExcludedIds : criteria.Ids).Add(parsedId);
                     }
                     break;
                 default:
