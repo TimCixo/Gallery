@@ -9,6 +9,6 @@ internal static class FfmpegArguments
 
     public static string BuildVideoPreview(string sourcePath, string previewPath)
     {
-        return $"-y -ss 00:00:00.500 -i \"{sourcePath}\" -frames:v 1 -update 1 -q:v 3 -vf \"scale=640:-1\" \"{previewPath}\"";
+        return $"-y -ss 00:00:00.500 -i \"{sourcePath}\" -frames:v 1 -q:v 3 -vf \"scale=640:-1\" \"{previewPath}\"";
     }
 }
