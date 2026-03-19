@@ -1,46 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-
-const normalizeMediaId = (value) => {
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-};
+import { normalizeMediaId, syncSelectedMediaMap } from "../utils/mediaMultiSelectState";
 
 export function useMediaMultiSelect(items) {
   const [selectedMediaIds, setSelectedMediaIds] = useState([]);
-
-  const selectableIds = useMemo(() => {
-    const ids = new Set();
-    (Array.isArray(items) ? items : []).forEach((item) => {
-      const id = normalizeMediaId(item?.id);
-      if (id !== null) {
-        ids.add(id);
-      }
-    });
-    return ids;
-  }, [items]);
+  const [selectedMediaMap, setSelectedMediaMap] = useState(() => new Map());
 
   useEffect(() => {
-    setSelectedMediaIds((current) => current.filter((id) => selectableIds.has(id)));
-  }, [selectableIds]);
+    setSelectedMediaMap((current) => syncSelectedMediaMap(current, selectedMediaIds, items));
+  }, [items, selectedMediaIds]);
 
   const selectedMediaIdSet = useMemo(() => new Set(selectedMediaIds), [selectedMediaIds]);
-  const itemsById = useMemo(() => {
-    const map = new Map();
-    (Array.isArray(items) ? items : []).forEach((item) => {
-      const id = normalizeMediaId(item?.id);
-      if (id !== null) {
-        map.set(id, item);
-      }
-    });
-    return map;
-  }, [items]);
   const selectedMediaItems = useMemo(
-    () => selectedMediaIds.map((id) => itemsById.get(id)).filter(Boolean),
-    [itemsById, selectedMediaIds]
+    () => selectedMediaIds.map((id) => selectedMediaMap.get(id)).filter(Boolean),
+    [selectedMediaIds, selectedMediaMap]
   );
 
   const clearSelection = useCallback(() => {
     setSelectedMediaIds([]);
+    setSelectedMediaMap(new Map());
   }, []);
 
   const startSelection = useCallback((item) => {
@@ -50,6 +27,11 @@ export function useMediaMultiSelect(items) {
     }
 
     setSelectedMediaIds((current) => (current.includes(id) ? current : [...current, id]));
+    setSelectedMediaMap((current) => {
+      const next = new Map(current);
+      next.set(id, item);
+      return next;
+    });
   }, []);
 
   const toggleSelection = useCallback((item) => {
@@ -63,6 +45,15 @@ export function useMediaMultiSelect(items) {
         ? current.filter((currentId) => currentId !== id)
         : [...current, id]
     ));
+    setSelectedMediaMap((current) => {
+      const next = new Map(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.set(id, item);
+      }
+      return next;
+    });
   }, []);
 
   const isSelected = useCallback((itemOrId) => {

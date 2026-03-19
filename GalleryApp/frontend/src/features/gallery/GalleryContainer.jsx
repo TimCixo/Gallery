@@ -152,6 +152,9 @@ export default function GalleryContainer({
     }
   }, [groupRelatedMedia, searchQuery]);
 
+  const visibleMediaFiles = useMemo(() => mediaFiles, [mediaFiles]);
+  const mediaSelection = useMediaMultiSelect(visibleMediaFiles);
+
   useEffect(() => {
     void loadMedia(currentPage, searchQuery);
   }, [currentPage, loadMedia, searchQuery]);
@@ -170,10 +173,11 @@ export default function GalleryContainer({
     }
 
     previousSearchQueryRef.current = searchQuery;
+    mediaSelection.clearSelection();
     setCurrentPage(1);
     setSelectedMedia(null);
     setPersistedSelectedMediaId(null);
-  }, [searchQuery]);
+  }, [mediaSelection, searchQuery]);
 
   useEffect(() => {
     if (searchSubmitSeq === lastHandledSearchSubmitSeqRef.current) {
@@ -208,9 +212,6 @@ export default function GalleryContainer({
   useEffect(() => {
     setPageJumpInput(String(currentPage));
   }, [currentPage]);
-
-  const visibleMediaFiles = useMemo(() => mediaFiles, [mediaFiles]);
-  const mediaSelection = useMediaMultiSelect(visibleMediaFiles);
   const hasBlockingDialogOpen = Boolean(
     selectedMedia
     || isBulkEditing
