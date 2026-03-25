@@ -8,9 +8,12 @@ import CollectionPickerModal from "../collections/components/CollectionPickerMod
 import CollectionPickerDialogContent from "../collections/components/CollectionPickerDialogContent";
 import BulkMediaActionBar from "../media/components/BulkMediaActionBar";
 import BulkMediaEditorModal from "../media/components/BulkMediaEditorModal";
+import MediaQuickTaggingAction from "../media/components/MediaQuickTaggingAction";
 import MediaDeleteConfirmModal from "../media/components/MediaDeleteConfirmModal";
 import MediaViewerModal from "../media/components/MediaViewerModal";
+import QuickTaggingModal from "../media/components/QuickTaggingModal";
 import { useMediaMultiSelect } from "../media/hooks/useMediaMultiSelect";
+import { useQuickTagging } from "../media/hooks/useQuickTagging";
 import { saveBulkMediaItems } from "../media/utils/bulkMediaSave";
 import { buildRelatedMediaChain } from "../media/utils/relatedMediaChain";
 import { fetchAllMediaItems } from "./utils/fetchAllMediaItems";
@@ -155,7 +158,18 @@ export default function GalleryContainer({
     }
   }, [groupRelatedMedia, searchQuery]);
 
-  const visibleMediaFiles = useMemo(() => mediaFiles, [mediaFiles]);
+  const quickTagging = useQuickTagging({
+    items: mediaFiles,
+    tagCatalog,
+    ensureTagCatalog: async () => {
+      if (tagCatalog.length === 0 && tagTypesCatalog.length === 0) {
+        await refreshTagCatalog();
+      }
+    },
+    updateMedia: mediaApi.updateMedia,
+    onItemsChange: setMediaFiles
+  });
+  const visibleMediaFiles = useMemo(() => quickTagging.visibleItems, [quickTagging.visibleItems]);
   const mediaSelection = useMediaMultiSelect(visibleMediaFiles);
 
   useEffect(() => {
@@ -181,6 +195,12 @@ export default function GalleryContainer({
     setSelectedMedia(null);
     setPersistedSelectedMediaId(null);
   }, [mediaSelection, searchQuery]);
+
+  useEffect(() => {
+    if (quickTagging.isEnabled && mediaSelection.selectedCount > 0) {
+      mediaSelection.clearSelection();
+    }
+  }, [mediaSelection, quickTagging.isEnabled]);
 
   useEffect(() => {
     if (searchSubmitSeq === lastHandledSearchSubmitSeqRef.current) {
@@ -385,16 +405,12 @@ export default function GalleryContainer({
   };
 
   const renderPagination = () => {
-    if (totalPages <= 1) {
-      return null;
-    }
-
     return (
       <div className="media-pagination-wrap">
         <div className="media-pagination">
           <button
             type="button"
-            className="media-action-btn app-button-icon-only"
+            className="media-action-btn app-button-icon-only media-pagination-icon-btn"
             onClick={() => handlePageChange(currentPage - 1)}
             disabled={isMediaLoading || currentPage <= 1 || totalPages === 0}
             aria-label="Previous page"
@@ -402,11 +418,11 @@ export default function GalleryContainer({
             <AppIcon name="arrowLeft" alt="" aria-hidden="true" />
           </button>
           <p>
-            Page {totalPages === 0 ? 0 : currentPage} of {totalPages}
+            Page {totalPages <= 0 ? 0 : currentPage} of {Math.max(totalPages, 1)}
           </p>
           <button
             type="button"
-            className="media-action-btn app-button-icon-only"
+            className="media-action-btn app-button-icon-only media-pagination-icon-btn"
             onClick={() => handlePageChange(currentPage + 1)}
             disabled={isMediaLoading || totalPages === 0 || currentPage >= totalPages}
             aria-label="Next page"
@@ -423,10 +439,10 @@ export default function GalleryContainer({
               value={pageJumpInput}
               onChange={(event) => setPageJumpInput(event.target.value)}
               onBlur={(event) => setPageJumpInput(normalizePageJumpDisplayValue(event.target.value, currentPage, totalPages))}
-              disabled={isMediaLoading || totalPages === 0}
+              disabled={isMediaLoading || totalPages <= 1}
               aria-label="Go to page"
             />
-            <button type="submit" className="media-action-btn app-button-icon-only" disabled={isMediaLoading || totalPages === 0} aria-label="Go to page">
+            <button type="submit" className="media-action-btn app-button-icon-only media-pagination-icon-btn" disabled={isMediaLoading || totalPages <= 1} aria-label="Go to page">
               <AppIcon name="confirm" alt="" aria-hidden="true" />
             </button>
           </form>
@@ -968,19 +984,35 @@ export default function GalleryContainer({
       visibleMediaFiles={visibleMediaFiles}
       renderPagination={renderPagination}
       setSelectedMedia={setSelectedMedia}
+      onTileSelect={quickTagging.isEnabled ? (file) => void quickTagging.applyTagToMedia(file) : null}
       mediaSelection={mediaSelection}
       failedPreviewPaths={failedPreviewPaths}
       getDisplayName={getDisplayName}
       setFailedPreviewPaths={setFailedPreviewPaths}
       bulkActionBar={(
-        <BulkMediaActionBar
-          selectedCount={mediaSelection.selectedCount}
-          onClearSelection={mediaSelection.clearSelection}
-          onDeleteSelection={() => setPendingBulkDelete(createPendingMediaDelete(mediaSelection.selectedMediaItems))}
-          onEditSelection={() => void handleOpenBulkEdit()}
-        />
+        <>
+          <MediaQuickTaggingAction
+            isSelectionMode={mediaSelection.isSelectionMode}
+            onOpenConfig={() => void quickTagging.openConfig()}
+          />
+          <BulkMediaActionBar
+            selectedCount={mediaSelection.selectedCount}
+            onClearSelection={mediaSelection.clearSelection}
+            onDeleteSelection={() => setPendingBulkDelete(createPendingMediaDelete(mediaSelection.selectedMediaItems))}
+            onEditSelection={() => void handleOpenBulkEdit()}
+          />
+        </>
       )}
     >
+      <QuickTaggingModal
+        isOpen={quickTagging.isConfigOpen}
+        tagCatalog={tagCatalog}
+        isLoading={isTagCatalogLoading}
+        initialConfig={quickTagging.config}
+        onConfirm={quickTagging.confirmConfig}
+        onDisable={quickTagging.disable}
+        onClose={quickTagging.closeConfig}
+      />
       {selectedMedia ? (
         <MediaViewerModal
           file={selectedMedia}

@@ -7,6 +7,7 @@ export default function GalleryPage({
   visibleMediaFiles,
   renderPagination,
   setSelectedMedia,
+  onTileSelect,
   mediaSelection,
   failedPreviewPaths,
   getDisplayName,
@@ -24,16 +25,18 @@ export default function GalleryPage({
       {!mediaError && !isMediaLoading && totalFiles === 0 ? (
         <p className="media-state">No files in backend/App_Data/Media.</p>
       ) : null}
+      {!mediaError && totalFiles > 0 ? (
+        <div className="media-pagination-toolbar">
+          {renderPagination()}
+          {bulkActionBar}
+        </div>
+      ) : null}
       {!mediaError && !isMediaLoading && totalFiles > 0 && visibleMediaFiles.length === 0 ? (
         <p className="media-state">No preview images available for current files.</p>
       ) : null}
 
       {!mediaError && visibleMediaFiles.length > 0 ? (
         <>
-          <div className="media-pagination-toolbar">
-            {renderPagination()}
-            {bulkActionBar}
-          </div>
           <div className="media-grid">
             {visibleMediaFiles.map((file) => (
               <GalleryMediaTile
@@ -42,12 +45,12 @@ export default function GalleryPage({
                 alt={getDisplayName(file.name)}
                 hasPreviewError={failedPreviewPaths.has(file.relativePath)}
                 groupCount={Number(file._groupCount) || 1}
-                onSelect={setSelectedMedia}
-                onStartSelection={mediaSelection?.startSelection}
-                onToggleSelection={mediaSelection?.toggleSelection}
+                onSelect={onTileSelect || setSelectedMedia}
+                onStartSelection={onTileSelect ? undefined : mediaSelection?.startSelection}
+                onToggleSelection={onTileSelect ? undefined : mediaSelection?.toggleSelection}
                 isSelected={mediaSelection?.isSelected(file)}
                 selectionIndex={mediaSelection?.getSelectionIndex(file)}
-                isSelectionMode={mediaSelection?.isSelectionMode}
+                isSelectionMode={onTileSelect ? false : mediaSelection?.isSelectionMode}
                 onPreviewError={(relativePath) => {
                   setFailedPreviewPaths((prev) => new Set(prev).add(relativePath));
                 }}

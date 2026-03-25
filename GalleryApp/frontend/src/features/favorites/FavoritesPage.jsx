@@ -7,6 +7,7 @@ export default function FavoritesPage({
   visibleFavoriteFiles,
   renderFavoritesPagination,
   setSelectedMedia,
+  onTileSelect,
   mediaSelection,
   failedPreviewPaths,
   getDisplayName,
@@ -25,11 +26,13 @@ export default function FavoritesPage({
         <p className="media-state">No favorite media yet.</p>
       ) : null}
       {!favoritesError && favoritesTotalFiles > 0 ? (
+        <div className="media-pagination-toolbar">
+          {renderFavoritesPagination()}
+          {bulkActionBar}
+        </div>
+      ) : null}
+      {!favoritesError && favoritesTotalFiles > 0 ? (
         <>
-          <div className="media-pagination-toolbar">
-            {renderFavoritesPagination()}
-            {bulkActionBar}
-          </div>
           <div className="media-grid">
             {visibleFavoriteFiles.map((file) => (
               <GalleryMediaTile
@@ -37,12 +40,12 @@ export default function FavoritesPage({
                 file={file}
                 alt={getDisplayName(file.name)}
                 hasPreviewError={failedPreviewPaths.has(file.relativePath)}
-                onSelect={setSelectedMedia}
-                onStartSelection={mediaSelection?.startSelection}
-                onToggleSelection={mediaSelection?.toggleSelection}
+                onSelect={onTileSelect || setSelectedMedia}
+                onStartSelection={onTileSelect ? undefined : mediaSelection?.startSelection}
+                onToggleSelection={onTileSelect ? undefined : mediaSelection?.toggleSelection}
                 isSelected={mediaSelection?.isSelected(file)}
                 selectionIndex={mediaSelection?.getSelectionIndex(file)}
-                isSelectionMode={mediaSelection?.isSelectionMode}
+                isSelectionMode={onTileSelect ? false : mediaSelection?.isSelectionMode}
                 onPreviewError={(relativePath) => {
                   setFailedPreviewPaths((prev) => new Set(prev).add(relativePath));
                 }}

@@ -8,9 +8,12 @@ import CollectionPickerModal from "../collections/components/CollectionPickerMod
 import CollectionPickerDialogContent from "../collections/components/CollectionPickerDialogContent";
 import BulkMediaActionBar from "../media/components/BulkMediaActionBar";
 import BulkMediaEditorModal from "../media/components/BulkMediaEditorModal";
+import MediaQuickTaggingAction from "../media/components/MediaQuickTaggingAction";
 import MediaDeleteConfirmModal from "../media/components/MediaDeleteConfirmModal";
 import MediaViewerModal from "../media/components/MediaViewerModal";
+import QuickTaggingModal from "../media/components/QuickTaggingModal";
 import { useMediaMultiSelect } from "../media/hooks/useMediaMultiSelect";
+import { useQuickTagging } from "../media/hooks/useQuickTagging";
 import { saveBulkMediaItems } from "../media/utils/bulkMediaSave";
 import { buildRelatedMediaChain } from "../media/utils/relatedMediaChain";
 import FavoritesPage from "./FavoritesPage";
@@ -118,8 +121,25 @@ export default function FavoritesContainer() {
     return () => window.removeEventListener("gallery:media-updated", handleRefresh);
   }, [favoritesPage, loadFavorites]);
 
-  const visibleFavoriteFiles = useMemo(() => favoritesFiles, [favoritesFiles]);
+  const quickTagging = useQuickTagging({
+    items: favoritesFiles,
+    tagCatalog,
+    ensureTagCatalog: async () => {
+      if (tagCatalog.length === 0 && tagTypesCatalog.length === 0) {
+        await refreshTagCatalog();
+      }
+    },
+    updateMedia: mediaApi.updateMedia,
+    onItemsChange: setFavoritesFiles
+  });
+  const visibleFavoriteFiles = useMemo(() => quickTagging.visibleItems, [quickTagging.visibleItems]);
   const mediaSelection = useMediaMultiSelect(visibleFavoriteFiles);
+
+  useEffect(() => {
+    if (quickTagging.isEnabled && mediaSelection.selectedCount > 0) {
+      mediaSelection.clearSelection();
+    }
+  }, [mediaSelection, quickTagging.isEnabled]);
   const hasBlockingDialogOpen = Boolean(
     selectedMedia
     || isBulkEditing
@@ -281,16 +301,12 @@ export default function FavoritesContainer() {
   };
 
   const renderFavoritesPagination = () => {
-    if (favoritesTotalPages <= 1) {
-      return null;
-    }
-
     return (
       <div className="media-pagination-wrap">
         <div className="media-pagination">
           <button
             type="button"
-            className="media-action-btn app-button-icon-only"
+            className="media-action-btn app-button-icon-only media-pagination-icon-btn"
             onClick={() => handleFavoritesPageChange(favoritesPage - 1)}
             disabled={isFavoritesLoading || favoritesPage <= 1 || favoritesTotalPages === 0}
             aria-label="Previous page"
@@ -298,11 +314,11 @@ export default function FavoritesContainer() {
             <AppIcon name="arrowLeft" alt="" aria-hidden="true" />
           </button>
           <p>
-            Page {favoritesTotalPages === 0 ? 0 : favoritesPage} of {favoritesTotalPages}
+            Page {favoritesTotalPages <= 0 ? 0 : favoritesPage} of {Math.max(favoritesTotalPages, 1)}
           </p>
           <button
             type="button"
-            className="media-action-btn app-button-icon-only"
+            className="media-action-btn app-button-icon-only media-pagination-icon-btn"
             onClick={() => handleFavoritesPageChange(favoritesPage + 1)}
             disabled={isFavoritesLoading || favoritesTotalPages === 0 || favoritesPage >= favoritesTotalPages}
             aria-label="Next page"
@@ -319,10 +335,10 @@ export default function FavoritesContainer() {
               value={favoritesPageJumpInput}
               onChange={(event) => setFavoritesPageJumpInput(event.target.value)}
               onBlur={(event) => setFavoritesPageJumpInput(normalizePageJumpDisplayValue(event.target.value, favoritesPage, favoritesTotalPages))}
-              disabled={isFavoritesLoading || favoritesTotalPages === 0}
+              disabled={isFavoritesLoading || favoritesTotalPages <= 1}
               aria-label="Go to favorites page"
             />
-            <button type="submit" className="media-action-btn app-button-icon-only" disabled={isFavoritesLoading || favoritesTotalPages === 0} aria-label="Go to favorites page">
+            <button type="submit" className="media-action-btn app-button-icon-only media-pagination-icon-btn" disabled={isFavoritesLoading || favoritesTotalPages <= 1} aria-label="Go to favorites page">
               <AppIcon name="confirm" alt="" aria-hidden="true" />
             </button>
           </form>
@@ -725,19 +741,35 @@ export default function FavoritesContainer() {
       visibleFavoriteFiles={visibleFavoriteFiles}
       renderFavoritesPagination={renderFavoritesPagination}
       setSelectedMedia={setSelectedMedia}
+      onTileSelect={quickTagging.isEnabled ? (file) => void quickTagging.applyTagToMedia(file) : null}
       mediaSelection={mediaSelection}
       failedPreviewPaths={failedPreviewPaths}
       getDisplayName={getDisplayName}
       setFailedPreviewPaths={setFailedPreviewPaths}
       bulkActionBar={(
-        <BulkMediaActionBar
-          selectedCount={mediaSelection.selectedCount}
-          onClearSelection={mediaSelection.clearSelection}
-          onDeleteSelection={() => setPendingBulkDelete(createPendingMediaDelete(mediaSelection.selectedMediaItems))}
-          onEditSelection={() => void handleOpenBulkEdit()}
-        />
+        <>
+          <MediaQuickTaggingAction
+            isSelectionMode={mediaSelection.isSelectionMode}
+            onOpenConfig={() => void quickTagging.openConfig()}
+          />
+          <BulkMediaActionBar
+            selectedCount={mediaSelection.selectedCount}
+            onClearSelection={mediaSelection.clearSelection}
+            onDeleteSelection={() => setPendingBulkDelete(createPendingMediaDelete(mediaSelection.selectedMediaItems))}
+            onEditSelection={() => void handleOpenBulkEdit()}
+          />
+        </>
       )}
     >
+      <QuickTaggingModal
+        isOpen={quickTagging.isConfigOpen}
+        tagCatalog={tagCatalog}
+        isLoading={isTagCatalogLoading}
+        initialConfig={quickTagging.config}
+        onConfirm={quickTagging.confirmConfig}
+        onDisable={quickTagging.disable}
+        onClose={quickTagging.closeConfig}
+      />
       {selectedMedia ? (
         <MediaViewerModal
           file={selectedMedia}

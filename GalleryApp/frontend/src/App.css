@@ -1453,6 +1453,17 @@
   cursor: pointer;
 }
 
+.media-pagination .media-pagination-icon-btn {
+  width: 2.2rem;
+  height: 2.2rem;
+  min-width: 2.2rem;
+  padding: 0;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .media-pagination button:disabled {
   opacity: 0.6;
   cursor: default;
@@ -1542,6 +1553,21 @@
   align-items: center;
   justify-content: flex-end;
   gap: 0.45rem;
+}
+
+.media-quick-tagging-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.media-quick-tagging-bar .media-upload-group-toggle {
+  margin-right: 0;
+}
+
+.media-quick-tagging-toggle {
+  font-weight: 600;
 }
 
 .media-bulk-selection-count {
@@ -1695,6 +1721,161 @@
 
 .media-modal.media-modal-editing {
   grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+}
+
+.media-quick-tagging-modal {
+  grid-template-columns: minmax(0, 1fr);
+  width: min(100%, 68rem);
+  overflow-x: hidden;
+}
+
+.media-quick-tagging-body {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  padding: 0 1.2rem 1.2rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.media-quick-tagging-section {
+  display: grid;
+  gap: 0.85rem;
+  align-content: start;
+}
+
+.media-quick-tagging-section-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.media-quick-tagging-section-header p {
+  margin: 0.25rem 0 0;
+  font-size: 0.84rem;
+  color: #475569;
+}
+
+.media-quick-tagging-group {
+  display: grid;
+  gap: 0.5rem;
+  border: 1px solid #d9dee3;
+  border-radius: 0.65rem;
+  background: #f8fafc;
+  padding: 0.8rem;
+}
+
+.media-quick-tagging-group-title {
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.media-quick-tagging-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.45rem 0.7rem;
+}
+
+.media-quick-tagging-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #1e293b;
+  font-size: 0.84rem;
+}
+
+.media-quick-tagging-option input {
+  margin: 0;
+}
+
+.media-quick-tagging-field {
+  display: grid;
+  gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.media-quick-tagging-field label {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.media-quick-tagging-field .media-tag-input-wrap,
+.media-quick-tagging-field .collections-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.media-quick-tagging-input-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.media-quick-tagging-input-highlight {
+  position: absolute;
+  inset: 0;
+  padding: 0.5rem 0.65rem;
+  box-sizing: border-box;
+  border: 1px solid #c6ccd2;
+  border-radius: 0.45rem;
+  background-color: #ffffff;
+  color: #0f172a;
+  overflow: hidden;
+  white-space: pre;
+  pointer-events: none;
+  font: inherit;
+  line-height: 1.2;
+}
+
+.media-quick-tagging-input-segment {
+  white-space: pre;
+}
+
+.media-quick-tagging-input-segment.is-tag {
+  display: inline-block;
+  outline: 1px solid #94a3b8;
+  outline-offset: -1px;
+  border-radius: 0.35rem;
+  background-color: #f8fafc;
+}
+
+.media-quick-tagging-input-placeholder {
+  color: #64748b;
+}
+
+.media-quick-tagging-input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
+  background-color: transparent;
+  color: transparent;
+  caret-color: #0f172a;
+  position: relative;
+  z-index: 1;
+  font: inherit;
+  line-height: 1.2;
+}
+
+.media-quick-tagging-input::placeholder {
+  color: transparent;
+}
+
+.media-quick-tagging-input:focus {
+  outline: none;
+}
+
+.media-quick-tagging-input-wrap:focus-within .media-quick-tagging-input-highlight {
+  border-color: #0f172a;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
 }
 
 .media-modal.media-modal-upload-queue {
@@ -2816,10 +2997,12 @@
 
 .media-tag-dropdown-item:hover {
   background-color: #f1f5f9;
+  outline: 1px solid #bfdbfe;
 }
 
 .media-tag-dropdown-item.is-active {
   background-color: #e2e8f0;
+  outline: 1px solid #bfdbfe;
 }
 
 .media-tag-dropdown-empty {
@@ -3276,6 +3459,10 @@
   .media-modal.media-modal-editing {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .media-quick-tagging-body {
+    grid-template-columns: 1fr;
   }
 
   .media-modal-meta {

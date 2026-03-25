@@ -10,11 +10,14 @@ import CollectionDeleteConfirmModal from "./components/CollectionDeleteConfirmMo
 import GalleryMediaTile from "../gallery/GalleryMediaTile";
 import BulkMediaActionBar from "../media/components/BulkMediaActionBar";
 import BulkMediaEditorModal from "../media/components/BulkMediaEditorModal";
+import MediaQuickTaggingAction from "../media/components/MediaQuickTaggingAction";
 import MediaDeleteConfirmModal from "../media/components/MediaDeleteConfirmModal";
 import MediaViewerModal from "../media/components/MediaViewerModal";
 import MediaRelationPickerDialogContent from "../media/components/MediaRelationPickerDialogContent";
 import MediaRelationPickerModal from "../media/components/MediaRelationPickerModal";
+import QuickTaggingModal from "../media/components/QuickTaggingModal";
 import { useMediaMultiSelect } from "../media/hooks/useMediaMultiSelect";
+import { useQuickTagging } from "../media/hooks/useQuickTagging";
 import { saveBulkMediaItems } from "../media/utils/bulkMediaSave";
 import { buildRelatedMediaChain } from "../media/utils/relatedMediaChain";
 import CollectionsPage from "./CollectionsPage";
@@ -208,7 +211,18 @@ export default function CollectionsContainer({ searchQuery = "" }) {
     }
   };
 
-  const visibleCollectionFiles = useMemo(() => collectionFiles, [collectionFiles]);
+  const quickTagging = useQuickTagging({
+    items: collectionFiles,
+    tagCatalog,
+    ensureTagCatalog: async () => {
+      if (tagCatalog.length === 0 && tagTypesCatalog.length === 0) {
+        await refreshTagCatalog();
+      }
+    },
+    updateMedia: mediaApi.updateMedia,
+    onItemsChange: setCollectionFiles
+  });
+  const visibleCollectionFiles = useMemo(() => quickTagging.visibleItems, [quickTagging.visibleItems]);
   const mediaSelection = useMediaMultiSelect(visibleCollectionFiles);
   const selectedMediaIndex = useMemo(() => (
     selectedMedia
@@ -292,6 +306,12 @@ export default function CollectionsContainer({ searchQuery = "" }) {
   }, [mediaSelection, selectedCollection]);
 
   useEffect(() => {
+    if (quickTagging.isEnabled && mediaSelection.selectedCount > 0) {
+      mediaSelection.clearSelection();
+    }
+  }, [mediaSelection, quickTagging.isEnabled]);
+
+  useEffect(() => {
     if (mediaSelection.selectedCount > 0) {
       return;
     }
@@ -356,16 +376,12 @@ export default function CollectionsContainer({ searchQuery = "" }) {
   };
 
   const renderCollectionFilesPagination = () => {
-    if (collectionFilesTotalPages <= 1) {
-      return null;
-    }
-
     return (
       <div className="media-pagination-wrap">
         <div className="media-pagination">
           <button
             type="button"
-            className="media-action-btn app-button-icon-only"
+            className="media-action-btn app-button-icon-only media-pagination-icon-btn"
             onClick={() => handleCollectionFilesPageChange(collectionFilesPage - 1)}
             disabled={isCollectionFilesLoading || collectionFilesPage <= 1 || collectionFilesTotalPages === 0}
             aria-label="Previous page"
@@ -373,11 +389,11 @@ export default function CollectionsContainer({ searchQuery = "" }) {
             <AppIcon name="arrowLeft" alt="" aria-hidden="true" />
           </button>
           <p>
-            Page {collectionFilesTotalPages === 0 ? 0 : collectionFilesPage} of {collectionFilesTotalPages}
+            Page {collectionFilesTotalPages <= 0 ? 0 : collectionFilesPage} of {Math.max(collectionFilesTotalPages, 1)}
           </p>
           <button
             type="button"
-            className="media-action-btn app-button-icon-only"
+            className="media-action-btn app-button-icon-only media-pagination-icon-btn"
             onClick={() => handleCollectionFilesPageChange(collectionFilesPage + 1)}
             disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0 || collectionFilesPage >= collectionFilesTotalPages}
             aria-label="Next page"
@@ -394,10 +410,10 @@ export default function CollectionsContainer({ searchQuery = "" }) {
               value={collectionFilesPageJumpInput}
               onChange={(event) => setCollectionFilesPageJumpInput(event.target.value)}
               onBlur={(event) => setCollectionFilesPageJumpInput(normalizePageJumpDisplayValue(event.target.value, collectionFilesPage, collectionFilesTotalPages))}
-              disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0}
+              disabled={isCollectionFilesLoading || collectionFilesTotalPages <= 1}
               aria-label="Go to collection media page"
             />
-            <button type="submit" className="media-action-btn app-button-icon-only" disabled={isCollectionFilesLoading || collectionFilesTotalPages === 0} aria-label="Go to collection media page">
+            <button type="submit" className="media-action-btn app-button-icon-only media-pagination-icon-btn" disabled={isCollectionFilesLoading || collectionFilesTotalPages <= 1} aria-label="Go to collection media page">
               <AppIcon name="confirm" alt="" aria-hidden="true" />
             </button>
           </form>
@@ -1142,16 +1158,22 @@ export default function CollectionsContainer({ searchQuery = "" }) {
                 <p className="collections-state">Collection is empty.</p>
               ) : null}
               {!collectionFilesError && collectionFilesTotalCount > 0 ? (
+                <div className="media-pagination-toolbar">
+                  {renderCollectionFilesPagination()}
+                  <MediaQuickTaggingAction
+                    isSelectionMode={mediaSelection.isSelectionMode}
+                    onOpenConfig={() => void quickTagging.openConfig()}
+                  />
+                  <BulkMediaActionBar
+                    selectedCount={mediaSelection.selectedCount}
+                    onClearSelection={mediaSelection.clearSelection}
+                    onDeleteSelection={() => setPendingBulkDelete(createPendingMediaDelete(mediaSelection.selectedMediaItems))}
+                    onEditSelection={() => void handleOpenBulkEdit()}
+                  />
+                </div>
+              ) : null}
+              {!collectionFilesError && collectionFilesTotalCount > 0 ? (
                 <>
-                  <div className="media-pagination-toolbar">
-                    {renderCollectionFilesPagination()}
-                    <BulkMediaActionBar
-                      selectedCount={mediaSelection.selectedCount}
-                      onClearSelection={mediaSelection.clearSelection}
-                      onDeleteSelection={() => setPendingBulkDelete(createPendingMediaDelete(mediaSelection.selectedMediaItems))}
-                      onEditSelection={() => void handleOpenBulkEdit()}
-                    />
-                  </div>
                   <div className="media-grid">
                     {visibleCollectionFiles.map((file) => (
                       <GalleryMediaTile
@@ -1159,12 +1181,12 @@ export default function CollectionsContainer({ searchQuery = "" }) {
                         file={file}
                         alt={getDisplayName(file.name)}
                         hasPreviewError={failedPreviewPaths.has(file.relativePath)}
-                        onSelect={setSelectedMedia}
-                        onStartSelection={mediaSelection.startSelection}
-                        onToggleSelection={mediaSelection.toggleSelection}
+                        onSelect={quickTagging.isEnabled ? (item) => void quickTagging.applyTagToMedia(item) : setSelectedMedia}
+                        onStartSelection={quickTagging.isEnabled ? undefined : mediaSelection.startSelection}
+                        onToggleSelection={quickTagging.isEnabled ? undefined : mediaSelection.toggleSelection}
                         isSelected={mediaSelection.isSelected(file)}
                         selectionIndex={mediaSelection.getSelectionIndex(file)}
-                        isSelectionMode={mediaSelection.isSelectionMode}
+                        isSelectionMode={quickTagging.isEnabled ? false : mediaSelection.isSelectionMode}
                         onPreviewError={(relativePath) => setFailedPreviewPaths((prev) => new Set(prev).add(relativePath))}
                       />
                     ))}
@@ -1261,6 +1283,15 @@ export default function CollectionsContainer({ searchQuery = "" }) {
         errorMessage={mediaModalError}
         onClose={() => setIsBulkEditing(false)}
         onSave={({ items, collectionIds, relationStrategy }) => void handleBulkSaveMedia({ items, collectionIds, relationStrategy })}
+      />
+      <QuickTaggingModal
+        isOpen={quickTagging.isConfigOpen}
+        tagCatalog={tagCatalog}
+        isLoading={isTagCatalogLoading}
+        initialConfig={quickTagging.config}
+        onConfirm={quickTagging.confirmConfig}
+        onDisable={quickTagging.disable}
+        onClose={quickTagging.closeConfig}
       />
       <MediaDeleteConfirmModal
         pendingMediaDelete={pendingBulkDelete}
