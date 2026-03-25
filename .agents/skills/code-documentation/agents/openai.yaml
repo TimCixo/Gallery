@@ -1,0 +1,4 @@
+interface:
+  display_name: "Code Documentation"
+  short_description: "Document code in the Gallery repo"
+  default_prompt: "Add or update in-code documentation for this repository using the existing local style without changing project README files."

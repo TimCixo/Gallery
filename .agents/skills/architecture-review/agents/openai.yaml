@@ -1,0 +1,4 @@
+interface:
+  display_name: "Architecture Review"
+  short_description: "Review Gallery subsystem architecture"
+  default_prompt: "Review this Gallery repo subsystem, identify unnecessary coupling or duplication, and recommend the simplest structure that fits the current codebase."

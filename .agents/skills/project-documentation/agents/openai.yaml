@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Documentation"
+  short_description: "Update Gallery repository documentation"
+  default_prompt: "Update the relevant Gallery README files so documentation matches the current repository state."

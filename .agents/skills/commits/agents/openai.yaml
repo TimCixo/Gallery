@@ -1,0 +1,4 @@
+interface:
+  display_name: "Commits"
+  short_description: "Prepare and create Gallery repository commits"
+  default_prompt: "Review the current changes, follow AGENTS.md commit rules, update the relevant README files when needed, and prepare a correct commit."

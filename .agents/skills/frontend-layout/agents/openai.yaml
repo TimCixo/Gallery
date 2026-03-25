@@ -1,0 +1,4 @@
+interface:
+  display_name: "Frontend Layout"
+  short_description: "Adjust Gallery frontend layout patterns"
+  default_prompt: "Review the existing frontend UI patterns in this repo and make minimal layout or presentation fixes that reuse them."
