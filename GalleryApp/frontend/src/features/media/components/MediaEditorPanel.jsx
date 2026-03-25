@@ -5,6 +5,7 @@ import { isVideoFile, resolveOriginalMediaUrl, resolvePreviewMediaUrl } from "..
 import AppIcon from "../../shared/components/AppIcon";
 import MediaCoreMetadataRows from "./MediaCoreMetadataRows";
 import MediaEditActions from "./MediaEditActions";
+import MediaReferenceField from "./MediaReferenceField";
 import MediaRelationPickerDialogContent from "./MediaRelationPickerDialogContent";
 import MediaRelationPickerModal from "./MediaRelationPickerModal";
 
@@ -262,59 +263,16 @@ export default function MediaEditorPanel({
   const renderLinkedMediaPicker = (fieldKey, label) => {
     const mode = fieldKey === "child" ? "child" : "parent";
     const draftValue = String(draft?.[fieldKey] || "");
-    const previewState = relationPreviewByMode?.[mode] || { item: null, isLoading: false, error: "" };
-    const relationItem = previewState.item;
-    const previewUrl = relationItem ? resolvePreviewMediaUrl(relationItem) : "";
-    const hasSelection = Boolean(draftValue.trim());
-    const relationLabel = relationItem?.title || relationItem?.relativePath || "Untitled media";
 
     return (
-      <div className="media-linked-editor">
-        <div className="media-linked-editor-controls">
-          <button
-            type="button"
-            className={`media-linked-editor-trigger${hasSelection ? "" : " is-empty"}`}
-            onClick={() => onOpenRelationPicker?.(mode)}
-            aria-label={hasSelection ? `Change ${label}` : `Select ${label}`}
-            title={hasSelection ? `Change ${label}` : `Select ${label}`}
-          >
-            {previewUrl ? (
-              <img
-                src={previewUrl}
-                alt={relationLabel}
-                className="media-relation-picker-thumb"
-                loading="lazy"
-              />
-            ) : (
-              <span className="media-linked-editor-placeholder" aria-hidden="true">
-                <AppIcon name="create" alt="" aria-hidden="true" />
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            className="media-action-btn app-button-icon-only"
-            onClick={() => onDraftChange?.({ [fieldKey]: "" })}
-            disabled={!hasSelection}
-            title={`Clear ${label}`}
-            aria-label={`Clear ${label}`}
-          >
-            <AppIcon name="delete" alt="" aria-hidden="true" />
-          </button>
-        </div>
-
-        <div className="media-linked-editor-preview">
-          {hasSelection ? (
-            relationItem ? null : previewState.isLoading ? (
-              <small>Resolving...</small>
-            ) : previewState.error ? (
-              <small className="media-action-error">{previewState.error}</small>
-            ) : (
-              <small>Media not found.</small>
-            )
-          ) : null}
-        </div>
-      </div>
+      <MediaReferenceField
+        label={label}
+        value={draftValue}
+        previewState={relationPreviewByMode?.[mode]}
+        onOpenPicker={() => onOpenRelationPicker?.(mode)}
+        onClear={() => onDraftChange?.({ [fieldKey]: "" })}
+        disabled={isSavingMedia || isDeletingMedia}
+      />
     );
   };
 

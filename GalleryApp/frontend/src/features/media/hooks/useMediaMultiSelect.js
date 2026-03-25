@@ -1,12 +1,33 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { normalizeMediaId, syncSelectedMediaMap } from "../utils/mediaMultiSelectState";
 
+function areMediaMapsEqual(left, right) {
+  if (left === right) {
+    return true;
+  }
+
+  if (!(left instanceof Map) || !(right instanceof Map) || left.size !== right.size) {
+    return false;
+  }
+
+  for (const [key, value] of left.entries()) {
+    if (!right.has(key) || right.get(key) !== value) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export function useMediaMultiSelect(items) {
   const [selectedMediaIds, setSelectedMediaIds] = useState([]);
   const [selectedMediaMap, setSelectedMediaMap] = useState(() => new Map());
 
   useEffect(() => {
-    setSelectedMediaMap((current) => syncSelectedMediaMap(current, selectedMediaIds, items));
+    setSelectedMediaMap((current) => {
+      const next = syncSelectedMediaMap(current, selectedMediaIds, items);
+      return areMediaMapsEqual(current, next) ? current : next;
+    });
   }, [items, selectedMediaIds]);
 
   const selectedMediaIdSet = useMemo(() => new Set(selectedMediaIds), [selectedMediaIds]);

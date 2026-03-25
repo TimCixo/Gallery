@@ -7,19 +7,22 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const componentPath = path.resolve(__dirname, "../features/search/components/SearchInput.jsx");
+const autocompletePath = path.resolve(__dirname, "../features/shared/components/AutocompleteTextField.jsx");
 const source = readFileSync(componentPath, "utf8");
+const autocompleteSource = readFileSync(autocompletePath, "utf8");
 
 test("SearchInput exposes combobox semantics and listbox wiring", () => {
-  assert.match(source, /role="combobox"/);
-  assert.match(source, /aria-autocomplete="list"/);
-  assert.match(source, /aria-controls=\{suggestionsEnabled \? listboxId : undefined\}/);
-  assert.match(source, /aria-activedescendant=\{activeDescendant\}/);
-  assert.match(source, /role="listbox"/);
-  assert.match(source, /role="option"/);
+  assert.match(source, /AutocompleteTextField/);
+  assert.match(autocompleteSource, /role="combobox"/);
+  assert.match(autocompleteSource, /aria-autocomplete="list"/);
+  assert.match(autocompleteSource, /aria-controls=\{suggestionsEnabled \? field\.listboxId : undefined\}/);
+  assert.match(autocompleteSource, /aria-activedescendant=\{activeDescendant\}/);
+  assert.match(autocompleteSource, /role="listbox"/);
+  assert.match(autocompleteSource, /role="option"/);
 });
 
 test("SearchInput keeps the accessibility hint off-screen", () => {
-  assert.match(source, /className="sr-only"/);
+  assert.match(autocompleteSource, /className="sr-only"/);
   assert.doesNotMatch(source, /top-search-suggestion-empty/);
 });
 
@@ -28,5 +31,6 @@ test("SearchInput includes recent history UI and clear action", () => {
   assert.match(source, /top-search-history-clear/);
   assert.match(source, /Recent/);
   assert.match(source, /Suggestions/);
-  assert.match(source, /\[\.\.\.suggestions, \.\.\.historyOptions\]/);
+  assert.match(source, /items: historyOptions/);
+  assert.match(source, /items: visibleSuggestions/);
 });

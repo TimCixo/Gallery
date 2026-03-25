@@ -10,20 +10,23 @@ const editorPanelPath = path.resolve(__dirname, "../features/media/components/Me
 const viewerModalPath = path.resolve(__dirname, "../features/media/components/MediaViewerModal.jsx");
 const relationPickerPath = path.resolve(__dirname, "../features/media/components/MediaRelationPickerDialogContent.jsx");
 const relationPickerModalPath = path.resolve(__dirname, "../features/media/components/MediaRelationPickerModal.jsx");
+const mediaReferenceFieldPath = path.resolve(__dirname, "../features/media/components/MediaReferenceField.jsx");
 const appCssPath = path.resolve(__dirname, "../App.css");
 const editorPanelSource = readFileSync(editorPanelPath, "utf8");
 const viewerModalSource = readFileSync(viewerModalPath, "utf8");
 const relationPickerSource = readFileSync(relationPickerPath, "utf8");
 const relationPickerModalSource = readFileSync(relationPickerModalPath, "utf8");
+const mediaReferenceFieldSource = readFileSync(mediaReferenceFieldPath, "utf8");
 const appCss = readFileSync(appCssPath, "utf8");
 
 test("media editor relation picker uses thumbnail trigger and icon-only delete clear button", () => {
-  assert.match(editorPanelSource, /className=\{`media-linked-editor-trigger/);
-  assert.match(editorPanelSource, /<AppIcon name="create"/);
-  assert.match(editorPanelSource, /<AppIcon name="delete"/);
-  assert.match(editorPanelSource, /className="media-action-btn app-button-icon-only"/);
+  assert.match(editorPanelSource, /MediaReferenceField/);
+  assert.match(mediaReferenceFieldSource, /className=\{`media-linked-editor-trigger/);
+  assert.match(mediaReferenceFieldSource, /<AppIcon name="create"/);
+  assert.match(mediaReferenceFieldSource, /<AppIcon name="delete"/);
+  assert.match(mediaReferenceFieldSource, /className="media-action-btn app-button-icon-only"/);
   assert.doesNotMatch(editorPanelSource, />\s*Clear\s*</);
-  assert.doesNotMatch(editorPanelSource, /Select \{label\.toLowerCase\(\)\} media/);
+  assert.doesNotMatch(mediaReferenceFieldSource, /Select \{label\.toLowerCase\(\)\} media/);
 });
 
 test("media editor shows preview title below thumbnail and supports icon primary actions", () => {

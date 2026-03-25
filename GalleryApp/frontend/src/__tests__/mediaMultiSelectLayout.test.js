@@ -69,13 +69,12 @@ test("bulk media action bar exposes cancel delete and edit actions", () => {
   assert.match(quickTaggingModalSource, /<TagNamesAutocompleteInput/);
   assert.match(quickTaggingModalSource, /placeholder="author:artist3 character:some_character"/);
   assert.match(quickTaggingModalSource, /placeholder="status:done status:archived"/);
-  assert.match(tagNamesAutocompleteInputSource, /aria-autocomplete="list"/);
-  assert.match(tagNamesAutocompleteInputSource, /className="media-tag-dropdown"/);
+  assert.match(tagNamesAutocompleteInputSource, /AutocompleteTextField/);
+  assert.match(tagNamesAutocompleteInputSource, /dropdownClassName="media-tag-dropdown"/);
   assert.match(tagNamesAutocompleteInputSource, /parseSearchSegments/);
   assert.match(tagNamesAutocompleteInputSource, /buildSearchTagTypeOptions/);
-  assert.match(tagNamesAutocompleteInputSource, /className=\{segment\.isTag \? "media-quick-tagging-input-segment is-tag" : "media-quick-tagging-input-segment"\}/);
-  assert.match(tagNamesAutocompleteInputSource, /suggestion\.label/);
-  assert.match(tagNamesAutocompleteInputSource, /outlineColor: suggestion\.color/);
+  assert.match(tagNamesAutocompleteInputSource, /tagSegmentClassName="media-quick-tagging-input-segment is-tag"/);
+  assert.match(tagNamesAutocompleteInputSource, /items: suggestions/);
   assert.match(quickTaggingModalSource, /<div className="media-modal-footer">[\s\S]*<MediaEditActions/);
   assert.match(quickTaggingModalSource, /onSecondary=\{onDisable\}/);
   assert.match(bulkModalSource, /media-modal-header-bulk/);
@@ -88,24 +87,17 @@ test("bulk media action bar exposes cancel delete and edit actions", () => {
 });
 
 test("bulk media editor resolves and updates parent child media relations", () => {
-  assert.match(bulkModalSource, /const \[relationPreviewByMode, setRelationPreviewByMode\] = useState\(DEFAULT_RELATION_PREVIEW\)/);
-  assert.match(bulkModalSource, /const mediaCacheRef = useRef\(new Map\(\)\)/);
-  assert.match(bulkModalSource, /const findMediaById = async \(mediaId\) =>/);
-  assert.match(bulkModalSource, /const cachedCandidate = mediaCacheRef\.current\.get\(normalizedId\) \|\| null/);
-  assert.match(bulkModalSource, /const localCandidate = selectedItems\.find\(\(item\) => Number\(item\?\.id\) === normalizedId\) \|\| null/);
-  assert.match(bulkModalSource, /mediaApi\.listMedia\(\{ page: 1, pageSize: 40, search: `id:\$\{normalizedId\}` \}\)/);
+  assert.match(bulkModalSource, /useMediaReferencePicker/);
+  assert.match(bulkModalSource, /valueByMode:\s*\{/);
+  assert.match(bulkModalSource, /localItems: selectedItems/);
   assert.match(bulkModalSource, /const preloadRelationMedia = async \(\) =>/);
   assert.match(bulkModalSource, /await Promise\.all\(relationIds\.map\(async \(relationId\) =>/);
-  assert.match(bulkModalSource, /void resolveMode\("parent"\)/);
-  assert.match(bulkModalSource, /void resolveMode\("child"\)/);
-  assert.match(bulkModalSource, /const cachedCandidate = mediaCacheRef\.current\.get\(parsed\) \|\| null/);
-  assert.match(bulkModalSource, /const openMediaRelationPicker = \(mode\) =>/);
-  assert.match(bulkModalSource, /setIsMediaRelationPickerOpen\(true\)/);
-  assert.match(bulkModalSource, /const handleSelectMediaRelationFromPicker = \(item\) =>/);
-  assert.match(bulkModalSource, /updateDraft\(\{ \[key\]: String\(selectedId\) \}\)/);
-  assert.match(bulkModalSource, /relationPreviewByMode=\{relationPreviewByMode\}/);
-  assert.match(bulkModalSource, /onOpenRelationPicker=\{openMediaRelationPicker\}/);
-  assert.match(bulkModalSource, /onSelectMediaRelationFromPicker=\{handleSelectMediaRelationFromPicker\}/);
+  assert.match(bulkModalSource, /await mediaReferencePicker\.findMediaById\(relationId\)/);
+  assert.match(bulkModalSource, /onSelectReference: \(mode, item\) =>/);
+  assert.match(bulkModalSource, /updateDraft\(\{ \[mode === "child" \? "child" : "parent"\]: String\(selectedId\) \}\)/);
+  assert.match(bulkModalSource, /relationPreviewByMode=\{mediaReferencePicker\.previewByMode\}/);
+  assert.match(bulkModalSource, /onOpenRelationPicker=\{mediaReferencePicker\.openPicker\}/);
+  assert.match(bulkModalSource, /onSelectMediaRelationFromPicker=\{mediaReferencePicker\.selectFromPicker\}/);
 });
 
 test("bulk media editor group mode locks navigation and shows selection count preview", () => {

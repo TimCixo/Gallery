@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { mediaApi } from "../../../api/mediaApi";
+import { useEffect, useMemo, useState } from "react";
 import { collectionsApi } from "../../../api/collectionsApi";
 import AppIcon from "../../shared/components/AppIcon";
 import { isVideoFile, resolveOriginalMediaUrl, resolvePreviewMediaUrl } from "../../shared/utils/mediaPredicates";
@@ -7,14 +6,10 @@ import CollectionPickerDialogContent from "../../collections/components/Collecti
 import CollectionPickerModal from "../../collections/components/CollectionPickerModal";
 import MediaEditorPanel from "./MediaEditorPanel";
 import LinkOrderOverwriteConfirmModal from "./LinkOrderOverwriteConfirmModal";
+import { useMediaReferencePicker } from "../hooks/useMediaReferencePicker";
 import { applyOrderedRelationChainToItems, createBulkEditorItems, createEmptyMediaDraft } from "../utils/bulkMediaEdit";
 import { getGroupSelectedTagIds } from "../utils/groupTagSelection";
 import { disconnectSelectedLinkOrder, hasLinkedSelectionInOrder, hasLinkOrderOverwrite } from "../utils/linkOrderSelection";
-
-const DEFAULT_RELATION_PREVIEW = Object.freeze({
-  parent: { item: null, isLoading: false, error: "" },
-  child: { item: null, isLoading: false, error: "" }
-});
 
 export default function BulkMediaEditorModal({
   isOpen,
@@ -41,17 +36,6 @@ export default function BulkMediaEditorModal({
   const [collectionPickerError, setCollectionPickerError] = useState("");
   const [isCollectionPickerLoading, setIsCollectionPickerLoading] = useState(false);
   const [selectedCollectionIds, setSelectedCollectionIds] = useState([]);
-  const [relationPreviewByMode, setRelationPreviewByMode] = useState(DEFAULT_RELATION_PREVIEW);
-  const [isMediaRelationPickerOpen, setIsMediaRelationPickerOpen] = useState(false);
-  const [mediaRelationPickerMode, setMediaRelationPickerMode] = useState("parent");
-  const [mediaRelationPickerQuery, setMediaRelationPickerQuery] = useState("");
-  const [mediaRelationPickerItems, setMediaRelationPickerItems] = useState([]);
-  const [mediaRelationPickerPage, setMediaRelationPickerPage] = useState(1);
-  const [mediaRelationPickerTotalPages, setMediaRelationPickerTotalPages] = useState(0);
-  const [mediaRelationPickerTotalCount, setMediaRelationPickerTotalCount] = useState(0);
-  const [isMediaRelationPickerLoading, setIsMediaRelationPickerLoading] = useState(false);
-  const [mediaRelationPickerError, setMediaRelationPickerError] = useState("");
-  const mediaCacheRef = useRef(new Map());
 
   useEffect(() => {
     if (!isOpen) {
@@ -72,17 +56,6 @@ export default function BulkMediaEditorModal({
     setCollectionPickerError("");
     setIsCollectionPickerLoading(false);
     setIsCollectionPickerOpen(false);
-    setRelationPreviewByMode(DEFAULT_RELATION_PREVIEW);
-    setIsMediaRelationPickerOpen(false);
-    setMediaRelationPickerMode("parent");
-    setMediaRelationPickerQuery("");
-    setMediaRelationPickerItems([]);
-    setMediaRelationPickerPage(1);
-    setMediaRelationPickerTotalPages(0);
-    setMediaRelationPickerTotalCount(0);
-    setIsMediaRelationPickerLoading(false);
-    setMediaRelationPickerError("");
-    mediaCacheRef.current = new Map();
   }, [isOpen, selectedItems]);
 
   const activeItem = editorItems[activeIndex] || null;
@@ -184,42 +157,30 @@ export default function BulkMediaEditorModal({
         : item
     )));
   };
+  const mediaReferencePicker = useMediaReferencePicker({
+    valueByMode: {
+      parent: visibleDraft?.parent,
+      child: visibleDraft?.child
+    },
+    onSelectReference: (mode, item) => {
+      const selectedId = Number(item?.id);
+      if (!Number.isSafeInteger(selectedId) || selectedId <= 0) {
+        return;
+      }
 
-  const findMediaById = async (mediaId) => {
-    const normalizedId = Number(mediaId);
-    if (!Number.isSafeInteger(normalizedId) || normalizedId <= 0) {
-      return null;
+      updateDraft({ [mode === "child" ? "child" : "parent"]: String(selectedId) });
+    },
+    localItems: selectedItems,
+    isEnabled: isOpen
+  });
+
+  useEffect(() => {
+    if (isOpen) {
+      return;
     }
 
-    const cachedCandidate = mediaCacheRef.current.get(normalizedId) || null;
-    if (cachedCandidate) {
-      return cachedCandidate;
-    }
-
-    const localCandidate = selectedItems.find((item) => Number(item?.id) === normalizedId) || null;
-    if (localCandidate) {
-      const normalizedCandidate = {
-        ...localCandidate,
-        _tileUrl: localCandidate.tileUrl || localCandidate.previewUrl || localCandidate.originalUrl || localCandidate.url || ""
-      };
-      mediaCacheRef.current.set(normalizedId, normalizedCandidate);
-      return normalizedCandidate;
-    }
-
-    const response = await mediaApi.listMedia({ page: 1, pageSize: 40, search: `id:${normalizedId}` });
-    const items = Array.isArray(response?.items) ? response.items : [];
-    const remoteCandidate = items.find((item) => Number(item?.id) === normalizedId) || null;
-    if (remoteCandidate) {
-      const normalizedCandidate = {
-        ...remoteCandidate,
-        _tileUrl: remoteCandidate.tileUrl || remoteCandidate.previewUrl || remoteCandidate.originalUrl || remoteCandidate.url || ""
-      };
-      mediaCacheRef.current.set(normalizedId, normalizedCandidate);
-      return normalizedCandidate;
-    }
-
-    return null;
-  };
+    mediaReferencePicker.resetPicker();
+  }, [isOpen, mediaReferencePicker.resetPicker]);
 
   const toggleTag = (tagId) => {
     if (isGroupEditEnabled) {
@@ -310,11 +271,11 @@ export default function BulkMediaEditorModal({
     let cancelled = false;
     const preloadRelationMedia = async () => {
       await Promise.all(relationIds.map(async (relationId) => {
-        if (cancelled || mediaCacheRef.current.has(relationId)) {
+        if (cancelled) {
           return;
         }
         try {
-          await findMediaById(relationId);
+          await mediaReferencePicker.findMediaById(relationId);
         } catch {
           // Ignore preload failures and let active preview resolution expose errors when needed.
         }
@@ -325,147 +286,7 @@ export default function BulkMediaEditorModal({
     return () => {
       cancelled = true;
     };
-  }, [editorItems, isOpen]);
-
-  useEffect(() => {
-    if (!visibleDraft) {
-      setRelationPreviewByMode(DEFAULT_RELATION_PREVIEW);
-      return undefined;
-    }
-
-    let cancelled = false;
-    const resolveMode = async (mode) => {
-      const rawValue = String(mode === "parent" ? (visibleDraft.parent || "") : (visibleDraft.child || "")).trim();
-      if (!rawValue) {
-        if (!cancelled) {
-          setRelationPreviewByMode((current) => ({
-            ...current,
-            [mode]: { item: null, isLoading: false, error: "" }
-          }));
-        }
-        return;
-      }
-
-      const parsed = Number.parseInt(rawValue, 10);
-      if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-        if (!cancelled) {
-          setRelationPreviewByMode((current) => ({
-            ...current,
-            [mode]: { item: null, isLoading: false, error: "Invalid media id." }
-          }));
-        }
-        return;
-      }
-
-      const cachedCandidate = mediaCacheRef.current.get(parsed) || null;
-      if (cachedCandidate) {
-        if (!cancelled) {
-          setRelationPreviewByMode((current) => ({
-            ...current,
-            [mode]: { item: cachedCandidate, isLoading: false, error: "" }
-          }));
-        }
-        return;
-      }
-
-      setRelationPreviewByMode((current) => ({
-        ...current,
-        [mode]: { item: null, isLoading: true, error: "" }
-      }));
-
-      try {
-        const candidate = await findMediaById(parsed);
-        if (!cancelled) {
-          setRelationPreviewByMode((current) => ({
-            ...current,
-            [mode]: candidate
-              ? { item: candidate, isLoading: false, error: "" }
-              : { item: null, isLoading: false, error: "Media not found." }
-          }));
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setRelationPreviewByMode((current) => ({
-            ...current,
-            [mode]: { item: null, isLoading: false, error: error instanceof Error ? error.message : "Failed to resolve media." }
-          }));
-        }
-      }
-    };
-
-    void resolveMode("parent");
-    void resolveMode("child");
-    return () => {
-      cancelled = true;
-    };
-  }, [visibleDraft]);
-
-  const openMediaRelationPicker = (mode) => {
-    setMediaRelationPickerMode(mode === "child" ? "child" : "parent");
-    setMediaRelationPickerQuery("");
-    setMediaRelationPickerPage(1);
-    setMediaRelationPickerError("");
-    setIsMediaRelationPickerOpen(true);
-  };
-
-  const closeMediaRelationPicker = () => {
-    setIsMediaRelationPickerOpen(false);
-    setMediaRelationPickerError("");
-  };
-
-  useEffect(() => {
-    if (!isMediaRelationPickerOpen) {
-      return undefined;
-    }
-
-    let cancelled = false;
-    const loadItems = async () => {
-      setIsMediaRelationPickerLoading(true);
-      setMediaRelationPickerError("");
-      try {
-        const response = await mediaApi.listMedia({
-          page: mediaRelationPickerPage,
-          pageSize: 24,
-          search: mediaRelationPickerQuery.trim() || undefined
-        });
-        if (cancelled) {
-          return;
-        }
-
-        const items = Array.isArray(response?.items) ? response.items : [];
-        setMediaRelationPickerItems(items);
-        setMediaRelationPickerTotalPages(Number(response?.totalPages || 0));
-        setMediaRelationPickerTotalCount(Number(response?.totalCount || items.length));
-      } catch (error) {
-        if (!cancelled) {
-          setMediaRelationPickerItems([]);
-          setMediaRelationPickerTotalPages(0);
-          setMediaRelationPickerTotalCount(0);
-          setMediaRelationPickerError(error instanceof Error ? error.message : "Failed to load media.");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsMediaRelationPickerLoading(false);
-        }
-      }
-    };
-
-    void loadItems();
-    return () => {
-      cancelled = true;
-    };
-  }, [isMediaRelationPickerOpen, mediaRelationPickerPage, mediaRelationPickerQuery]);
-
-  const handleSelectMediaRelationFromPicker = (item) => {
-    const selectedId = Number(item?.id);
-    if (!Number.isSafeInteger(selectedId) || selectedId <= 0) {
-      return;
-    }
-
-    const key = mediaRelationPickerMode === "child" ? "child" : "parent";
-    updateDraft({ [key]: String(selectedId) });
-    closeMediaRelationPicker();
-  };
+  }, [editorItems, isOpen, mediaReferencePicker.findMediaById]);
 
   const getItemsForSave = () => {
     if (!isGroupEditEnabled) {
@@ -608,25 +429,25 @@ export default function BulkMediaEditorModal({
             selectedTagIds={selectedTagIds}
             onToggleTag={toggleTag}
             onRefreshTagCatalog={onRefreshTagCatalog}
-            relationPreviewByMode={relationPreviewByMode}
-            onOpenRelationPicker={openMediaRelationPicker}
-            isMediaRelationPickerOpen={isMediaRelationPickerOpen}
-            mediaRelationPickerMode={mediaRelationPickerMode}
-            mediaRelationPickerQuery={mediaRelationPickerQuery}
-            onMediaRelationPickerQueryChange={setMediaRelationPickerQuery}
-            mediaRelationPickerItems={mediaRelationPickerItems}
-            mediaRelationPickerPage={mediaRelationPickerPage}
-            mediaRelationPickerTotalPages={mediaRelationPickerTotalPages}
-            mediaRelationPickerTotalCount={mediaRelationPickerTotalCount}
-            isMediaRelationPickerLoading={isMediaRelationPickerLoading}
-            mediaRelationPickerError={mediaRelationPickerError}
-            onMediaRelationPickerPrev={() => setMediaRelationPickerPage((current) => Math.max(current - 1, 1))}
-            onMediaRelationPickerNext={() => setMediaRelationPickerPage((current) => (
-              mediaRelationPickerTotalPages > 0 ? Math.min(current + 1, mediaRelationPickerTotalPages) : current + 1
+            relationPreviewByMode={mediaReferencePicker.previewByMode}
+            onOpenRelationPicker={mediaReferencePicker.openPicker}
+            isMediaRelationPickerOpen={mediaReferencePicker.isPickerOpen}
+            mediaRelationPickerMode={mediaReferencePicker.pickerMode}
+            mediaRelationPickerQuery={mediaReferencePicker.pickerQuery}
+            onMediaRelationPickerQueryChange={mediaReferencePicker.setPickerQuery}
+            mediaRelationPickerItems={mediaReferencePicker.pickerItems}
+            mediaRelationPickerPage={mediaReferencePicker.pickerPage}
+            mediaRelationPickerTotalPages={mediaReferencePicker.pickerTotalPages}
+            mediaRelationPickerTotalCount={mediaReferencePicker.pickerTotalCount}
+            isMediaRelationPickerLoading={mediaReferencePicker.isPickerLoading}
+            mediaRelationPickerError={mediaReferencePicker.pickerError}
+            onMediaRelationPickerPrev={() => mediaReferencePicker.setPickerPage((current) => Math.max(current - 1, 1))}
+            onMediaRelationPickerNext={() => mediaReferencePicker.setPickerPage((current) => (
+              mediaReferencePicker.pickerTotalPages > 0 ? Math.min(current + 1, mediaReferencePicker.pickerTotalPages) : current + 1
             ))}
-            onMediaRelationPickerPageChange={setMediaRelationPickerPage}
-            onCloseMediaRelationPicker={closeMediaRelationPicker}
-            onSelectMediaRelationFromPicker={handleSelectMediaRelationFromPicker}
+            onMediaRelationPickerPageChange={mediaReferencePicker.setPickerPage}
+            onCloseMediaRelationPicker={mediaReferencePicker.closePicker}
+            onSelectMediaRelationFromPicker={mediaReferencePicker.selectFromPicker}
             systemDetailsNode={(
               <table className="media-system-table">
                 <tbody>

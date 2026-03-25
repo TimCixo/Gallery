@@ -13,6 +13,8 @@ const galleryContainerSource = readFileSync(
 );
 
 test("gallery related media previews load for viewer mode, not only edit mode", () => {
-  assert.match(galleryContainerSource, /\? \(mode === "parent" \? mediaDraft\.parent : mediaDraft\.child\)/);
-  assert.match(galleryContainerSource, /: \(mode === "parent" \? selectedMedia\.parent : selectedMedia\.child\)/);
+  assert.match(galleryContainerSource, /valueByMode:\s*\{/);
+  assert.match(galleryContainerSource, /parent: isEditingMedia \? mediaDraft\.parent : selectedMedia\?\.parent/);
+  assert.match(galleryContainerSource, /child: isEditingMedia \? mediaDraft\.child : selectedMedia\?\.child/);
+  assert.match(galleryContainerSource, /useMediaReferencePicker/);
 });

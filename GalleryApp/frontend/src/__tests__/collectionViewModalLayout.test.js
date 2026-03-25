@@ -45,10 +45,10 @@ test("collection delete confirm modal uses icon-only actions", () => {
 test("collection editor reuses media relation picker for cover selection", () => {
   assert.match(collectionsContainerSource, /MediaRelationPickerDialogContent/);
   assert.match(collectionsContainerSource, /MediaRelationPickerModal/);
-  assert.match(collectionsContainerSource, /openMediaRelationPicker\("cover"\)/);
-  assert.match(collectionsContainerSource, /collectionCoverPreview/);
-  assert.match(collectionsContainerSource, /refreshTagCatalog\(\)/);
-  assert.match(collectionsContainerSource, /media-linked-editor/);
+  assert.match(collectionsContainerSource, /MediaReferenceField/);
+  assert.match(collectionsContainerSource, /useMediaReferencePicker/);
+  assert.match(collectionsContainerSource, /mediaReferencePicker\.openPicker\("cover"\)/);
+  assert.match(collectionsContainerSource, /previewState=\{mediaReferencePicker\.previewByMode\.cover\}/);
   assert.match(collectionsContainerSource, /name="confirm"/);
   assert.match(collectionsContainerSource, /name="cancel"/);
   assert.doesNotMatch(collectionsContainerSource, /No cover selected\./);

@@ -32,14 +32,14 @@ test("gallery and favorites support page navigation hotkeys only when dialogs ar
   assert.match(galleryContainerSource, /selectedMedia/);
   assert.match(galleryContainerSource, /isBulkEditing/);
   assert.match(galleryContainerSource, /isCollectionPickerOpen/);
-  assert.match(galleryContainerSource, /isMediaRelationPickerOpen/);
+  assert.match(galleryContainerSource, /mediaReferencePicker\.isPickerOpen/);
   assert.match(galleryContainerSource, /if \(hasBlockingDialogOpen \|\| totalPages <= 1\) \{/);
   assert.match(galleryContainerSource, /handlePageChange\(event\.key === "ArrowRight" \? currentPage \+ 1 : currentPage - 1\)/);
   assert.match(favoritesContainerSource, /const hasBlockingDialogOpen = Boolean\(/);
   assert.match(favoritesContainerSource, /selectedMedia/);
   assert.match(favoritesContainerSource, /isBulkEditing/);
   assert.match(favoritesContainerSource, /isCollectionPickerOpen/);
-  assert.match(favoritesContainerSource, /isMediaRelationPickerOpen/);
+  assert.match(favoritesContainerSource, /mediaReferencePicker\.isPickerOpen/);
   assert.match(favoritesContainerSource, /if \(hasBlockingDialogOpen \|\| favoritesTotalPages <= 1\) \{/);
   assert.match(favoritesContainerSource, /handleFavoritesPageChange\(event\.key === "ArrowRight" \? favoritesPage \+ 1 : favoritesPage - 1\)/);
 });

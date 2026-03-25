@@ -10,10 +10,10 @@ const galleryContainerPath = path.resolve(__dirname, "../features/gallery/Galler
 const galleryContainerSource = readFileSync(galleryContainerPath, "utf8");
 
 test("gallery container caches media items and related chains for cross-page navigation", () => {
-  assert.match(galleryContainerSource, /const mediaCacheRef = useRef\(new Map\(\)\);/);
+  assert.match(galleryContainerSource, /useMediaReferencePicker/);
   assert.match(galleryContainerSource, /const relatedMediaChainCacheRef = useRef\(new Map\(\)\);/);
-  assert.match(galleryContainerSource, /mediaCacheRef\.current\.set\(normalizedId, item\)/);
-  assert.match(galleryContainerSource, /const cachedCandidate = mediaCacheRef\.current\.get\(normalizedId\) \|\| null;/);
+  assert.match(galleryContainerSource, /localItems: mediaFiles/);
+  assert.match(galleryContainerSource, /mediaReferencePicker\.findMediaById\(selectedMediaId\)/);
   assert.match(galleryContainerSource, /const cachedChain = relatedMediaChainCacheRef\.current\.get\(selectedMediaId\);/);
   assert.match(galleryContainerSource, /relatedMediaChainCacheRef\.current\.set\(selectedMediaId, items\);/);
 });

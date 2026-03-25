@@ -12,6 +12,7 @@ import MediaQuickTaggingAction from "../media/components/MediaQuickTaggingAction
 import MediaDeleteConfirmModal from "../media/components/MediaDeleteConfirmModal";
 import MediaViewerModal from "../media/components/MediaViewerModal";
 import QuickTaggingModal from "../media/components/QuickTaggingModal";
+import { useMediaReferencePicker } from "../media/hooks/useMediaReferencePicker";
 import { useMediaMultiSelect } from "../media/hooks/useMediaMultiSelect";
 import { useQuickTagging } from "../media/hooks/useQuickTagging";
 import {
@@ -66,20 +67,7 @@ export default function FavoritesContainer() {
   const [collectionPickerError, setCollectionPickerError] = useState("");
   const [isCollectionPickerLoading, setIsCollectionPickerLoading] = useState(false);
   const [isAddingMediaToCollection, setIsAddingMediaToCollection] = useState(false);
-  const [mediaRelationPreviewByMode, setMediaRelationPreviewByMode] = useState({
-    parent: { item: null, isLoading: false, error: "" },
-    child: { item: null, isLoading: false, error: "" }
-  });
   const [relatedMediaItems, setRelatedMediaItems] = useState([]);
-  const [isMediaRelationPickerOpen, setIsMediaRelationPickerOpen] = useState(false);
-  const [mediaRelationPickerMode, setMediaRelationPickerMode] = useState("parent");
-  const [mediaRelationPickerQuery, setMediaRelationPickerQuery] = useState("");
-  const [mediaRelationPickerPage, setMediaRelationPickerPage] = useState(1);
-  const [mediaRelationPickerItems, setMediaRelationPickerItems] = useState([]);
-  const [mediaRelationPickerTotalPages, setMediaRelationPickerTotalPages] = useState(0);
-  const [mediaRelationPickerTotalCount, setMediaRelationPickerTotalCount] = useState(0);
-  const [isMediaRelationPickerLoading, setIsMediaRelationPickerLoading] = useState(false);
-  const [mediaRelationPickerError, setMediaRelationPickerError] = useState("");
   const [pendingBulkDelete, setPendingBulkDelete] = useState(null);
   const [isBulkEditing, setIsBulkEditing] = useState(false);
 
@@ -135,6 +123,22 @@ export default function FavoritesContainer() {
     updateMedia: mediaApi.updateMedia,
     onItemsChange: setFavoritesFiles
   });
+  const mediaReferencePicker = useMediaReferencePicker({
+    valueByMode: {
+      parent: isEditingMedia ? mediaDraft.parent : selectedMedia?.parent,
+      child: isEditingMedia ? mediaDraft.child : selectedMedia?.child
+    },
+    onSelectReference: (mode, item) => {
+      const selectedId = Number(item?.id);
+      if (!Number.isSafeInteger(selectedId) || selectedId <= 0) {
+        return;
+      }
+
+      setMediaDraft((current) => ({ ...current, [mode === "child" ? "child" : "parent"]: String(selectedId) }));
+    },
+    localItems: favoritesFiles,
+    isEnabled: Boolean(selectedMedia)
+  });
   const visibleFavoriteFiles = useMemo(() => quickTagging.visibleItems, [quickTagging.visibleItems]);
   const mediaSelection = useMediaMultiSelect(visibleFavoriteFiles);
 
@@ -147,7 +151,7 @@ export default function FavoritesContainer() {
     selectedMedia
     || isBulkEditing
     || isCollectionPickerOpen
-    || isMediaRelationPickerOpen
+    || mediaReferencePicker.isPickerOpen
   );
   const selectedMediaIndex = useMemo(() => (
     selectedMedia
@@ -201,22 +205,10 @@ export default function FavoritesContainer() {
       setTagCatalog([]);
       setTagTypesCatalog([]);
       setIsTagCatalogLoading(false);
-      setIsMediaRelationPickerOpen(false);
-      setMediaRelationPickerMode("parent");
-      setMediaRelationPickerQuery("");
-      setMediaRelationPickerPage(1);
-      setMediaRelationPickerItems([]);
-      setMediaRelationPickerTotalPages(0);
-      setMediaRelationPickerTotalCount(0);
-      setIsMediaRelationPickerLoading(false);
-      setMediaRelationPickerError("");
-      setMediaRelationPreviewByMode({
-        parent: { item: null, isLoading: false, error: "" },
-        child: { item: null, isLoading: false, error: "" }
-      });
+      mediaReferencePicker.resetPicker();
       setRelatedMediaItems([]);
     }
-  }, [selectedMedia]);
+  }, [mediaReferencePicker.resetPicker, selectedMedia]);
 
   useEffect(() => {
     if (mediaSelection.selectedCount > 0) {
@@ -418,77 +410,6 @@ export default function FavoritesContainer() {
     return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
   };
 
-  const findMediaById = useCallback(async (mediaId) => {
-    const normalizedId = Number(mediaId);
-    if (!Number.isSafeInteger(normalizedId) || normalizedId <= 0) {
-      return null;
-    }
-
-    const localCandidate = favoritesFiles.find((item) => item?.id === normalizedId) || null;
-    if (localCandidate) {
-      return localCandidate;
-    }
-
-    const response = await mediaApi.listMedia({ page: 1, pageSize: 40, search: `id:${normalizedId}` });
-    const items = Array.isArray(response?.items) ? response.items : [];
-    return items.find((item) => Number(item?.id) === normalizedId) || null;
-  }, [favoritesFiles]);
-
-  useEffect(() => {
-    if (!selectedMedia) {
-      return undefined;
-    }
-
-    const resolveMode = async (mode) => {
-      const rawValue = String(
-        isEditingMedia
-          ? (mode === "parent" ? mediaDraft.parent : mediaDraft.child)
-          : (mode === "parent" ? selectedMedia.parent : selectedMedia.child)
-          || ""
-      ).trim();
-      if (!rawValue) {
-        setMediaRelationPreviewByMode((current) => ({
-          ...current,
-          [mode]: { item: null, isLoading: false, error: "" }
-        }));
-        return;
-      }
-
-      const parsed = Number.parseInt(rawValue, 10);
-      if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-        setMediaRelationPreviewByMode((current) => ({
-          ...current,
-          [mode]: { item: null, isLoading: false, error: "Invalid media id." }
-        }));
-        return;
-      }
-
-      setMediaRelationPreviewByMode((current) => ({
-        ...current,
-        [mode]: { item: null, isLoading: true, error: "" }
-      }));
-
-      try {
-        const candidate = await findMediaById(parsed);
-        setMediaRelationPreviewByMode((current) => ({
-          ...current,
-          [mode]: candidate
-            ? { item: candidate, isLoading: false, error: "" }
-            : { item: null, isLoading: false, error: "Media not found." }
-        }));
-      } catch (error) {
-        setMediaRelationPreviewByMode((current) => ({
-          ...current,
-          [mode]: { item: null, isLoading: false, error: error instanceof Error ? error.message : "Failed to resolve media." }
-        }));
-      }
-    };
-
-    void resolveMode("parent");
-    void resolveMode("child");
-    return undefined;
-  }, [selectedMedia, isEditingMedia, mediaDraft.parent, mediaDraft.child, findMediaById]);
-
   useEffect(() => {
     if (!selectedMedia) {
       return undefined;
@@ -497,7 +418,7 @@ export default function FavoritesContainer() {
     let cancelled = false;
     const loadRelatedMedia = async () => {
       try {
-        const items = await buildRelatedMediaChain({ media: selectedMedia, findMediaById });
+        const items = await buildRelatedMediaChain({ media: selectedMedia, findMediaById: mediaReferencePicker.findMediaById });
         if (!cancelled) {
           setRelatedMediaItems(items);
         }
@@ -512,7 +433,7 @@ export default function FavoritesContainer() {
     return () => {
       cancelled = true;
     };
-  }, [selectedMedia, findMediaById]);
+  }, [mediaReferencePicker.findMediaById, selectedMedia]);
 
   const handleOpenRelatedMediaById = async (targetId) => {
     const normalizedId = Number(targetId);
@@ -522,7 +443,7 @@ export default function FavoritesContainer() {
 
     setMediaModalError("");
     try {
-      const candidate = await findMediaById(normalizedId);
+      const candidate = await mediaReferencePicker.findMediaById(normalizedId);
       if (!candidate) {
         throw new Error(`Media with id ${normalizedId} was not found.`);
       }
@@ -530,71 +451,6 @@ export default function FavoritesContainer() {
     } catch (error) {
       setMediaModalError(error instanceof Error ? error.message : "Failed to open related media.");
     }
-  };
-
-  const openMediaRelationPicker = (mode) => {
-    setMediaRelationPickerMode(mode === "child" ? "child" : "parent");
-    setMediaRelationPickerQuery("");
-    setMediaRelationPickerPage(1);
-    setIsMediaRelationPickerOpen(true);
-  };
-
-  const closeMediaRelationPicker = () => {
-    setIsMediaRelationPickerOpen(false);
-    setMediaRelationPickerError("");
-  };
-
-  useEffect(() => {
-    if (!isMediaRelationPickerOpen) {
-      return undefined;
-    }
-
-    let cancelled = false;
-    const loadItems = async () => {
-      setIsMediaRelationPickerLoading(true);
-      setMediaRelationPickerError("");
-      try {
-        const response = await mediaApi.listMedia({
-          page: mediaRelationPickerPage,
-          pageSize: 24,
-          search: mediaRelationPickerQuery.trim() || undefined
-        });
-        if (cancelled) {
-          return;
-        }
-        const items = Array.isArray(response?.items) ? response.items : [];
-        setMediaRelationPickerItems(items);
-        setMediaRelationPickerTotalPages(Number(response?.totalPages || 0));
-        setMediaRelationPickerTotalCount(Number(response?.totalCount || items.length));
-      } catch (error) {
-        if (!cancelled) {
-          setMediaRelationPickerItems([]);
-          setMediaRelationPickerTotalPages(0);
-          setMediaRelationPickerTotalCount(0);
-          setMediaRelationPickerError(error instanceof Error ? error.message : "Failed to load media.");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsMediaRelationPickerLoading(false);
-        }
-      }
-    };
-
-    void loadItems();
-    return () => {
-      cancelled = true;
-    };
-  }, [isMediaRelationPickerOpen, mediaRelationPickerPage, mediaRelationPickerQuery]);
-
-  const handleSelectMediaRelationFromPicker = (item) => {
-    const selectedId = Number(item?.id);
-    if (!Number.isSafeInteger(selectedId) || selectedId <= 0) {
-      return;
-    }
-
-    const key = mediaRelationPickerMode === "child" ? "child" : "parent";
-    setMediaDraft((current) => ({ ...current, [key]: String(selectedId) }));
-    closeMediaRelationPicker();
   };
 
   const handleSaveMedia = async () => {
@@ -743,27 +599,24 @@ export default function FavoritesContainer() {
             return { ...current, tagIds: hasTag ? currentIds.filter((id) => id !== tagId) : [...currentIds, tagId] };
           })}
           relatedMediaItems={relatedMediaItems}
-          relationPreviewByMode={mediaRelationPreviewByMode}
-          onOpenRelationPicker={openMediaRelationPicker}
+          relationPreviewByMode={mediaReferencePicker.previewByMode}
+          onOpenRelationPicker={mediaReferencePicker.openPicker}
           onOpenRelatedMediaById={handleOpenRelatedMediaById}
-          isMediaRelationPickerOpen={isMediaRelationPickerOpen}
-          mediaRelationPickerMode={mediaRelationPickerMode}
-          mediaRelationPickerQuery={mediaRelationPickerQuery}
-          onMediaRelationPickerQueryChange={(value) => {
-            setMediaRelationPickerQuery(value);
-            setMediaRelationPickerPage(1);
-          }}
-          mediaRelationPickerItems={mediaRelationPickerItems}
-          mediaRelationPickerPage={mediaRelationPickerPage}
-          mediaRelationPickerTotalPages={mediaRelationPickerTotalPages}
-          mediaRelationPickerTotalCount={mediaRelationPickerTotalCount}
-          isMediaRelationPickerLoading={isMediaRelationPickerLoading}
-          mediaRelationPickerError={mediaRelationPickerError}
-          onMediaRelationPickerPrev={() => setMediaRelationPickerPage((current) => Math.max(1, current - 1))}
-          onMediaRelationPickerNext={() => setMediaRelationPickerPage((current) => current + 1)}
-          onMediaRelationPickerPageChange={(value) => setMediaRelationPickerPage(value)}
-          onCloseMediaRelationPicker={closeMediaRelationPicker}
-          onSelectMediaRelationFromPicker={handleSelectMediaRelationFromPicker}
+          isMediaRelationPickerOpen={mediaReferencePicker.isPickerOpen}
+          mediaRelationPickerMode={mediaReferencePicker.pickerMode}
+          mediaRelationPickerQuery={mediaReferencePicker.pickerQuery}
+          onMediaRelationPickerQueryChange={mediaReferencePicker.setPickerQuery}
+          mediaRelationPickerItems={mediaReferencePicker.pickerItems}
+          mediaRelationPickerPage={mediaReferencePicker.pickerPage}
+          mediaRelationPickerTotalPages={mediaReferencePicker.pickerTotalPages}
+          mediaRelationPickerTotalCount={mediaReferencePicker.pickerTotalCount}
+          isMediaRelationPickerLoading={mediaReferencePicker.isPickerLoading}
+          mediaRelationPickerError={mediaReferencePicker.pickerError}
+          onMediaRelationPickerPrev={() => mediaReferencePicker.setPickerPage((current) => Math.max(1, current - 1))}
+          onMediaRelationPickerNext={() => mediaReferencePicker.setPickerPage((current) => current + 1)}
+          onMediaRelationPickerPageChange={mediaReferencePicker.setPickerPage}
+          onCloseMediaRelationPicker={mediaReferencePicker.closePicker}
+          onSelectMediaRelationFromPicker={mediaReferencePicker.selectFromPicker}
           onStartEdit={() => setIsEditingMedia(true)}
           onCancelEdit={() => setIsEditingMedia(false)}
           onSaveEdit={handleSaveMedia}

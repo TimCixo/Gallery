@@ -1,75 +1,76 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  getNextSuggestionState,
-  shouldApplySuggestionOnTab,
-  shouldCloseSuggestionListOnEscape
-} from "../features/search/searchInputState.js";
+  getAutocompleteNextState,
+  shouldAutocompleteCommit,
+  shouldAutocompleteClose
+} from "../features/shared/utils/autocompleteState.js";
 
 test("ArrowDown activates the first suggestion when none is selected", () => {
   assert.deepEqual(
-    getNextSuggestionState({
+    getAutocompleteNextState({
       direction: "next",
       activeIndex: 0,
-      suggestionCount: 3,
-      isSuggestionActive: false
+      optionCount: 3,
+      isOptionActive: false
     }),
     {
       activeIndex: 0,
-      isSuggestionActive: true
+      isOptionActive: true
     }
   );
 });
 
 test("ArrowUp activates the last suggestion when none is selected", () => {
   assert.deepEqual(
-    getNextSuggestionState({
+    getAutocompleteNextState({
       direction: "previous",
       activeIndex: 0,
-      suggestionCount: 3,
-      isSuggestionActive: false
+      optionCount: 3,
+      isOptionActive: false
     }),
     {
       activeIndex: 2,
-      isSuggestionActive: true
+      isOptionActive: true
     }
   );
 });
 
 test("Arrow navigation wraps around the suggestion list", () => {
   assert.deepEqual(
-    getNextSuggestionState({
+    getAutocompleteNextState({
       direction: "next",
       activeIndex: 2,
-      suggestionCount: 3,
-      isSuggestionActive: true
+      optionCount: 3,
+      isOptionActive: true
     }),
     {
       activeIndex: 0,
-      isSuggestionActive: true
+      isOptionActive: true
     }
   );
 
   assert.deepEqual(
-    getNextSuggestionState({
+    getAutocompleteNextState({
       direction: "previous",
       activeIndex: 0,
-      suggestionCount: 3,
-      isSuggestionActive: true
+      optionCount: 3,
+      isOptionActive: true
     }),
     {
       activeIndex: 2,
-      isSuggestionActive: true
+      isOptionActive: true
     }
   );
 });
 
 test("Tab applies the current suggestion only when the list is open", () => {
-  assert.equal(shouldApplySuggestionOnTab({ isSuggestionListOpen: true, suggestionCount: 2 }), true);
-  assert.equal(shouldApplySuggestionOnTab({ isSuggestionListOpen: false, suggestionCount: 2 }), false);
+  assert.equal(shouldAutocompleteCommit({ isOpen: true, optionCount: 2, key: "Tab" }), true);
+  assert.equal(shouldAutocompleteCommit({ isOpen: false, optionCount: 2, key: "Tab" }), false);
+  assert.equal(shouldAutocompleteCommit({ isOpen: true, optionCount: 2, key: "Enter", commitKeys: ["Enter", "Tab"] }), true);
 });
 
 test("Escape closes the suggestion list only when it is open", () => {
-  assert.equal(shouldCloseSuggestionListOnEscape({ isSuggestionListOpen: true }), true);
-  assert.equal(shouldCloseSuggestionListOnEscape({ isSuggestionListOpen: false }), false);
+  assert.equal(shouldAutocompleteClose({ isOpen: true, key: "Escape" }), true);
+  assert.equal(shouldAutocompleteClose({ isOpen: false, key: "Escape" }), false);
 });
