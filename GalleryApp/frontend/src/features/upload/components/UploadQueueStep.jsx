@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { isFileDragEvent } from "../utils/uploadHelpers";
+import UploadQueueGridItem from "./UploadQueueGridItem";
 
 export default function UploadQueueStep({
   queue,
@@ -8,10 +10,13 @@ export default function UploadQueueStep({
   onSetDragAndDrop,
   onDrop,
   onPaste,
-  onMove,
+  onReorder,
   onRemove,
   state
 }) {
+  const [draggedKey, setDraggedKey] = useState("");
+  const [dropTargetKey, setDropTargetKey] = useState("");
+
   return (
     <div className="upload-queue-step" onPaste={onPaste}>
       <button
@@ -57,37 +62,46 @@ export default function UploadQueueStep({
       {queue.items.length === 0 ? (
         <p className="upload-queue-empty">No files selected yet.</p>
       ) : (
-        <ul className="upload-queue-list">
+        <ul className="upload-queue-grid">
           {queue.items.map((item, index) => (
-            <li key={item.key} className="upload-queue-item">
-              <span className="upload-queue-file-name">{item.file.name}</span>
-              <div className="upload-queue-item-actions">
-                <button
-                  type="button"
-                  className="media-action-btn"
-                  onClick={() => onMove(item.key, "up")}
-                  disabled={index === 0 || isUploading}
-                >
-                  Up
-                </button>
-                <button
-                  type="button"
-                  className="media-action-btn"
-                  onClick={() => onMove(item.key, "down")}
-                  disabled={index === queue.items.length - 1 || isUploading}
-                >
-                  Down
-                </button>
-                <button
-                  type="button"
-                  className="media-action-btn media-action-danger"
-                  onClick={() => onRemove(item.key)}
-                  disabled={isUploading}
-                >
-                  Remove
-                </button>
-              </div>
-            </li>
+            <UploadQueueGridItem
+              key={item.key}
+              item={item}
+              index={index}
+              isUploading={isUploading}
+              isDragging={draggedKey === item.key}
+              isDropTarget={dropTargetKey === item.key && draggedKey !== item.key}
+              onDragStart={(event) => {
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", item.key);
+                setDraggedKey(item.key);
+                setDropTargetKey(item.key);
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+              }}
+              onDragEnter={(event) => {
+                event.preventDefault();
+                if (draggedKey && draggedKey !== item.key) {
+                  setDropTargetKey(item.key);
+                }
+              }}
+              onDragEnd={() => {
+                setDraggedKey("");
+                setDropTargetKey("");
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                const nextDraggedKey = event.dataTransfer.getData("text/plain") || draggedKey;
+                if (nextDraggedKey && nextDraggedKey !== item.key) {
+                  onReorder(nextDraggedKey, item.key);
+                }
+                setDraggedKey("");
+                setDropTargetKey("");
+              }}
+              onRemove={onRemove}
+            />
           ))}
         </ul>
       )}

@@ -114,7 +114,7 @@ export default function UploadManagerContainer() {
     handleUploadQueueDrop,
     handleUploadQueuePaste,
     handleRemoveUploadItem,
-    moveUploadItem,
+    reorderUploadItem,
     updateActiveUploadDraft
   } = useUploadQueue({
     queue,
@@ -806,7 +806,7 @@ export default function UploadManagerContainer() {
                 onSetDragAndDrop={setDragAndDrop}
                 onDrop={handleUploadQueueDrop}
                 onPaste={handleUploadQueuePaste}
-                onMove={moveUploadItem}
+                onReorder={reorderUploadItem}
                 onRemove={handleRemoveUploadItem}
                 state={state}
               />

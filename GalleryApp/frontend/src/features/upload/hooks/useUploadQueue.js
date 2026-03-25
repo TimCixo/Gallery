@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { createEmptyMediaDraft } from "../../media/utils/bulkMediaEdit";
 import { VIDEO_EXTENSIONS, getExtensionFromPath } from "../../../utils/mediaIdentity";
 import { getFileKey } from "../utils/uploadHelpers";
+import { getUploadQueueActiveIndex, reorderUploadQueueItems } from "../utils/uploadQueueOrdering";
 
 export function useUploadQueue({
   queue,
@@ -108,21 +109,21 @@ export function useUploadQueue({
     });
   }, [queue.items, queue.activeUploadIndex, setQueueState]);
 
-  const moveUploadItem = useCallback((itemKey, direction) => {
-    const index = queue.items.findIndex((item) => item.key === itemKey);
-    if (index < 0) {
+  const reorderUploadItem = useCallback((draggedKey, targetKey) => {
+    if (!draggedKey || !targetKey || draggedKey === targetKey) {
       return;
     }
 
-    const targetIndex = direction === "up" ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= queue.items.length) {
+    const activeItemKey = queue.items[queue.activeUploadIndex]?.key || "";
+    const nextItems = reorderUploadQueueItems(queue.items, draggedKey, targetKey);
+    if (nextItems === queue.items) {
       return;
     }
 
-    const next = [...queue.items];
-    const [moved] = next.splice(index, 1);
-    next.splice(targetIndex, 0, moved);
-    setQueueState({ items: next });
+    setQueueState({
+      items: nextItems,
+      activeUploadIndex: getUploadQueueActiveIndex(nextItems, activeItemKey)
+    });
   }, [queue.items, setQueueState]);
 
   const updateActiveUploadDraft = useCallback((patch) => {
@@ -143,7 +144,7 @@ export function useUploadQueue({
     handleUploadQueueDrop,
     handleUploadQueuePaste,
     handleRemoveUploadItem,
-    moveUploadItem,
+    reorderUploadItem,
     updateActiveUploadDraft
   };
 }
