@@ -9,6 +9,15 @@ const getLinkedIds = (item) => {
   return [parentId, childId].filter((value) => value !== null);
 };
 
+const pickGroupRepresentative = (orderedComponent, componentIds, fallbackItem) => {
+  const rootEntry = orderedComponent.find((entry) => {
+    const parentId = normalizeMediaId(entry?.item?.parent);
+    return parentId === null || !componentIds.has(parentId);
+  });
+
+  return rootEntry?.item || orderedComponent[0]?.item || fallbackItem;
+};
+
 export function groupRelatedMediaItems(items) {
   if (!Array.isArray(items) || items.length === 0) {
     return [];
@@ -72,7 +81,8 @@ export function groupRelatedMediaItems(items) {
     }
 
     const orderedComponent = component.sort((left, right) => left.index - right.index);
-    const representative = orderedComponent[0]?.item || item;
+    const componentIds = new Set(orderedComponent.map((entry) => normalizeMediaId(entry?.item?.id)).filter((value) => value !== null));
+    const representative = pickGroupRepresentative(orderedComponent, componentIds, item);
     groupedItems.push({
       ...representative,
       _groupItems: orderedComponent.map((entry) => entry.item),

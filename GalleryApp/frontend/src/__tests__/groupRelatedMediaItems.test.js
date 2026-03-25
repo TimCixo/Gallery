@@ -29,3 +29,16 @@ test("groupRelatedMediaItems keeps unrelated entries and invalid ids intact", ()
 
   assert.equal(groupRelatedMediaItems(items).length, 3);
 });
+
+test("groupRelatedMediaItems keeps the root parent as representative even when children come first", () => {
+  const items = [
+    { id: 12, parent: 11, relativePath: "12.jpg" },
+    { id: 11, parent: 10, child: 12, relativePath: "11.jpg" },
+    { id: 10, child: 11, relativePath: "10.jpg" }
+  ];
+
+  const [groupedItem] = groupRelatedMediaItems(items);
+  assert.equal(groupedItem.id, 10);
+  assert.equal(groupedItem._groupCount, 3);
+  assert.deepEqual(groupedItem._groupItems.map((item) => item.id), [12, 11, 10]);
+});
