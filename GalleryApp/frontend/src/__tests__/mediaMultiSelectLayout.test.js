@@ -150,18 +150,18 @@ test("bulk media editor group tags add missing tags to all targeted media", () =
 });
 
 test("bulk save updates only changed fields across media domains", () => {
-  assert.match(galleryContainerSource, /saveBulkMediaItems/);
-  assert.match(favoritesContainerSource, /saveBulkMediaItems/);
-  assert.match(collectionsContainerSource, /saveBulkMediaItems/);
-  assert.match(galleryContainerSource, /const updatedItemsById = await saveBulkMediaItems\(\{/);
-  assert.match(favoritesContainerSource, /const updatedItemsById = await saveBulkMediaItems\(\{/);
-  assert.match(collectionsContainerSource, /const updatedItemsById = await saveBulkMediaItems\(\{/);
+  assert.match(galleryContainerSource, /saveBulkSelectedMedia/);
+  assert.match(favoritesContainerSource, /saveBulkSelectedMedia/);
+  assert.match(collectionsContainerSource, /saveBulkSelectedMedia/);
+  assert.match(galleryContainerSource, /await saveBulkSelectedMedia\(\{/);
+  assert.match(favoritesContainerSource, /await saveBulkSelectedMedia\(\{/);
+  assert.match(collectionsContainerSource, /await saveBulkSelectedMedia\(\{/);
   assert.match(galleryContainerSource, /relationStrategy,/);
   assert.match(favoritesContainerSource, /relationStrategy,/);
   assert.match(collectionsContainerSource, /relationStrategy,/);
-  assert.match(galleryContainerSource, /updateMedia: mediaApi\.updateMedia/);
-  assert.match(favoritesContainerSource, /updateMedia: mediaApi\.updateMedia/);
-  assert.match(collectionsContainerSource, /updateMedia: mediaApi\.updateMedia/);
+  assert.match(galleryContainerSource, /mediaApi,/);
+  assert.match(favoritesContainerSource, /mediaApi,/);
+  assert.match(collectionsContainerSource, /mediaApi,/);
 });
 
 test("multi-select styles highlight selected media and bulk actions", () => {

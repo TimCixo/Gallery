@@ -18,7 +18,18 @@ import MediaRelationPickerModal from "../media/components/MediaRelationPickerMod
 import QuickTaggingModal from "../media/components/QuickTaggingModal";
 import { useMediaMultiSelect } from "../media/hooks/useMediaMultiSelect";
 import { useQuickTagging } from "../media/hooks/useQuickTagging";
-import { saveBulkMediaItems } from "../media/utils/bulkMediaSave";
+import {
+  deleteBulkSelectedMedia,
+  deleteSelectedMedia,
+  saveBulkSelectedMedia,
+  saveSelectedMediaDetails
+} from "../media/utils/mediaBulkActions";
+import {
+  addSelectedMediaToCollection,
+  openMediaCollectionPicker,
+  refreshMediaTagCatalog,
+  toggleSelectedMediaFavorite as toggleMediaFavorite
+} from "../media/utils/mediaMutationHelpers";
 import { buildRelatedMediaChain } from "../media/utils/relatedMediaChain";
 import CollectionsPage from "./CollectionsPage";
 import AppIcon from "../shared/components/AppIcon";
@@ -91,20 +102,12 @@ export default function CollectionsContainer({ searchQuery = "" }) {
   const [isBulkEditing, setIsBulkEditing] = useState(false);
 
   const refreshTagCatalog = useCallback(async () => {
-    setIsTagCatalogLoading(true);
-    try {
-      const [tagsResponse, tagTypesResponse] = await Promise.all([
-        tagsApi.listTags(),
-        tagsApi.listTagTypes()
-      ]);
-      setTagCatalog(Array.isArray(tagsResponse?.items) ? tagsResponse.items : []);
-      setTagTypesCatalog(Array.isArray(tagTypesResponse?.items) ? tagTypesResponse.items : []);
-    } catch {
-      setTagCatalog([]);
-      setTagTypesCatalog([]);
-    } finally {
-      setIsTagCatalogLoading(false);
-    }
+    await refreshMediaTagCatalog({
+      tagsApi,
+      setTagCatalog,
+      setTagTypesCatalog,
+      setIsTagCatalogLoading
+    });
   }, []);
 
   const loadCollections = useCallback(async () => {
@@ -431,68 +434,51 @@ export default function CollectionsContainer({ searchQuery = "" }) {
   };
 
   const openCollectionPickerForSelectedMedia = async () => {
-    if (!selectedMedia?.id || isCollectionPickerLoading || isAddingMediaToCollection) {
-      return;
-    }
-
-    setIsCollectionPickerOpen(true);
-    setCollectionPickerError("");
-    setIsCollectionPickerLoading(true);
-    try {
-      const response = await collectionsApi.listCollections({ mediaId: selectedMedia.id });
-      setCollectionPickerItems(Array.isArray(response?.items) ? response.items : []);
-    } catch (error) {
-      setCollectionPickerItems([]);
-      setCollectionPickerError(error instanceof Error ? error.message : "Failed to fetch collections.");
-    } finally {
-      setIsCollectionPickerLoading(false);
-    }
+    await openMediaCollectionPicker({
+      selectedMedia,
+      isCollectionPickerLoading,
+      isAddingMediaToCollection,
+      collectionsApi,
+      setIsCollectionPickerOpen,
+      setCollectionPickerError,
+      setIsCollectionPickerLoading,
+      setCollectionPickerItems
+    });
   };
 
   const handleAddSelectedMediaToCollection = async (collectionId) => {
-    if (!selectedMedia?.id || !Number.isInteger(collectionId) || collectionId <= 0 || isAddingMediaToCollection) {
-      return;
-    }
-
-    setIsAddingMediaToCollection(true);
-    setCollectionPickerError("");
-    try {
-      await collectionsApi.addMediaToCollection(collectionId, selectedMedia.id);
-      setCollectionPickerItems((current) => current.map((item) => (
-        item.id === collectionId ? { ...item, containsMedia: true } : item
-      )));
-      window.dispatchEvent(new CustomEvent("gallery:media-updated"));
-    } catch (error) {
-      setCollectionPickerError(error instanceof Error ? error.message : "Failed to add media to collection.");
-    } finally {
-      setIsAddingMediaToCollection(false);
-    }
+    await addSelectedMediaToCollection({
+      selectedMedia,
+      collectionId,
+      isAddingMediaToCollection,
+      collectionsApi,
+      setIsAddingMediaToCollection,
+      setCollectionPickerError,
+      setCollectionPickerItems,
+      onSuccess: () => window.dispatchEvent(new CustomEvent("gallery:media-updated"))
+    });
   };
 
   const isSelectedMediaFavorite = Boolean(selectedMedia?.isFavorite);
   const toggleSelectedMediaFavorite = async () => {
-    if (!selectedMedia?.id || isFavoriteUpdating) {
-      return;
-    }
-
-    const mediaId = selectedMedia.id;
-    const nextIsFavorite = !Boolean(selectedMedia.isFavorite);
-    setIsFavoriteUpdating(true);
-    setMediaModalError("");
-    try {
-      await mediaApi.setFavorite(mediaId, nextIsFavorite);
-      setSelectedMedia((current) => (
-        current && current.id === mediaId ? { ...current, isFavorite: nextIsFavorite } : current
-      ));
-      setCollectionFiles((current) => current.map((item) => (
-        item.id === mediaId ? { ...item, isFavorite: nextIsFavorite } : item
-      )));
-      window.dispatchEvent(new CustomEvent("gallery:media-updated"));
-    } catch (error) {
-      setMediaModalError(error instanceof Error ? error.message : "Failed to update favorites.");
-    } finally {
-      setIsFavoriteUpdating(false);
-    }
+    await toggleMediaFavorite({
+      selectedMedia,
+      isFavoriteUpdating,
+      mediaApi,
+      setIsFavoriteUpdating,
+      setMediaModalError,
+      applyLocalFavoriteState: (nextIsFavorite, mediaId) => {
+        setSelectedMedia((current) => (
+          current && current.id === mediaId ? { ...current, isFavorite: nextIsFavorite } : current
+        ));
+        setCollectionFiles((current) => current.map((item) => (
+          item.id === mediaId ? { ...item, isFavorite: nextIsFavorite } : item
+        )));
+      },
+      onSuccess: async () => {
+        window.dispatchEvent(new CustomEvent("gallery:media-updated"));
+      }
+    });
   };
 
   const toNullableId = (value) => {
@@ -849,41 +835,21 @@ export default function CollectionsContainer({ searchQuery = "" }) {
   };
 
   const handleSaveMedia = async () => {
-    if (!selectedMedia?.id || isSavingMedia || isDeletingMedia) {
-      return;
-    }
-
-    setIsSavingMedia(true);
-    setMediaModalError("");
-    try {
-      const payload = {
-        title: String(mediaDraft.title || "").trim() || null,
-        description: String(mediaDraft.description || "").trim() || null,
-        source: String(mediaDraft.source || "").trim() || null,
-        parent: toNullableId(mediaDraft.parent),
-        child: toNullableId(mediaDraft.child),
-        tagIds: Array.isArray(mediaDraft.tagIds) ? mediaDraft.tagIds : []
-      };
-      await mediaApi.updateMedia(selectedMedia.id, payload);
-      const patch = {
-        title: payload.title,
-        description: payload.description,
-        source: payload.source,
-        parent: payload.parent,
-        child: payload.child,
-        tags: tagCatalog.filter((tag) => payload.tagIds.includes(Number(tag.id)))
-      };
-      setSelectedMedia((current) => (current ? { ...current, ...patch } : current));
-      setCollectionFiles((current) => current.map((item) => (
-        item.id === selectedMedia.id ? { ...item, ...patch } : item
-      )));
-      setIsEditingMedia(false);
-      window.dispatchEvent(new CustomEvent("gallery:media-updated"));
-    } catch (error) {
-      setMediaModalError(error instanceof Error ? error.message : "Failed to update media.");
-    } finally {
-      setIsSavingMedia(false);
-    }
+    await saveSelectedMediaDetails({
+      selectedMedia,
+      mediaDraft,
+      isSavingMedia,
+      isDeletingMedia,
+      mediaApi,
+      tagCatalog,
+      toNullableId,
+      setIsSavingMedia,
+      setMediaModalError,
+      setSelectedMedia,
+      setItems: setCollectionFiles,
+      setIsEditingMedia,
+      onSuccess: () => window.dispatchEvent(new CustomEvent("gallery:media-updated"))
+    });
   };
 
   const handleOpenBulkEdit = async () => {
@@ -897,77 +863,55 @@ export default function CollectionsContainer({ searchQuery = "" }) {
   };
 
   const handleBulkSaveMedia = async ({ items, collectionIds, relationStrategy }) => {
-    if (!Array.isArray(items) || items.length === 0 || isSavingMedia || isDeletingMedia) {
-      return;
-    }
-
-    setIsSavingMedia(true);
-    setMediaModalError("");
-    try {
-      const updatedItemsById = await saveBulkMediaItems({
-        items,
-        relationStrategy,
-        collectionIds,
-        tagCatalog,
-        updateMedia: mediaApi.updateMedia,
-        addMediaToCollection: collectionsApi.addMediaToCollection
-      });
-
-      setCollectionFiles((current) => current.map((item) => updatedItemsById.get(item.id) || item));
-      setSelectedMedia((current) => (current ? (updatedItemsById.get(current.id) || current) : current));
-      setIsBulkEditing(false);
-      mediaSelection.clearSelection();
-      window.dispatchEvent(new CustomEvent("gallery:media-updated"));
-    } catch (error) {
-      setMediaModalError(error instanceof Error ? error.message : "Failed to update media.");
-    } finally {
-      setIsSavingMedia(false);
-    }
+    await saveBulkSelectedMedia({
+      items,
+      collectionIds,
+      relationStrategy,
+      isSavingMedia,
+      isDeletingMedia,
+      mediaApi,
+      collectionsApi,
+      tagCatalog,
+      setIsSavingMedia,
+      setMediaModalError,
+      setItems: setCollectionFiles,
+      setSelectedMedia,
+      setIsBulkEditing,
+      clearSelection: mediaSelection.clearSelection,
+      onSuccess: () => window.dispatchEvent(new CustomEvent("gallery:media-updated"))
+    });
   };
 
   const handleBulkDeleteMedia = async () => {
-    if (mediaSelection.selectedCount === 0 || isDeletingMedia || isSavingMedia) {
-      return;
-    }
-
-    setIsDeletingMedia(true);
-    setMediaModalError("");
-    try {
-      for (const item of mediaSelection.selectedMediaItems) {
-        await mediaApi.deleteMedia(item.id);
-      }
-
-      const selectedIds = new Set(mediaSelection.selectedMediaIds);
-      setCollectionFiles((current) => current.filter((item) => !selectedIds.has(Number(item.id))));
-      setSelectedMedia((current) => (current && selectedIds.has(Number(current.id)) ? null : current));
-      setPendingBulkDelete(null);
-      setIsBulkEditing(false);
-      mediaSelection.clearSelection();
-      window.dispatchEvent(new CustomEvent("gallery:media-updated"));
-    } catch (error) {
-      setMediaModalError(error instanceof Error ? error.message : "Failed to delete media.");
-    } finally {
-      setIsDeletingMedia(false);
-    }
+    await deleteBulkSelectedMedia({
+      selectedMediaItems: mediaSelection.selectedMediaItems,
+      selectedMediaIds: mediaSelection.selectedMediaIds,
+      isDeletingMedia,
+      isSavingMedia,
+      mediaApi,
+      setIsDeletingMedia,
+      setMediaModalError,
+      setItems: setCollectionFiles,
+      setSelectedMedia,
+      setPendingBulkDelete,
+      setIsBulkEditing,
+      clearSelection: mediaSelection.clearSelection,
+      onSuccess: () => window.dispatchEvent(new CustomEvent("gallery:media-updated"))
+    });
   };
 
   const handleDeleteMedia = async () => {
-    if (!selectedMedia?.id || isDeletingMedia || isSavingMedia) {
-      return;
-    }
-
-    setIsDeletingMedia(true);
-    setMediaModalError("");
-    try {
-      await mediaApi.deleteMedia(selectedMedia.id);
-      setCollectionFiles((current) => current.filter((item) => item.id !== selectedMedia.id));
-      setSelectedMedia(null);
-      window.dispatchEvent(new CustomEvent("gallery:media-updated"));
-    } catch (error) {
-      setMediaModalError(error instanceof Error ? error.message : "Failed to delete media.");
-    } finally {
-      setIsDeletingMedia(false);
-    }
+    await deleteSelectedMedia({
+      selectedMedia,
+      isDeletingMedia,
+      isSavingMedia,
+      mediaApi,
+      setIsDeletingMedia,
+      setMediaModalError,
+      setItems: setCollectionFiles,
+      setSelectedMedia,
+      onSuccess: () => window.dispatchEvent(new CustomEvent("gallery:media-updated"))
+    });
   };
 
   return (

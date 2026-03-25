@@ -44,7 +44,6 @@ public class Program
         builder.Services.AddSingleton<MediaQueryService>();
         builder.Services.AddSingleton<MediaSimilarityService>();
         builder.Services.AddSingleton<PreviewCacheService>();
-        builder.Services.AddSingleton<CollectionService>();
 
         builder.Services.AddCors(options =>
         {
