@@ -1,102 +1,80 @@
 # Gallery
 
-Gallery - локальний full-stack застосунок для керування медіаархівом: зображеннями, відео, колекціями, обраним і тегами. Репозиторій організований так, щоб root README був картою всього проєкту, а підREADME пояснювали frontend і backend окремо.
+Gallery is a local full-stack application for managing a media archive: images, video, collections, favorites, tags, and upload workflows.
 
-## Технологічний стек
+## Stack
 
 - Backend: ASP.NET Core Minimal API, .NET 9, SQLite
 - Frontend: React 18, Vite
-- Зберігання медіа: файлова система в `GalleryApp/backend/App_Data/Media`
-- Обробка preview для відео/GIF: `ffmpeg`
-- Уніфікований локальний запуск: `run-app.py`
+- Media storage: `GalleryApp/backend/App_Data/Media`
+- Preview pipeline: `ffmpeg`
+- Unified local launcher: `run-app.py`
 
-## Структура проєкту
+## Repository Structure
 
 ```text
 Gallery/
+|-- Docs/               # detailed project documentation
 |-- GalleryApp/
-|   |-- backend/         # API, SQLite, media storage, runtime data
-|   |-- frontend/        # React/Vite клієнт
-|   `-- native/          # допоміжна директорія для локальних native-артефактів
-|-- App_Data/            # коренева runtime-директорія, якщо використовується локальними сценаріями
-|-- tmp/                 # тимчасові локальні артефакти
-|-- Gallery.sln          # .NET solution для backend
-|-- run-app.py           # спільний launcher для backend + frontend
-`-- README.md            # огляд усього репозиторію
+|   |-- backend/        # API, SQLite, media storage, runtime data
+|   |-- frontend/       # React/Vite client
+|   `-- native/         # local native artifacts
+|-- App_Data/           # optional root-level runtime data
+|-- tmp/                # temporary local artifacts
+|-- Gallery.sln         # .NET solution for backend
+|-- run-app.py          # launcher for backend + frontend
+`-- README.md           # repository overview
 ```
 
-### Ключові вузли
+## Quick Start
 
-- `GalleryApp/backend` містить API, доступ до SQLite, обробку upload/preview і файлове сховище медіа.
-- `GalleryApp/frontend` містить UI на React/Vite, сторінки галереї, обраного, колекцій, тегів і upload manager.
-- `run-app.py` запускає backend і frontend разом, налаштовує режим `machine` або `network` і намагається знайти `ffmpeg`.
-- `Gallery.sln` потрібен для роботи з backend через Visual Studio або стандартний .NET tooling.
-- `App_Data` і `tmp` не є частиною логічної архітектури, але можуть містити локальні runtime або тимчасові файли.
+Run from the repository root.
 
-## Швидкий запуск усього застосунку
-
-Запускати з кореня репозиторію.
-
-### Локально на цій машині
+### Local machine
 
 ```bash
 python3 run-app.py --mode machine
 ```
 
-### У локальній мережі
+### Local network
 
 ```bash
 python3 run-app.py --mode network
 ```
 
-### Без автоматичного відкриття браузера
+### Without opening the browser
 
 ```bash
 python3 run-app.py --mode machine --open-url false
 ```
 
-### Коли використовувати root launcher
-
-- Використовуйте `run-app.py`, коли потрібно швидко підняти весь застосунок цілком.
-- Запускайте frontend і backend окремо, коли дебажите лише одну підсистему або працюєте з IDE/tooling напряму.
-
-## Вимоги
+## Requirements
 
 - .NET SDK 9
-- Node.js 18+ і npm
+- Node.js 18+ and npm
 - Python 3
-- `ffmpeg` опційно, але потрібен для preview відео та GIF
+- `ffmpeg` for video/GIF preview generation
 
-## Окремий запуск підсистем
-
-### Backend
-
-```bash
-cd GalleryApp/backend
-dotnet run --urls http://localhost:5000
-```
-
-### Frontend
-
-```bash
-cd GalleryApp/frontend
-npm install
-npm run dev -- --host localhost --port 5173
-```
-
-## Де шукати деталі
-
-- Frontend: [GalleryApp/frontend/README.md](GalleryApp/frontend/README.md)
-- Backend: [GalleryApp/backend/README.md](GalleryApp/backend/README.md)
-
-## Основні URL за замовчуванням
+## Default URLs
 
 - Frontend: `http://localhost:5173`
 - Backend: `http://localhost:5000`
 - Media files: `http://localhost:5000/media/...`
 
-## Примітки
+## Documentation
 
-- Backend зберігає SQLite базу в `GalleryApp/backend/App_Data/gallery.db`.
-- Медіафайли зберігаються в `GalleryApp/backend/App_Data/Media`.
-- У режимі `network` потрібно дозволити порти `5000` і `5173` у firewall.
+- Repository map: [Docs/README.md](Docs/README.md)
+- Architecture overview: [Docs/Architecture.md](Docs/Architecture.md)
+- Frontend docs: [GalleryApp/frontend/README.md](GalleryApp/frontend/README.md)
+- Frontend module map: [Docs/Frontend/Modules.md](Docs/Frontend/Modules.md)
+- Frontend navigation and search: [Docs/Frontend/Navigation-and-Search.md](Docs/Frontend/Navigation-and-Search.md)
+- Backend docs: [GalleryApp/backend/README.md](GalleryApp/backend/README.md)
+- Backend API: [Docs/Backend/API.md](Docs/Backend/API.md)
+- Backend modules: [Docs/Backend/Modules.md](Docs/Backend/Modules.md)
+- Backend runtime and storage: [Docs/Backend/Runtime-and-Storage.md](Docs/Backend/Runtime-and-Storage.md)
+
+## Notes
+
+- SQLite database lives in `GalleryApp/backend/App_Data/gallery.db`.
+- Media files live in `GalleryApp/backend/App_Data/Media`.
+- In `network` mode you need to allow ports `5000` and `5173` in the firewall.
