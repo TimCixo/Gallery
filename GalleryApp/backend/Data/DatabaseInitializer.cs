@@ -73,6 +73,13 @@ public static class DatabaseInitializer
                 FOREIGN KEY (TagId) REFERENCES Tags(Id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS DuplicateGroupExclusions (
+                GroupKey TEXT NOT NULL,
+                MediaId INTEGER NOT NULL,
+                PRIMARY KEY (GroupKey, MediaId),
+                FOREIGN KEY (MediaId) REFERENCES Media(Id) ON DELETE CASCADE
+            );
+
             CREATE INDEX IF NOT EXISTS IX_Media_Parent ON Media(Parent);
             CREATE INDEX IF NOT EXISTS IX_Media_Child ON Media(Child);
             CREATE INDEX IF NOT EXISTS IX_Collections_Cover ON Collections(Cover);
@@ -86,6 +93,7 @@ public static class DatabaseInitializer
 
             CREATE INDEX IF NOT EXISTS IX_MediaTags_MediaId ON MediaTags(MediaId);
             CREATE INDEX IF NOT EXISTS IX_MediaTags_TagId ON MediaTags(TagId);
+            CREATE INDEX IF NOT EXISTS IX_DuplicateGroupExclusions_MediaId ON DuplicateGroupExclusions(MediaId);
 
             INSERT INTO Collections (Lable, Description, Cover)
             SELECT 'Favorites', NULL, NULL

@@ -83,9 +83,6 @@ export default function GalleryContainer({
   const [isCollectionPickerLoading, setIsCollectionPickerLoading] = useState(false);
   const [isAddingMediaToCollection, setIsAddingMediaToCollection] = useState(false);
   const [relatedMediaItems, setRelatedMediaItems] = useState([]);
-  const [similarMediaItems, setSimilarMediaItems] = useState([]);
-  const [isSimilarMediaLoading, setIsSimilarMediaLoading] = useState(false);
-  const [similarMediaError, setSimilarMediaError] = useState("");
   const [pendingBulkDelete, setPendingBulkDelete] = useState(null);
   const [isBulkEditing, setIsBulkEditing] = useState(false);
   const lastHandledSearchSubmitSeqRef = useRef(searchSubmitSeq);
@@ -289,9 +286,6 @@ export default function GalleryContainer({
       setIsTagCatalogLoading(false);
       mediaReferencePicker.resetPicker();
       setRelatedMediaItems([]);
-      setSimilarMediaItems([]);
-      setIsSimilarMediaLoading(false);
-      setSimilarMediaError("");
     }
   }, [mediaReferencePicker.resetPicker, selectedMedia]);
 
@@ -592,57 +586,6 @@ export default function GalleryContainer({
     };
   }, [mediaReferencePicker.findMediaById, selectedMedia]);
 
-  useEffect(() => {
-    if (!selectedMedia?.id) {
-      return undefined;
-    }
-
-    let cancelled = false;
-    const loadSimilarMedia = async () => {
-      setIsSimilarMediaLoading(true);
-      setSimilarMediaError("");
-      try {
-        const response = await mediaApi.listSimilarMedia(selectedMedia.id);
-        if (cancelled) {
-          return;
-        }
-
-        const items = Array.isArray(response?.items) ? response.items : [];
-        const normalizedItems = items
-          .map((entry) => {
-            const media = entry?.item;
-            if (!media || !Number.isSafeInteger(Number(media.id)) || Number(media.id) <= 0) {
-              return null;
-            }
-
-            return {
-              ...entry,
-              item: {
-                ...media,
-                _tileUrl: media.tileUrl || media.previewUrl || media.originalUrl || media.url || ""
-              }
-            };
-          })
-          .filter(Boolean);
-        setSimilarMediaItems(normalizedItems);
-      } catch (error) {
-        if (!cancelled) {
-          setSimilarMediaItems([]);
-          setSimilarMediaError(error instanceof Error ? error.message : "Failed to load similar media.");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsSimilarMediaLoading(false);
-        }
-      }
-    };
-
-    void loadSimilarMedia();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedMedia]);
-
   const handleOpenRelatedMediaById = async (targetId) => {
     const normalizedId = Number(targetId);
     if (!Number.isSafeInteger(normalizedId) || normalizedId <= 0 || selectedMedia?.id === normalizedId) {
@@ -807,9 +750,6 @@ export default function GalleryContainer({
             return { ...current, tagIds: hasTag ? currentIds.filter((id) => id !== tagId) : [...currentIds, tagId] };
           })}
           relatedMediaItems={relatedMediaItems}
-          similarMediaItems={similarMediaItems}
-          isSimilarMediaLoading={isSimilarMediaLoading}
-          similarMediaError={similarMediaError}
           relationPreviewByMode={mediaReferencePicker.previewByMode}
           onOpenRelationPicker={mediaReferencePicker.openPicker}
           onOpenRelatedMediaById={handleOpenRelatedMediaById}

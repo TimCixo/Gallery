@@ -1,80 +1,90 @@
 # Gallery
 
-Gallery is a local full-stack application for managing a media archive: images, video, collections, favorites, tags, and upload workflows.
+Gallery - локальний full-stack застосунок для керування медіаархівом: зображеннями, відео, колекціями, тегами, вибраним, завантаженням і групами точних дублікатів.
 
-## Stack
+## Стек
 
 - Backend: ASP.NET Core Minimal API, .NET 9, SQLite
 - Frontend: React 18, Vite
-- Media storage: `GalleryApp/backend/App_Data/Media`
-- Preview pipeline: `ffmpeg`
-- Unified local launcher: `run-app.py`
+- Зберігання медіа: `GalleryApp/backend/App_Data/Media`
+- Генерація прев'ю: `ffmpeg`
+- Локальний запуск: `run-app.py`
 
-## Repository Structure
+## Структура репозиторію
 
 ```text
 Gallery/
-|-- Docs/               # detailed project documentation
+|-- Docs/               # детальна документація проєкту
 |-- GalleryApp/
-|   |-- backend/        # API, SQLite, media storage, runtime data
-|   |-- frontend/       # React/Vite client
-|   `-- native/         # local native artifacts
-|-- App_Data/           # optional root-level runtime data
-|-- tmp/                # temporary local artifacts
-|-- Gallery.sln         # .NET solution for backend
-|-- run-app.py          # launcher for backend + frontend
-`-- README.md           # repository overview
+|   |-- backend/        # API, SQLite, медіафайли та runtime-дані
+|   |-- frontend/       # React/Vite-клієнт
+|   `-- native/         # локальні native-артефакти
+|-- App_Data/           # опціональні runtime-дані в корені
+|-- tmp/                # тимчасові локальні артефакти
+|-- Gallery.sln         # .NET solution для backend
+|-- run-app.py          # запуск frontend + backend
+`-- README.md           # короткий огляд репозиторію
 ```
 
-## Quick Start
+## Швидкий старт
 
-Run from the repository root.
+Запускати з кореня репозиторію.
 
-### Local machine
+### Локально на цій машині
 
 ```bash
 python3 run-app.py --mode machine
 ```
 
-### Local network
+### У локальній мережі
 
 ```bash
 python3 run-app.py --mode network
 ```
 
-### Without opening the browser
+### Без автоматичного відкриття браузера
 
 ```bash
 python3 run-app.py --mode machine --open-url false
 ```
 
-## Requirements
+## Вимоги
 
 - .NET SDK 9
-- Node.js 18+ and npm
+- Node.js 18+ і npm
 - Python 3
-- `ffmpeg` for video/GIF preview generation
+- `ffmpeg` для генерації прев'ю відео й GIF
 
-## Default URLs
+## Базові URL
 
 - Frontend: `http://localhost:5173`
 - Backend: `http://localhost:5000`
-- Media files: `http://localhost:5000/media/...`
+- Медіафайли: `http://localhost:5000/media/...`
 
-## Documentation
+## Ключовий функціонал
 
-- Repository map: [Docs/README.md](Docs/README.md)
-- Architecture overview: [Docs/Architecture.md](Docs/Architecture.md)
-- Frontend docs: [GalleryApp/frontend/README.md](GalleryApp/frontend/README.md)
-- Frontend module map: [Docs/Frontend/Modules.md](Docs/Frontend/Modules.md)
-- Frontend navigation and search: [Docs/Frontend/Navigation-and-Search.md](Docs/Frontend/Navigation-and-Search.md)
-- Backend docs: [GalleryApp/backend/README.md](GalleryApp/backend/README.md)
+- Галерея з переглядом медіа, метаданих і навігацією.
+- Collections, Favorites, Tags і upload workflow.
+- Окрема вкладка `Duplicates` у slide menu.
+- Групування exact duplicates за хешем.
+- Вибір parent media всередині duplicate group.
+- Exclude/Restore для false-positive елементів у duplicate group.
+- Merge duplicates з правилом `parent wins`: конфліктні значення не перезаписуються, а відсутні поля, теги, колекції та favorite переносяться на parent.
+
+## Документація
+
+- Карта репозиторію: [Docs/README.md](Docs/README.md)
+- Огляд архітектури: [Docs/Architecture.md](Docs/Architecture.md)
+- Frontend: [GalleryApp/frontend/README.md](GalleryApp/frontend/README.md)
+- Карта frontend-модулів: [Docs/Frontend/Modules.md](Docs/Frontend/Modules.md)
+- Навігація та пошук у frontend: [Docs/Frontend/Navigation-and-Search.md](Docs/Frontend/Navigation-and-Search.md)
+- Backend: [GalleryApp/backend/README.md](GalleryApp/backend/README.md)
 - Backend API: [Docs/Backend/API.md](Docs/Backend/API.md)
-- Backend modules: [Docs/Backend/Modules.md](Docs/Backend/Modules.md)
-- Backend runtime and storage: [Docs/Backend/Runtime-and-Storage.md](Docs/Backend/Runtime-and-Storage.md)
+- Backend-модулі: [Docs/Backend/Modules.md](Docs/Backend/Modules.md)
+- Runtime і storage backend: [Docs/Backend/Runtime-and-Storage.md](Docs/Backend/Runtime-and-Storage.md)
 
-## Notes
+## Нотатки
 
-- SQLite database lives in `GalleryApp/backend/App_Data/gallery.db`.
-- Media files live in `GalleryApp/backend/App_Data/Media`.
-- In `network` mode you need to allow ports `5000` and `5173` in the firewall.
+- SQLite-база лежить у `GalleryApp/backend/App_Data/gallery.db`.
+- Медіафайли лежать у `GalleryApp/backend/App_Data/Media`.
+- Для `network` mode потрібно відкрити порти `5000` і `5173` у firewall.

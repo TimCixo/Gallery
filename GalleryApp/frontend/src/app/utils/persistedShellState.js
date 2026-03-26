@@ -22,7 +22,7 @@ export function loadPersistedShellState(storage = globalThis?.sessionStorage) {
     }
 
     const parsed = JSON.parse(rawValue);
-    const activePage = ["gallery", "favorites", "collections", "tags"].includes(parsed?.activePage)
+    const activePage = ["gallery", "favorites", "duplicates", "collections", "tags"].includes(parsed?.activePage)
       ? parsed.activePage
       : DEFAULT_SHELL_STATE.activePage;
 

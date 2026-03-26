@@ -42,6 +42,7 @@ public class Program
         builder.Services.AddSingleton<ImageHashService>();
         builder.Services.AddSingleton<IMediaProcessingService, MediaProcessingService>();
         builder.Services.AddSingleton<MediaQueryService>();
+        builder.Services.AddSingleton<DuplicateMediaService>();
         builder.Services.AddSingleton<MediaSimilarityService>();
         builder.Services.AddSingleton<PreviewCacheService>();
 

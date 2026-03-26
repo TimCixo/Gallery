@@ -3,6 +3,7 @@ import { tagsApi } from "../api/tagsApi";
 import MediaFilterPopover from "./components/MediaFilterPopover";
 import GalleryContainer from "../features/gallery/GalleryContainer";
 import FavoritesContainer from "../features/favorites/FavoritesContainer";
+import DuplicatesContainer from "../features/duplicates/DuplicatesContainer";
 import CollectionsContainer from "../features/collections/CollectionsContainer";
 import TagsContainer from "../features/tags/TagsContainer";
 import UploadManagerContainer from "../features/upload/UploadManagerContainer";
@@ -177,6 +178,11 @@ export default function AppShell() {
     setIsSlideMenuOpen(false);
   };
 
+  const openDuplicatesPage = () => {
+    setActivePage("duplicates");
+    setIsSlideMenuOpen(false);
+  };
+
   const openTagsPage = () => {
     setActivePage("tags");
     setIsSlideMenuOpen(false);
@@ -305,6 +311,10 @@ export default function AppShell() {
                 <AppIcon name="favoriteEnabled" alt="" aria-hidden="true" />
                 <span>Favorite</span>
               </button>
+              <button type="button" className="slide-menu-item" onClick={openDuplicatesPage}>
+                <AppIcon name="duplicate" alt="" aria-hidden="true" />
+                <span>Duplicates</span>
+              </button>
               <button type="button" className="slide-menu-item" onClick={openTagsPage}>
                 <AppIcon name="tag" alt="" aria-hidden="true" />
                 <span>Tags</span>
@@ -327,6 +337,7 @@ export default function AppShell() {
         />
       ) : null}
       {activePage === "favorites" ? <FavoritesContainer /> : null}
+      {activePage === "duplicates" ? <DuplicatesContainer /> : null}
       {activePage === "collections" ? <CollectionsContainer searchQuery={submittedText} /> : null}
       {activePage === "tags" ? <TagsContainer /> : null}
     </main>

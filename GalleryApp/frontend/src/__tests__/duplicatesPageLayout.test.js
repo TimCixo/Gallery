@@ -1,0 +1,84 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const appShellPath = path.resolve(__dirname, "../app/AppShell.jsx");
+const duplicatesContainerPath = path.resolve(__dirname, "../features/duplicates/DuplicatesContainer.jsx");
+const duplicatesPagePath = path.resolve(__dirname, "../features/duplicates/DuplicatesPage.jsx");
+const duplicateGroupCardPath = path.resolve(__dirname, "../features/duplicates/components/DuplicateGroupCard.jsx");
+const duplicatesApiPath = path.resolve(__dirname, "../services/duplicatesApi.js");
+const mediaApiPath = path.resolve(__dirname, "../services/mediaApi.js");
+const mediaDeleteConfirmModalPath = path.resolve(__dirname, "../features/media/components/MediaDeleteConfirmModal.jsx");
+const appCssPath = path.resolve(__dirname, "../App.css");
+const appShellSource = readFileSync(appShellPath, "utf8");
+const duplicatesContainerSource = readFileSync(duplicatesContainerPath, "utf8");
+const duplicatesPageSource = readFileSync(duplicatesPagePath, "utf8");
+const duplicateGroupCardSource = readFileSync(duplicateGroupCardPath, "utf8");
+const duplicatesApiSource = readFileSync(duplicatesApiPath, "utf8");
+const mediaApiSource = readFileSync(mediaApiPath, "utf8");
+const mediaDeleteConfirmModalSource = readFileSync(mediaDeleteConfirmModalPath, "utf8");
+const appCss = readFileSync(appCssPath, "utf8");
+
+test("AppShell exposes duplicates in the slide menu and renders duplicates container", () => {
+  assert.match(appShellSource, /import DuplicatesContainer from "\.\.\/features\/duplicates\/DuplicatesContainer"/);
+  assert.match(appShellSource, /const openDuplicatesPage = \(\) => \{/);
+  assert.match(appShellSource, /<AppIcon name="duplicate" alt="" aria-hidden="true" \/>/);
+  assert.match(appShellSource, /<span>Duplicates<\/span>/);
+  assert.match(appShellSource, /activePage === "duplicates" \? <DuplicatesContainer \/> : null/);
+});
+
+test("duplicates page uses a dedicated grouped container and api", () => {
+  assert.match(duplicatesContainerSource, /duplicatesApi\.listDuplicateGroups/);
+  assert.match(duplicatesContainerSource, /MediaDeleteConfirmModal/);
+  assert.match(duplicatesContainerSource, /MediaViewerModal/);
+  assert.match(duplicatesContainerSource, /buildMediaUpdatePayload/);
+  assert.match(duplicatesContainerSource, /selectedMediaGroup/);
+  assert.match(duplicatesContainerSource, /selectedMediaBucket/);
+  assert.match(duplicatesContainerSource, /activeItems\.some\(\(item\) => item\.id === selectedMedia\.id\)/);
+  assert.match(duplicatesContainerSource, /selectedMediaGroup\.excludedItems/);
+  assert.match(duplicatesContainerSource, /selectedGroupItems/);
+  assert.match(duplicatesContainerSource, /handleNavigateSelectedMedia/);
+  assert.match(duplicatesContainerSource, /const handleKeyDown = \(event\) => \{/);
+  assert.match(duplicatesContainerSource, /event\.key === "ArrowLeft"/);
+  assert.match(duplicatesContainerSource, /event\.key === "ArrowRight"/);
+  assert.match(duplicatesContainerSource, /window\.addEventListener\("keydown", handleKeyDown\)/);
+  assert.match(duplicatesContainerSource, /onPrev=\{\(\) => handleNavigateSelectedMedia\(-1\)\}/);
+  assert.match(duplicatesContainerSource, /onNext=\{\(\) => handleNavigateSelectedMedia\(1\)\}/);
+  assert.match(duplicatesContainerSource, /canNavigate=\{canNavigateSelectedMedia\}/);
+  assert.doesNotMatch(duplicatesContainerSource, /FavoritesContainer/);
+  assert.match(duplicatesApiSource, /listDuplicateGroups/);
+  assert.match(duplicatesApiSource, /excludeDuplicateMedia/);
+  assert.match(duplicatesApiSource, /restoreDuplicateMedia/);
+  assert.match(duplicatesApiSource, /mergeDuplicateGroup/);
+  assert.match(duplicatesApiSource, /deleteDuplicateGroupItems/);
+  assert.match(duplicatesApiSource, /\/api\/media\/duplicates/);
+  assert.doesNotMatch(mediaApiSource, /listDuplicates/);
+});
+
+test("duplicates page renders grouped cards with exclude, restore, merge and delete actions", () => {
+  assert.match(duplicatesPageSource, /Loading duplicate groups/);
+  assert.match(duplicatesPageSource, /No duplicate groups found/);
+  assert.match(duplicatesPageSource, /DuplicateGroupCard/);
+  assert.match(duplicateGroupCardSource, /Delete duplicates/);
+  assert.match(duplicateGroupCardSource, /Merge/);
+  assert.match(duplicateGroupCardSource, /Excluded/);
+  assert.match(duplicateGroupCardSource, /Parent/);
+  assert.match(duplicateGroupCardSource, /actionIconName="minus"/);
+  assert.match(duplicateGroupCardSource, /actionIconName="plus"/);
+  assert.doesNotMatch(duplicateGroupCardSource, />\s*Open\s*</);
+  assert.match(duplicatesContainerSource, /Parent keeps its own conflicting values; only missing metadata is filled/);
+  assert.match(mediaDeleteConfirmModalSource, /message \|\| getMediaDeleteConfirmMessage/);
+  assert.match(mediaDeleteConfirmModalSource, /confirmButtonClassName/);
+  assert.match(appCss, /\.duplicate-group-card/);
+  assert.match(appCss, /\.duplicate-group-grid/);
+  assert.match(appCss, /\.duplicate-group-excluded/);
+  assert.match(appCss, /\.duplicate-group-overlay-action/);
+  assert.match(appCss, /grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(180px,\s*180px\)\)/);
+  assert.match(appCss, /width:\s*180px/);
+  assert.match(appCss, /aspect-ratio:\s*1\s*\/\s*1/);
+  assert.match(appCss, /box-sizing:\s*border-box/);
+});

@@ -1,22 +1,22 @@
 # Frontend
 
-Frontend of Gallery is a React/Vite client responsible for gallery, favorites, collections, tags, upload flows, and search UX.
+Frontend Gallery - це React/Vite-клієнт для галереї, favorites, collections, tags, upload workflow, пошуку та керування exact duplicates.
 
-## Stack
+## Стек
 
 - React 18
 - Vite 5
-- Node test runner for `src/__tests__/*.test.js`
+- Вбудований Node test runner для `src/__tests__/*.test.js`
 
-## Entry Points
+## Точки входу
 
 - `src/main.jsx`
 - `src/App.jsx`
 - `src/app/AppShell.jsx`
 
-## Development
+## Розробка
 
-Run from `GalleryApp/frontend`.
+Запускати з `GalleryApp/frontend`.
 
 ### Dev server
 
@@ -36,30 +36,58 @@ npm run build
 npm run preview
 ```
 
-### Tests
+### Тести
 
 ```bash
 npm test
 ```
 
-## Key Directories
+## Ключові директорії
 
 ```text
 src/
-|-- app/
-|-- features/
-|-- api/
-|-- hooks/
-|-- services/
-|-- utils/
-`-- __tests__/
+|-- app/         # shell, routing-like composition, global UI frame
+|-- features/    # feature-модулі галереї, duplicates, collections тощо
+|-- api/         # допоміжний API-код
+|-- hooks/       # загальні hooks
+|-- services/    # клієнти для backend API
+|-- utils/       # утиліти
+`-- __tests__/   # layout і поведінкові unit/static тести
 ```
 
-## Related Documentation
+## Duplicate Groups
 
-- Repository overview: [../../README.md](../../README.md)
-- Documentation index: [../../Docs/README.md](../../Docs/README.md)
-- Architecture overview: [../../Docs/Architecture.md](../../Docs/Architecture.md)
-- Frontend module map: [../../Docs/Frontend/Modules.md](../../Docs/Frontend/Modules.md)
-- Frontend navigation and search: [../../Docs/Frontend/Navigation-and-Search.md](../../Docs/Frontend/Navigation-and-Search.md)
-- Backend docs: [../backend/README.md](../backend/README.md)
+Grouped duplicates винесені в окремий feature, а не в reuse favorites-flow.
+
+- Вкладка `Duplicates` додається в slide menu через `src/app/AppShell.jsx`.
+- Основний orchestration живе в `src/features/duplicates/DuplicatesContainer.jsx`.
+- Відображення сторінки з групами дублікатів живе в `src/features/duplicates/DuplicatesPage.jsx`.
+- UI окремої duplicate group живе в `src/features/duplicates/components/DuplicateGroupCard.jsx`.
+- API-клієнт для grouped duplicates живе в `src/services/duplicatesApi.js`.
+
+## Поведінка Duplicates UI
+
+- На сторінці показуються групи exact duplicates, згруповані за хешем.
+- Для кожної групи є active items і окремий блок excluded items.
+- Parent media обирається тільки серед active items.
+- `Exclude` і `Restore` доступні прямо поверх preview-картинки через overlay-іконки.
+- `Merge` використовує вже наявний confirm modal для видалення медіа, а не окреме кастомне вікно.
+- Viewer і editor перевикористовують стандартний media flow, але навігація обмежена контекстом поточної duplicate group.
+- Стрілки в modal і клавіатурні `ArrowLeft` / `ArrowRight` переміщують лише в межах поточного bucket:
+  - active media навігується тільки серед active items групи;
+  - excluded media навігується тільки серед excluded items групи.
+
+## Іконки та UI деталі
+
+- Пункт меню `Duplicates` використовує `duplicate.png`.
+- Overlay-дії на картці duplicates використовують `minus.png` і `plus.png`.
+- Preview у duplicate tile квадратний і вирівняний під основну gallery-сітку.
+
+## Пов'язані файли
+
+- Root overview: [../../README.md](../../README.md)
+- Індекс документації: [../../Docs/README.md](../../Docs/README.md)
+- Огляд архітектури: [../../Docs/Architecture.md](../../Docs/Architecture.md)
+- Карта frontend-модулів: [../../Docs/Frontend/Modules.md](../../Docs/Frontend/Modules.md)
+- Навігація та пошук у frontend: [../../Docs/Frontend/Navigation-and-Search.md](../../Docs/Frontend/Navigation-and-Search.md)
+- Backend: [../backend/README.md](../backend/README.md)

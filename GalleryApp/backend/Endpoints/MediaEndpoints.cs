@@ -58,6 +58,102 @@ app.MapGet("/api/media/{id:long}/similar", async (long id, MediaSimilarityServic
     return Results.Ok(new { items });
 });
 
+app.MapGet("/api/media/duplicates", async (int? page, int? pageSize, MediaSimilarityService mediaSimilarityService, DuplicateMediaService duplicateMediaService, MediaQueryService mediaQueryService, HttpContext httpContext) =>
+{
+    await mediaSimilarityService.BackfillMissingHashesAsync(httpContext.RequestAborted);
+    var pagedResult = duplicateMediaService.GetPagedDuplicateGroups(new PagedRequest(page, pageSize));
+    mediaQueryService.WarmPagePreviews(pagedResult.Items.SelectMany(item => item.Items.Select(media => media.RelativePath)));
+    return Results.Ok(pagedResult);
+});
+
+app.MapPut("/api/media/duplicates/{groupKey}/exclude", (string groupKey, DuplicateGroupMembershipRequest request, DuplicateMediaService duplicateMediaService) =>
+{
+    if (request.MediaId <= 0)
+    {
+        return Results.BadRequest(new { error = "Invalid media id." });
+    }
+
+    try
+    {
+        duplicateMediaService.ExcludeMedia(groupKey, request.MediaId);
+        return Results.Ok(new { groupKey, mediaId = request.MediaId });
+    }
+    catch (KeyNotFoundException ex)
+    {
+        return Results.NotFound(new { error = ex.Message });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+app.MapDelete("/api/media/duplicates/{groupKey}/exclude/{mediaId:long}", (string groupKey, long mediaId, DuplicateMediaService duplicateMediaService) =>
+{
+    if (mediaId <= 0)
+    {
+        return Results.BadRequest(new { error = "Invalid media id." });
+    }
+
+    try
+    {
+        duplicateMediaService.RestoreMedia(groupKey, mediaId);
+        return Results.Ok(new { groupKey, mediaId });
+    }
+    catch (KeyNotFoundException ex)
+    {
+        return Results.NotFound(new { error = ex.Message });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+app.MapPost("/api/media/duplicates/{groupKey}/merge", (string groupKey, DuplicateGroupMergeRequest request, DuplicateMediaService duplicateMediaService) =>
+{
+    if (request.ParentMediaId <= 0)
+    {
+        return Results.BadRequest(new { error = "Invalid parent media id." });
+    }
+
+    try
+    {
+        duplicateMediaService.MergeGroup(groupKey, request.ParentMediaId);
+        return Results.Ok(new { groupKey, parentMediaId = request.ParentMediaId });
+    }
+    catch (KeyNotFoundException ex)
+    {
+        return Results.NotFound(new { error = ex.Message });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+app.MapPost("/api/media/duplicates/{groupKey}/delete", (string groupKey, DuplicateGroupDeleteRequest request, DuplicateMediaService duplicateMediaService) =>
+{
+    if (request.ParentMediaId <= 0)
+    {
+        return Results.BadRequest(new { error = "Invalid parent media id." });
+    }
+
+    try
+    {
+        duplicateMediaService.DeleteDuplicates(groupKey, request.ParentMediaId, request.MediaIds);
+        return Results.Ok(new { groupKey, parentMediaId = request.ParentMediaId });
+    }
+    catch (KeyNotFoundException ex)
+    {
+        return Results.NotFound(new { error = ex.Message });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
 app.MapGet("/api/favorites", (int? page, int? pageSize) =>
 {
     var mediaQueryService = app.ServiceProvider.GetRequiredService<MediaQueryService>();

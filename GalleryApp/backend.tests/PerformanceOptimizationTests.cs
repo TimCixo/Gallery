@@ -166,7 +166,7 @@ public sealed class PerformanceOptimizationTests : IDisposable
             previewCache);
     }
 
-    private void SeedMediaRecord(string relativePath, string colorHex, string tagName, bool assignFavorite)
+    private long SeedMediaRecord(string relativePath, string colorHex, string tagName, bool assignFavorite)
     {
         var absolutePath = CreateImageFile(relativePath, saveAsJpeg: false);
 
@@ -212,7 +212,7 @@ public sealed class PerformanceOptimizationTests : IDisposable
 
         if (!assignFavorite)
         {
-            return;
+            return mediaId;
         }
 
         using var selectFavorites = connection.CreateCommand();
@@ -224,6 +224,18 @@ public sealed class PerformanceOptimizationTests : IDisposable
         insertFavorite.Parameters.AddWithValue("$collectionId", favoritesId);
         insertFavorite.Parameters.AddWithValue("$mediaId", mediaId);
         insertFavorite.ExecuteNonQuery();
+        return mediaId;
+    }
+
+    private void SetImageHash(long mediaId, string imageHash)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE Media SET ImageHash = $imageHash WHERE Id = $id;";
+        command.Parameters.AddWithValue("$imageHash", imageHash);
+        command.Parameters.AddWithValue("$id", mediaId);
+        command.ExecuteNonQuery();
     }
 
     private string CreateImageFile(string relativePath, bool saveAsJpeg)

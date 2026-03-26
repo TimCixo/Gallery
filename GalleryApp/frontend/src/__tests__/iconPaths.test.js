@@ -10,6 +10,9 @@ test("getIconPath returns a known icon path", () => {
   assert.equal(getIconPath("resize"), "/icons/resize.png");
   assert.equal(getIconPath("height"), "/icons/height.png");
   assert.equal(getIconPath("width"), "/icons/width.png");
+  assert.equal(getIconPath("duplicate"), "/icons/duplicate.png");
+  assert.equal(getIconPath("minus"), "/icons/minus.png");
+  assert.equal(getIconPath("plus"), "/icons/plus.png");
 });
 
 test("getIconPath returns null for an unknown icon name", () => {
