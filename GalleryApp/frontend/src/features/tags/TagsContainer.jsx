@@ -5,7 +5,7 @@ import TagDeleteConfirmModal from "./components/TagDeleteConfirmModal";
 import { useTagItemsManager } from "./hooks/useTagItemsManager";
 import { useTagTypesManager } from "./hooks/useTagTypesManager";
 
-export default function TagsContainer() {
+export default function TagsContainer({ confirmDestructiveActions = true }) {
   const dragCollapseTimeoutRef = useRef(null);
   const tagTypesState = useTagTypesManager();
   const tagItemsState = useTagItemsManager({ setTagTypesError: tagTypesState.setTagTypesError });
@@ -82,6 +82,10 @@ export default function TagsContainer() {
   }), []);
 
   const openTagDeleteConfirm = (payload) => {
+    if (!confirmDestructiveActions) {
+      void handleConfirmTagDelete(payload);
+      return;
+    }
     setPendingTagDelete(payload);
   };
 
@@ -121,29 +125,29 @@ export default function TagsContainer() {
     clearPendingDragCollapse();
   }, [clearPendingDragCollapse]);
 
-  const handleConfirmTagDelete = async () => {
-    if (!pendingTagDelete) {
+  const handleConfirmTagDelete = async (payload = pendingTagDelete) => {
+    if (!payload) {
       return;
     }
 
     setIsDeletingTagEntity(true);
     try {
-      if (pendingTagDelete.kind === "tagType") {
-        const deleted = await tagTypesState.handleDeleteTagType(pendingTagDelete.id);
+      if (payload.kind === "tagType") {
+        const deleted = await tagTypesState.handleDeleteTagType(payload.id);
         if (deleted) {
-          tagItemsState.removeTagTypeData(pendingTagDelete.id);
+          tagItemsState.removeTagTypeData(payload.id);
           setSearchQueryByTagTypeId((current) => {
             const next = { ...current };
-            delete next[pendingTagDelete.id];
+            delete next[payload.id];
             return next;
           });
-          if (activeTagTypeId === pendingTagDelete.id) {
+          if (activeTagTypeId === payload.id) {
             setActiveTagTypeId(null);
           }
           setPendingTagDelete(null);
         }
       } else {
-        const deleted = await tagItemsState.handleDeleteTag(pendingTagDelete.tagTypeId, pendingTagDelete.id);
+        const deleted = await tagItemsState.handleDeleteTag(payload.tagTypeId, payload.id);
         if (deleted) {
           setPendingTagDelete(null);
         }
@@ -193,12 +197,14 @@ export default function TagsContainer() {
         onTagDrop={handleTagDrop}
         onTagDragEnd={handleTagDragEnd}
       />
-      <TagDeleteConfirmModal
-        pendingTagDelete={pendingTagDelete}
-        isDeletingTagEntity={isDeletingTagEntity}
-        onConfirm={() => void handleConfirmTagDelete()}
-        onClose={closeTagDeleteConfirm}
-      />
+      {confirmDestructiveActions ? (
+        <TagDeleteConfirmModal
+          pendingTagDelete={pendingTagDelete}
+          isDeletingTagEntity={isDeletingTagEntity}
+          onConfirm={() => void handleConfirmTagDelete()}
+          onClose={closeTagDeleteConfirm}
+        />
+      ) : null}
     </>
   );
 }

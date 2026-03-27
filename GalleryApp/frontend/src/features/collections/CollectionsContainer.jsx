@@ -37,7 +37,7 @@ import { buildRelatedMediaChain } from "../media/utils/relatedMediaChain";
 import CollectionsPage from "./CollectionsPage";
 import AppIcon from "../shared/components/AppIcon";
 
-const PAGE_SIZE = 36;
+const DEFAULT_PAGE_SIZE = 36;
 const EMPTY_COLLECTION_DRAFT = Object.freeze({ label: "", description: "", cover: "" });
 
 const getDisplayName = (value) => {
@@ -50,7 +50,16 @@ const getDisplayName = (value) => {
   return normalized.replace(/\.[^./]+$/, "") || normalized;
 };
 
-export default function CollectionsContainer({ searchQuery = "" }) {
+export default function CollectionsContainer({
+  searchQuery = "",
+  recommendationSettings,
+  mediaGridPageSize = DEFAULT_PAGE_SIZE,
+  defaultMediaFitMode = "resize",
+  showRelatedMediaStrip = true,
+  confirmDestructiveActions = true,
+  defaultQuickTaggingTags = ""
+}) {
+  const pageSize = Number.isInteger(mediaGridPageSize) && mediaGridPageSize > 0 ? mediaGridPageSize : DEFAULT_PAGE_SIZE;
   const [collections, setCollections] = useState([]);
   const [isCollectionsLoading, setIsCollectionsLoading] = useState(true);
   const [collectionsError, setCollectionsError] = useState("");
@@ -103,7 +112,8 @@ export default function CollectionsContainer({ searchQuery = "" }) {
     recommendedMediaError
   } = useRecommendedMedia({
     selectedMedia,
-    listRecommendedMedia: mediaApi.listRecommendedMedia
+    listRecommendedMedia: mediaApi.listRecommendedMedia,
+    settings: recommendationSettings
   });
 
   const loadCollections = useCallback(async () => {
@@ -131,7 +141,7 @@ export default function CollectionsContainer({ searchQuery = "" }) {
     setIsCollectionFilesLoading(true);
     setCollectionFilesError("");
     try {
-      const response = await collectionsApi.listCollectionMedia(collectionId, { page, pageSize: PAGE_SIZE });
+      const response = await collectionsApi.listCollectionMedia(collectionId, { page, pageSize });
       const items = Array.isArray(response?.items) ? response.items : [];
       setCollectionFiles(items.map((item) => ({ ...item, _tileUrl: item.tileUrl || item.previewUrl || item.originalUrl || item.url || "" })));
       setCollectionFilesPage(Number(response?.page || page));
@@ -146,7 +156,7 @@ export default function CollectionsContainer({ searchQuery = "" }) {
     } finally {
       setIsCollectionFilesLoading(false);
     }
-  }, []);
+  }, [pageSize]);
 
   useEffect(() => {
     void loadCollections();
@@ -162,6 +172,15 @@ export default function CollectionsContainer({ searchQuery = "" }) {
     window.addEventListener("gallery:media-updated", handleRefresh);
     return () => window.removeEventListener("gallery:media-updated", handleRefresh);
   }, [loadCollections, loadCollectionMedia, selectedCollection, collectionFilesPage]);
+
+  useEffect(() => {
+    if (!selectedCollection?.id) {
+      setCollectionFilesPage(1);
+      return;
+    }
+
+    void loadCollectionMedia(selectedCollection.id, 1);
+  }, [loadCollectionMedia, pageSize, selectedCollection?.id]);
 
   const handleOpenCollection = async (item) => {
     if (!item?.id) {
@@ -215,7 +234,8 @@ export default function CollectionsContainer({ searchQuery = "" }) {
       }
     },
     updateMedia: mediaApi.updateMedia,
-    onItemsChange: setCollectionFiles
+    onItemsChange: setCollectionFiles,
+    defaultAddTagsInput: defaultQuickTaggingTags
   });
   const mediaReferencePicker = useMediaReferencePicker({
     valueByMode: {
@@ -559,10 +579,17 @@ export default function CollectionsContainer({ searchQuery = "" }) {
       return;
     }
 
-    setPendingCollectionDelete({
+    const nextPendingCollectionDelete = {
       id: selectedCollection.id,
       name: String(selectedCollection.label || "")
-    });
+    };
+
+    if (!confirmDestructiveActions) {
+      void handleDeleteCollection(nextPendingCollectionDelete);
+      return;
+    }
+
+    setPendingCollectionDelete(nextPendingCollectionDelete);
   };
 
   const closeCollectionDeleteConfirm = () => {
@@ -573,18 +600,18 @@ export default function CollectionsContainer({ searchQuery = "" }) {
     setPendingCollectionDelete(null);
   };
 
-  const handleDeleteCollection = async () => {
-    if (!pendingCollectionDelete?.id || isCollectionDeleting) {
+  const handleDeleteCollection = async (targetDelete = pendingCollectionDelete) => {
+    if (!targetDelete?.id || isCollectionDeleting) {
       return;
     }
 
     setIsCollectionDeleting(true);
     setCollectionsError("");
     try {
-      await collectionsApi.deleteCollection(pendingCollectionDelete.id);
+      await collectionsApi.deleteCollection(targetDelete.id);
       setPendingCollectionDelete(null);
       setIsCreateCollectionModalOpen(false);
-      setSelectedCollection((current) => (current?.id === pendingCollectionDelete.id ? null : current));
+      setSelectedCollection((current) => (current?.id === targetDelete.id ? null : current));
       setSelectedMedia(null);
       setCollectionFiles([]);
       setCollectionFilesPage(1);
@@ -877,7 +904,13 @@ export default function CollectionsContainer({ searchQuery = "" }) {
                   <BulkMediaActionBar
                     selectedCount={mediaSelection.selectedCount}
                     onClearSelection={mediaSelection.clearSelection}
-                    onDeleteSelection={() => setPendingBulkDelete(createPendingMediaDelete(mediaSelection.selectedMediaItems))}
+                    onDeleteSelection={() => {
+                      if (confirmDestructiveActions) {
+                        setPendingBulkDelete(createPendingMediaDelete(mediaSelection.selectedMediaItems));
+                        return;
+                      }
+                      void handleBulkDeleteMedia();
+                    }}
                     onEditSelection={() => void handleOpenBulkEdit()}
                   />
                 </div>
@@ -940,6 +973,7 @@ export default function CollectionsContainer({ searchQuery = "" }) {
           recommendedMediaItems={recommendedMediaItems}
           isRecommendedMediaLoading={isRecommendedMediaLoading}
           recommendedMediaError={recommendedMediaError}
+          areRecommendationsEnabled={recommendationSettings?.enabled !== false}
           relationPreviewByMode={mediaReferencePicker.previewByMode}
           onOpenRelationPicker={mediaReferencePicker.openPicker}
           onOpenRelatedMediaById={handleOpenRelatedMediaById}
@@ -964,6 +998,9 @@ export default function CollectionsContainer({ searchQuery = "" }) {
           isSavingMedia={isSavingMedia}
           onDelete={handleDeleteMedia}
           isDeletingMedia={isDeletingMedia}
+          defaultMediaFitMode={defaultMediaFitMode}
+          showRelatedMediaStrip={showRelatedMediaStrip}
+          confirmDestructiveActions={confirmDestructiveActions}
         />
       ) : null}
       <CollectionPickerModal isOpen={isCollectionPickerOpen} onClose={closeCollectionPicker} initialData={{ kind: "media" }}>
@@ -976,12 +1013,14 @@ export default function CollectionsContainer({ searchQuery = "" }) {
           onClose={closeCollectionPicker}
         />
       </CollectionPickerModal>
-      <CollectionDeleteConfirmModal
-        pendingCollectionDelete={pendingCollectionDelete}
-        isCollectionDeleting={isCollectionDeleting}
-        onConfirm={() => void handleDeleteCollection()}
-        onClose={closeCollectionDeleteConfirm}
-      />
+      {confirmDestructiveActions ? (
+        <CollectionDeleteConfirmModal
+          pendingCollectionDelete={pendingCollectionDelete}
+          isCollectionDeleting={isCollectionDeleting}
+          onConfirm={() => void handleDeleteCollection()}
+          onClose={closeCollectionDeleteConfirm}
+        />
+      ) : null}
       <BulkMediaEditorModal
         isOpen={isBulkEditing}
         selectedItems={mediaSelection.selectedMediaItems}
@@ -999,20 +1038,23 @@ export default function CollectionsContainer({ searchQuery = "" }) {
         tagCatalog={tagCatalog}
         isLoading={isTagCatalogLoading}
         initialConfig={quickTagging.config}
+        defaultAddTagsInput={quickTagging.defaultAddTagsInput}
         onConfirm={quickTagging.confirmConfig}
         onDisable={quickTagging.disable}
         onClose={quickTagging.closeConfig}
       />
-      <MediaDeleteConfirmModal
-        pendingMediaDelete={pendingBulkDelete}
-        isDeletingMedia={isDeletingMedia}
-        onConfirm={() => void handleBulkDeleteMedia()}
-        onClose={() => {
-          if (!isDeletingMedia) {
-            setPendingBulkDelete(null);
-          }
-        }}
-      />
+      {confirmDestructiveActions ? (
+        <MediaDeleteConfirmModal
+          pendingMediaDelete={pendingBulkDelete}
+          isDeletingMedia={isDeletingMedia}
+          onConfirm={() => void handleBulkDeleteMedia()}
+          onClose={() => {
+            if (!isDeletingMedia) {
+              setPendingBulkDelete(null);
+            }
+          }}
+        />
+      ) : null}
       <MediaRelationPickerModal isOpen={isCreateCollectionModalOpen && mediaReferencePicker.isPickerOpen} onClose={mediaReferencePicker.closePicker} initialData={{ mode: mediaReferencePicker.pickerMode }}>
         <MediaRelationPickerDialogContent
           mode={mediaReferencePicker.pickerMode}

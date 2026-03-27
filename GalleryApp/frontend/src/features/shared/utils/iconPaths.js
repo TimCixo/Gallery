@@ -20,6 +20,7 @@ export const ICON_PATHS = Object.freeze({
   process: "/icons/process.png",
   resize: "/icons/resize.png",
   search: "/icons/search.png",
+  settings: "/icons/settings.png",
   tag: "/icons/tag.png",
   upload: "/icons/upload.png",
   width: "/icons/width.png"

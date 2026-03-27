@@ -7,7 +7,8 @@ export function useQuickTagging({
   ensureTagCatalog,
   updateMedia,
   onItemsChange,
-  onModeEnabled
+  onModeEnabled,
+  defaultAddTagsInput = ""
 }) {
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [config, setConfig] = useState(() => createQuickTaggingConfig());
@@ -79,6 +80,7 @@ export function useQuickTagging({
     isEnabled: config.enabled,
     activeMediaId,
     config,
+    defaultAddTagsInput,
     visibleItems,
     openConfig,
     closeConfig,

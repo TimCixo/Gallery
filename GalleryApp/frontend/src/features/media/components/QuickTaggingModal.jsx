@@ -10,12 +10,13 @@ export default function QuickTaggingModal({
   tagCatalog,
   isLoading,
   initialConfig,
+  defaultAddTagsInput = "",
   onConfirm,
   onDisable,
   onClose
 }) {
   const [draft, setDraft] = useState(() => ({
-    addTagsInput: resolveTagIdsToTokens(initialConfig?.addTagIds, tagCatalog).join(" ")
+    addTagsInput: resolveTagIdsToTokens(initialConfig?.addTagIds, tagCatalog).join(" ") || String(defaultAddTagsInput || "").trim()
   }));
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -24,10 +25,10 @@ export default function QuickTaggingModal({
       return;
     }
     setDraft({
-      addTagsInput: resolveTagIdsToTokens(initialConfig?.addTagIds, tagCatalog).join(" ")
+      addTagsInput: resolveTagIdsToTokens(initialConfig?.addTagIds, tagCatalog).join(" ") || String(defaultAddTagsInput || "").trim()
     });
     setErrorMessage("");
-  }, [initialConfig, isOpen, tagCatalog]);
+  }, [defaultAddTagsInput, initialConfig, isOpen, tagCatalog]);
 
   const tagNames = useMemo(() => (
     Array.from(new Set(

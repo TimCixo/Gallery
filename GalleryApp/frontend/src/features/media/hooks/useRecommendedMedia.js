@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { applyRecommendationSettings } from "../../settings/utils/recommendationSettings.js";
 
 const toRecommendedItems = (response) => {
   const rawItems = Array.isArray(response?.items) ? response.items : [];
@@ -18,14 +19,19 @@ const toRecommendedItems = (response) => {
     .filter(Boolean);
 };
 
-export function useRecommendedMedia({ selectedMedia, listRecommendedMedia }) {
+export function useRecommendedMedia({ selectedMedia, listRecommendedMedia, settings }) {
   const [recommendedMediaItems, setRecommendedMediaItems] = useState([]);
   const [isRecommendedMediaLoading, setIsRecommendedMediaLoading] = useState(false);
   const [recommendedMediaError, setRecommendedMediaError] = useState("");
 
   useEffect(() => {
     const selectedMediaId = Number(selectedMedia?.id);
-    if (!Number.isSafeInteger(selectedMediaId) || selectedMediaId <= 0 || typeof listRecommendedMedia !== "function") {
+    if (
+      settings?.enabled === false
+      || !Number.isSafeInteger(selectedMediaId)
+      || selectedMediaId <= 0
+      || typeof listRecommendedMedia !== "function"
+    ) {
       setRecommendedMediaItems([]);
       setIsRecommendedMediaLoading(false);
       setRecommendedMediaError("");
@@ -42,7 +48,7 @@ export function useRecommendedMedia({ selectedMedia, listRecommendedMedia }) {
       try {
         const response = await listRecommendedMedia(selectedMediaId, { signal: abortController.signal });
         if (!cancelled) {
-          setRecommendedMediaItems(toRecommendedItems(response));
+          setRecommendedMediaItems(applyRecommendationSettings(toRecommendedItems(response), settings));
         }
       } catch (error) {
         if (!cancelled && error?.name !== "AbortError") {
@@ -62,7 +68,7 @@ export function useRecommendedMedia({ selectedMedia, listRecommendedMedia }) {
       cancelled = true;
       abortController.abort();
     };
-  }, [listRecommendedMedia, selectedMedia]);
+  }, [listRecommendedMedia, selectedMedia, settings]);
 
   return {
     recommendedMediaItems,

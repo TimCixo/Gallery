@@ -32,7 +32,7 @@ import { buildRelatedMediaChain } from "../media/utils/relatedMediaChain";
 import FavoritesPage from "./FavoritesPage";
 import AppIcon from "../shared/components/AppIcon";
 
-const PAGE_SIZE = 36;
+const DEFAULT_PAGE_SIZE = 36;
 
 const getDisplayName = (value) => {
   const fileName = String(value || "");
@@ -44,7 +44,15 @@ const getDisplayName = (value) => {
   return normalized.replace(/\.[^./]+$/, "") || normalized;
 };
 
-export default function FavoritesContainer() {
+export default function FavoritesContainer({
+  recommendationSettings,
+  mediaGridPageSize = DEFAULT_PAGE_SIZE,
+  defaultMediaFitMode = "resize",
+  showRelatedMediaStrip = true,
+  confirmDestructiveActions = true,
+  defaultQuickTaggingTags = ""
+}) {
+  const pageSize = Number.isInteger(mediaGridPageSize) && mediaGridPageSize > 0 ? mediaGridPageSize : DEFAULT_PAGE_SIZE;
   const [favoritesFiles, setFavoritesFiles] = useState([]);
   const [favoritesPage, setFavoritesPage] = useState(1);
   const [favoritesTotalPages, setFavoritesTotalPages] = useState(0);
@@ -85,9 +93,10 @@ export default function FavoritesContainer() {
     setIsFavoritesLoading(true);
     setFavoritesError("");
     try {
-      const response = await mediaApi.listFavorites({ page, pageSize: PAGE_SIZE });
+      const response = await mediaApi.listFavorites({ page, pageSize });
       const items = Array.isArray(response?.items) ? response.items : [];
       setFavoritesFiles(items.map((item) => ({ ...item, _tileUrl: item.tileUrl || item.previewUrl || item.originalUrl || item.url || "" })));
+      setFavoritesPage(Number(response?.page || page));
       setFavoritesTotalPages(Number(response?.totalPages || 0));
       setFavoritesTotalFiles(Number(response?.totalCount || items.length));
     } catch (error) {
@@ -95,11 +104,15 @@ export default function FavoritesContainer() {
     } finally {
       setIsFavoritesLoading(false);
     }
-  }, []);
+  }, [pageSize]);
 
   useEffect(() => {
     void loadFavorites(favoritesPage);
   }, [favoritesPage, loadFavorites]);
+
+  useEffect(() => {
+    setFavoritesPage(1);
+  }, [pageSize]);
 
   useEffect(() => {
     setFavoritesPageJumpInput(String(favoritesPage));
@@ -122,7 +135,8 @@ export default function FavoritesContainer() {
       }
     },
     updateMedia: mediaApi.updateMedia,
-    onItemsChange: setFavoritesFiles
+    onItemsChange: setFavoritesFiles,
+    defaultAddTagsInput: defaultQuickTaggingTags
   });
   const mediaReferencePicker = useMediaReferencePicker({
     valueByMode: {
@@ -146,7 +160,8 @@ export default function FavoritesContainer() {
     recommendedMediaError
   } = useRecommendedMedia({
     selectedMedia,
-    listRecommendedMedia: mediaApi.listRecommendedMedia
+    listRecommendedMedia: mediaApi.listRecommendedMedia,
+    settings: recommendationSettings
   });
   const visibleFavoriteFiles = useMemo(() => quickTagging.visibleItems, [quickTagging.visibleItems]);
   const mediaSelection = useMediaMultiSelect(visibleFavoriteFiles);
@@ -564,7 +579,13 @@ export default function FavoritesContainer() {
           <BulkMediaActionBar
             selectedCount={mediaSelection.selectedCount}
             onClearSelection={mediaSelection.clearSelection}
-            onDeleteSelection={() => setPendingBulkDelete(createPendingMediaDelete(mediaSelection.selectedMediaItems))}
+            onDeleteSelection={() => {
+              if (confirmDestructiveActions) {
+                setPendingBulkDelete(createPendingMediaDelete(mediaSelection.selectedMediaItems));
+                return;
+              }
+              void handleBulkDeleteMedia();
+            }}
             onEditSelection={() => void handleOpenBulkEdit()}
           />
         </>
@@ -575,6 +596,7 @@ export default function FavoritesContainer() {
         tagCatalog={tagCatalog}
         isLoading={isTagCatalogLoading}
         initialConfig={quickTagging.config}
+        defaultAddTagsInput={quickTagging.defaultAddTagsInput}
         onConfirm={quickTagging.confirmConfig}
         onDisable={quickTagging.disable}
         onClose={quickTagging.closeConfig}
@@ -611,6 +633,7 @@ export default function FavoritesContainer() {
           recommendedMediaItems={recommendedMediaItems}
           isRecommendedMediaLoading={isRecommendedMediaLoading}
           recommendedMediaError={recommendedMediaError}
+          areRecommendationsEnabled={recommendationSettings?.enabled !== false}
           relationPreviewByMode={mediaReferencePicker.previewByMode}
           onOpenRelationPicker={mediaReferencePicker.openPicker}
           onOpenRelatedMediaById={handleOpenRelatedMediaById}
@@ -635,6 +658,9 @@ export default function FavoritesContainer() {
           isSavingMedia={isSavingMedia}
           onDelete={handleDeleteMedia}
           isDeletingMedia={isDeletingMedia}
+          defaultMediaFitMode={defaultMediaFitMode}
+          showRelatedMediaStrip={showRelatedMediaStrip}
+          confirmDestructiveActions={confirmDestructiveActions}
         />
       ) : null}
       <CollectionPickerModal isOpen={isCollectionPickerOpen} onClose={closeCollectionPicker} initialData={{ kind: "media" }}>
@@ -659,16 +685,18 @@ export default function FavoritesContainer() {
         onClose={() => setIsBulkEditing(false)}
         onSave={({ items, collectionIds, relationStrategy }) => void handleBulkSaveMedia({ items, collectionIds, relationStrategy })}
       />
-      <MediaDeleteConfirmModal
-        pendingMediaDelete={pendingBulkDelete}
-        isDeletingMedia={isDeletingMedia}
-        onConfirm={() => void handleBulkDeleteMedia()}
-        onClose={() => {
-          if (!isDeletingMedia) {
-            setPendingBulkDelete(null);
-          }
-        }}
-      />
+      {confirmDestructiveActions ? (
+        <MediaDeleteConfirmModal
+          pendingMediaDelete={pendingBulkDelete}
+          isDeletingMedia={isDeletingMedia}
+          onConfirm={() => void handleBulkDeleteMedia()}
+          onClose={() => {
+            if (!isDeletingMedia) {
+              setPendingBulkDelete(null);
+            }
+          }}
+        />
+      ) : null}
     </FavoritesPage>
   );
 }

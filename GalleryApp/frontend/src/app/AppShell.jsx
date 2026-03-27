@@ -6,6 +6,7 @@ import FavoritesContainer from "../features/favorites/FavoritesContainer";
 import DuplicatesContainer from "../features/duplicates/DuplicatesContainer";
 import CollectionsContainer from "../features/collections/CollectionsContainer";
 import TagsContainer from "../features/tags/TagsContainer";
+import SettingsContainer from "../features/settings/SettingsContainer";
 import UploadManagerContainer from "../features/upload/UploadManagerContainer";
 import SearchInput from "../features/search/components/SearchInput";
 import { BASE_SEARCH_TAG_NAMES, BASE_SEARCH_TAG_OPTIONS } from "../features/search/searchTags";
@@ -23,20 +24,24 @@ import {
 } from "./utils/searchState";
 import { addSearchHistoryItem } from "./utils/searchHistory";
 import { loadPersistedShellState, persistShellState } from "./utils/persistedShellState";
+import { loadPersistedSettings, persistSettings } from "./utils/persistedSettings";
+import { normalizeAppSettings } from "../features/settings/utils/appSettings";
 
 export default function AppShell() {
+  const initialSettingsState = useMemo(() => loadPersistedSettings(), []);
   const initialShellState = useMemo(() => loadPersistedShellState(), []);
-  const [activePage, setActivePage] = useState(initialShellState.activePage);
+  const [appSettings, setAppSettings] = useState(initialSettingsState);
+  const [activePage, setActivePage] = useState(initialSettingsState.rememberLastOpenedPage ? initialShellState.activePage : "gallery");
   const [isSlideMenuOpen, setIsSlideMenuOpen] = useState(false);
   const [inputValue, setInputValue] = useState(initialShellState.inputValue);
   const [submittedText, setSubmittedText] = useState(initialShellState.submittedText);
-  const [searchHistory, setSearchHistory] = useState(initialShellState.searchHistory);
+  const [searchHistory, setSearchHistory] = useState(initialSettingsState.rememberSearchHistory ? initialShellState.searchHistory : []);
   const [searchCaretPosition, setSearchCaretPosition] = useState(0);
   const [searchTagTypes, setSearchTagTypes] = useState([]);
   const [searchTagCatalog, setSearchTagCatalog] = useState([]);
   const [searchSubmitSeq, setSearchSubmitSeq] = useState(0);
   const [openMediaRequest, setOpenMediaRequest] = useState({ token: 0, media: null });
-  const [groupRelatedMedia, setGroupRelatedMedia] = useState(initialShellState.groupRelatedMedia);
+  const [groupRelatedMedia, setGroupRelatedMedia] = useState(initialSettingsState.groupRelatedMediaByDefault);
   const [isMediaFilterOpen, setIsMediaFilterOpen] = useState(false);
   const prevActivePageRef = useRef("gallery");
   const mediaFilterButtonRef = useRef(null);
@@ -62,13 +67,23 @@ export default function AppShell() {
 
   useEffect(() => {
     persistShellState({
-      activePage,
+      activePage: appSettings.rememberLastOpenedPage ? activePage : "gallery",
       inputValue,
       submittedText,
-      searchHistory,
+      searchHistory: appSettings.rememberSearchHistory ? searchHistory : [],
       groupRelatedMedia
     });
-  }, [activePage, groupRelatedMedia, inputValue, submittedText, searchHistory]);
+  }, [activePage, appSettings.rememberLastOpenedPage, appSettings.rememberSearchHistory, groupRelatedMedia, inputValue, submittedText, searchHistory]);
+
+  useEffect(() => {
+    persistSettings(appSettings);
+  }, [appSettings]);
+
+  useEffect(() => {
+    if (!appSettings.rememberSearchHistory && searchHistory.length > 0) {
+      setSearchHistory([]);
+    }
+  }, [appSettings.rememberSearchHistory, searchHistory.length]);
 
   useEffect(() => {
     const previousPage = prevActivePageRef.current;
@@ -188,13 +203,20 @@ export default function AppShell() {
     setIsSlideMenuOpen(false);
   };
 
+  const openSettingsPage = () => {
+    setActivePage("settings");
+    setIsSlideMenuOpen(false);
+  };
+
   const handleSubmit = (event) => {
     event.preventDefault();
     const nextSubmittedText = getSubmittedSearchText(inputValue);
     setSubmittedText(nextSubmittedText);
     setActivePage("gallery");
     setSearchSubmitSeq((value) => value + 1);
-    setSearchHistory((current) => addSearchHistoryItem(current, activePage === "collections" ? "" : nextSubmittedText));
+    if (appSettings.rememberSearchHistory) {
+      setSearchHistory((current) => addSearchHistoryItem(current, activePage === "collections" ? "" : nextSubmittedText));
+    }
     setIsSlideMenuOpen(false);
   };
 
@@ -221,7 +243,9 @@ export default function AppShell() {
     }
 
     setInputValue(nextValue);
-    setSearchHistory((current) => addSearchHistoryItem(current, nextValue));
+    if (appSettings.rememberSearchHistory) {
+      setSearchHistory((current) => addSearchHistoryItem(current, nextValue));
+    }
   };
 
   const handleSearchHistoryClear = () => {
@@ -289,7 +313,9 @@ export default function AppShell() {
         </form>
 
         <div className="top-upload-group">
-          <UploadManagerContainer />
+          <UploadManagerContainer
+            defaultGroupUploadMode={appSettings.defaultGroupUploadMode}
+          />
         </div>
       </header>
 
@@ -323,6 +349,10 @@ export default function AppShell() {
                 <AppIcon name="collection" alt="" aria-hidden="true" />
                 <span>Collections</span>
               </button>
+              <button type="button" className="slide-menu-item" onClick={openSettingsPage}>
+                <AppIcon name="settings" alt="" aria-hidden="true" />
+                <span>Settings</span>
+              </button>
             </nav>
           </aside>
         </div>
@@ -334,12 +364,52 @@ export default function AppShell() {
           searchSubmitSeq={searchSubmitSeq}
           openMediaRequest={openMediaRequest}
           groupRelatedMedia={groupRelatedMedia}
+          recommendationSettings={appSettings.recommendationSettings}
+          mediaGridPageSize={appSettings.mediaGridPageSize}
+          defaultMediaFitMode={appSettings.defaultMediaFitMode}
+          showRelatedMediaStrip={appSettings.showRelatedMediaStrip}
+          confirmDestructiveActions={appSettings.confirmDestructiveActions}
+          defaultQuickTaggingTags={appSettings.defaultQuickTaggingTags}
         />
       ) : null}
-      {activePage === "favorites" ? <FavoritesContainer /> : null}
-      {activePage === "duplicates" ? <DuplicatesContainer /> : null}
-      {activePage === "collections" ? <CollectionsContainer searchQuery={submittedText} /> : null}
-      {activePage === "tags" ? <TagsContainer /> : null}
+      {activePage === "favorites" ? (
+        <FavoritesContainer
+          recommendationSettings={appSettings.recommendationSettings}
+          mediaGridPageSize={appSettings.mediaGridPageSize}
+          defaultMediaFitMode={appSettings.defaultMediaFitMode}
+          showRelatedMediaStrip={appSettings.showRelatedMediaStrip}
+          confirmDestructiveActions={appSettings.confirmDestructiveActions}
+          defaultQuickTaggingTags={appSettings.defaultQuickTaggingTags}
+        />
+      ) : null}
+      {activePage === "duplicates" ? (
+        <DuplicatesContainer
+          recommendationSettings={appSettings.recommendationSettings}
+          duplicatesPageSize={appSettings.duplicatesPageSize}
+          defaultMediaFitMode={appSettings.defaultMediaFitMode}
+          showRelatedMediaStrip={appSettings.showRelatedMediaStrip}
+          confirmDestructiveActions={appSettings.confirmDestructiveActions}
+        />
+      ) : null}
+      {activePage === "collections" ? (
+        <CollectionsContainer
+          searchQuery={submittedText}
+          recommendationSettings={appSettings.recommendationSettings}
+          mediaGridPageSize={appSettings.mediaGridPageSize}
+          defaultMediaFitMode={appSettings.defaultMediaFitMode}
+          showRelatedMediaStrip={appSettings.showRelatedMediaStrip}
+          confirmDestructiveActions={appSettings.confirmDestructiveActions}
+          defaultQuickTaggingTags={appSettings.defaultQuickTaggingTags}
+        />
+      ) : null}
+      {activePage === "tags" ? <TagsContainer confirmDestructiveActions={appSettings.confirmDestructiveActions} /> : null}
+      {activePage === "settings" ? (
+        <SettingsContainer
+          appSettings={appSettings}
+          onAppSettingsChange={(nextSettings) => setAppSettings(normalizeAppSettings(nextSettings))}
+          onGroupRelatedMediaDefaultChange={setGroupRelatedMedia}
+        />
+      ) : null}
     </main>
   );
 }

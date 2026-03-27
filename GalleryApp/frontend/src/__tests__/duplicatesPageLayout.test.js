@@ -28,7 +28,7 @@ test("AppShell exposes duplicates in the slide menu and renders duplicates conta
   assert.match(appShellSource, /const openDuplicatesPage = \(\) => \{/);
   assert.match(appShellSource, /<AppIcon name="duplicate" alt="" aria-hidden="true" \/>/);
   assert.match(appShellSource, /<span>Duplicates<\/span>/);
-  assert.match(appShellSource, /activePage === "duplicates" \? <DuplicatesContainer \/> : null/);
+  assert.match(appShellSource, /activePage === "duplicates" \? \(\s*<DuplicatesContainer[\s\S]*recommendationSettings=\{appSettings\.recommendationSettings\}[\s\S]*duplicatesPageSize=\{appSettings\.duplicatesPageSize\}/);
 });
 
 test("duplicates page uses a dedicated grouped container and api", () => {

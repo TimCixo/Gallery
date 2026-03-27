@@ -21,7 +21,7 @@ import CollectionPickerDialogContent from "../collections/components/CollectionP
 import AppIcon from "../shared/components/AppIcon";
 import DuplicatesPage from "./DuplicatesPage";
 
-const PAGE_SIZE = 12;
+const DEFAULT_PAGE_SIZE = 12;
 
 const getDisplayName = (value) => {
   const fileName = String(value || "");
@@ -41,7 +41,14 @@ const patchGroupsByMediaId = (groups, mediaId, patch) => groups.map((group) => (
   excludedItems: (Array.isArray(group.excludedItems) ? group.excludedItems : []).map((item) => (item.id === mediaId ? { ...item, ...patch } : item))
 }));
 
-export default function DuplicatesContainer() {
+export default function DuplicatesContainer({
+  recommendationSettings,
+  duplicatesPageSize = DEFAULT_PAGE_SIZE,
+  defaultMediaFitMode = "resize",
+  showRelatedMediaStrip = true,
+  confirmDestructiveActions = true
+}) {
+  const pageSize = Number.isInteger(duplicatesPageSize) && duplicatesPageSize > 0 ? duplicatesPageSize : DEFAULT_PAGE_SIZE;
   const [groups, setGroups] = useState([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
@@ -74,7 +81,8 @@ export default function DuplicatesContainer() {
     recommendedMediaError
   } = useRecommendedMedia({
     selectedMedia,
-    listRecommendedMedia: mediaApi.listRecommendedMedia
+    listRecommendedMedia: mediaApi.listRecommendedMedia,
+    settings: recommendationSettings
   });
 
   const flattenItems = useMemo(
@@ -125,7 +133,7 @@ export default function DuplicatesContainer() {
     setIsLoading(true);
     setErrorMessage("");
     try {
-      const response = await duplicatesApi.listDuplicateGroups({ page: nextPage, pageSize: PAGE_SIZE });
+      const response = await duplicatesApi.listDuplicateGroups({ page: nextPage, pageSize });
       const nextGroups = Array.isArray(response?.items) ? response.items : [];
       setGroups(nextGroups);
       setTotalPages(Number(response?.totalPages || 0));
@@ -149,11 +157,15 @@ export default function DuplicatesContainer() {
       setIsLoading(false);
       setActionGroupKey("");
     }
-  }, []);
+  }, [pageSize]);
 
   useEffect(() => {
     void loadGroups(page);
   }, [page, loadGroups]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [pageSize]);
 
   useEffect(() => {
     setPageJumpInput(String(page));
@@ -512,20 +524,20 @@ export default function DuplicatesContainer() {
     }
   };
 
-  const handleConfirmGroupAction = async () => {
-    if (!pendingGroupAction) {
+  const handleConfirmGroupAction = async (action = pendingGroupAction) => {
+    if (!action) {
       return;
     }
 
-    setActionGroupKey(pendingGroupAction.groupKey);
+    setActionGroupKey(action.groupKey);
     setMediaModalError("");
     try {
-      if (pendingGroupAction.kind === "merge") {
-        await duplicatesApi.mergeDuplicateGroup(pendingGroupAction.groupKey, pendingGroupAction.parentMediaId);
+      if (action.kind === "merge") {
+        await duplicatesApi.mergeDuplicateGroup(action.groupKey, action.parentMediaId);
       } else {
-        await duplicatesApi.deleteDuplicateGroupItems(pendingGroupAction.groupKey, {
-          parentMediaId: pendingGroupAction.parentMediaId,
-          mediaIds: pendingGroupAction.targetIds
+        await duplicatesApi.deleteDuplicateGroupItems(action.groupKey, {
+          parentMediaId: action.parentMediaId,
+          mediaIds: action.targetIds
         });
       }
 
@@ -552,44 +564,60 @@ export default function DuplicatesContainer() {
         onOpenMedia={setSelectedMedia}
         onExclude={handleExclude}
         onRestore={handleRestore}
-        onMergeRequest={(group, parentItem, targets) => setPendingGroupAction({
-          kind: "merge",
-          groupKey: group.groupKey,
-          parentMediaId: parentItem.id,
-          parentLabel: getMediaLabel(parentItem),
-          targetIds: targets.map((item) => item.id),
-          targetLabels: targets.map((item) => getMediaLabel(item))
-        })}
-        onDeleteRequest={(group, parentItem, targets) => setPendingGroupAction({
-          kind: "delete",
-          groupKey: group.groupKey,
-          parentMediaId: parentItem.id,
-          parentLabel: getMediaLabel(parentItem),
-          targetIds: targets.map((item) => item.id),
-          targetLabels: targets.map((item) => getMediaLabel(item))
-        })}
+        onMergeRequest={(group, parentItem, targets) => {
+          const nextAction = {
+            kind: "merge",
+            groupKey: group.groupKey,
+            parentMediaId: parentItem.id,
+            parentLabel: getMediaLabel(parentItem),
+            targetIds: targets.map((item) => item.id),
+            targetLabels: targets.map((item) => getMediaLabel(item))
+          };
+          if (confirmDestructiveActions) {
+            setPendingGroupAction(nextAction);
+            return;
+          }
+          void handleConfirmGroupAction(nextAction);
+        }}
+        onDeleteRequest={(group, parentItem, targets) => {
+          const nextAction = {
+            kind: "delete",
+            groupKey: group.groupKey,
+            parentMediaId: parentItem.id,
+            parentLabel: getMediaLabel(parentItem),
+            targetIds: targets.map((item) => item.id),
+            targetLabels: targets.map((item) => getMediaLabel(item))
+          };
+          if (confirmDestructiveActions) {
+            setPendingGroupAction(nextAction);
+            return;
+          }
+          void handleConfirmGroupAction(nextAction);
+        }}
       />
 
-      <MediaDeleteConfirmModal
-        pendingAction={pendingGroupAction}
-        pendingMediaDelete={pendingGroupAction}
-        isBusy={!!actionGroupKey}
-        isDeletingMedia={!!actionGroupKey}
-        onConfirm={() => void handleConfirmGroupAction()}
-        onClose={() => setPendingGroupAction(null)}
-        message={
-          pendingGroupAction
-            ? pendingGroupAction.kind === "merge"
-              ? `Merge duplicates into "${pendingGroupAction.parentLabel}" and remove: ${pendingGroupAction.targetLabels.join(", ")}. Parent keeps its own conflicting values; only missing metadata is filled.`
-              : `Delete duplicates ${pendingGroupAction.targetLabels.join(", ")} and preserve parent "${pendingGroupAction.parentLabel}"?`
-            : ""
-        }
-        confirmLabel={pendingGroupAction?.kind === "merge" ? "Merge duplicates" : "Delete duplicates"}
-        confirmTitle={pendingGroupAction?.kind === "merge" ? "Merge duplicates" : "Delete duplicates"}
-        cancelLabel="Cancel"
-        cancelTitle="Cancel"
-        confirmButtonClassName={`media-action-btn ${pendingGroupAction?.kind === "merge" ? "media-action-primary" : "media-action-danger"} app-button-icon-only`}
-      />
+      {confirmDestructiveActions ? (
+        <MediaDeleteConfirmModal
+          pendingAction={pendingGroupAction}
+          pendingMediaDelete={pendingGroupAction}
+          isBusy={!!actionGroupKey}
+          isDeletingMedia={!!actionGroupKey}
+          onConfirm={() => void handleConfirmGroupAction()}
+          onClose={() => setPendingGroupAction(null)}
+          message={
+            pendingGroupAction
+              ? pendingGroupAction.kind === "merge"
+                ? `Merge duplicates into "${pendingGroupAction.parentLabel}" and remove: ${pendingGroupAction.targetLabels.join(", ")}. Parent keeps its own conflicting values; only missing metadata is filled.`
+                : `Delete duplicates ${pendingGroupAction.targetLabels.join(", ")} and preserve parent "${pendingGroupAction.parentLabel}"?`
+              : ""
+          }
+          confirmLabel={pendingGroupAction?.kind === "merge" ? "Merge duplicates" : "Delete duplicates"}
+          confirmTitle={pendingGroupAction?.kind === "merge" ? "Merge duplicates" : "Delete duplicates"}
+          cancelLabel="Cancel"
+          cancelTitle="Cancel"
+          confirmButtonClassName={`media-action-btn ${pendingGroupAction?.kind === "merge" ? "media-action-primary" : "media-action-danger"} app-button-icon-only`}
+        />
+      ) : null}
 
       {selectedMedia ? (
         <MediaViewerModal
@@ -623,6 +651,7 @@ export default function DuplicatesContainer() {
           recommendedMediaItems={recommendedMediaItems}
           isRecommendedMediaLoading={isRecommendedMediaLoading}
           recommendedMediaError={recommendedMediaError}
+          areRecommendationsEnabled={recommendationSettings?.enabled !== false}
           relationPreviewByMode={mediaReferencePicker.previewByMode}
           onOpenRelationPicker={mediaReferencePicker.openPicker}
           onOpenRelatedMediaById={handleOpenRelatedMediaById}
@@ -647,6 +676,9 @@ export default function DuplicatesContainer() {
           isSavingMedia={isSavingMedia}
           onDelete={handleDeleteMedia}
           isDeletingMedia={isDeletingMedia}
+          defaultMediaFitMode={defaultMediaFitMode}
+          showRelatedMediaStrip={showRelatedMediaStrip}
+          confirmDestructiveActions={confirmDestructiveActions}
         />
       ) : null}
 

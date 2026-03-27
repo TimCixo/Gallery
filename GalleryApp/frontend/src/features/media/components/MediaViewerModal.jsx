@@ -11,7 +11,7 @@ import MediaDeleteConfirmModal from "./MediaDeleteConfirmModal";
 import MediaRelationPickerDialogContent from "./MediaRelationPickerDialogContent";
 import MediaRelationPickerModal from "./MediaRelationPickerModal";
 import RecommendedMediaSection from "./RecommendedMediaSection";
-import { getNextMediaFitMode } from "../utils/mediaFitMode";
+import { getNextMediaFitMode, MEDIA_FIT_MODES } from "../utils/mediaFitMode";
 
 function renderSource(source) {
   if (!source) {
@@ -88,6 +88,7 @@ export default function MediaViewerModal({
   recommendedMediaItems,
   isRecommendedMediaLoading,
   recommendedMediaError,
+  areRecommendationsEnabled = true,
   relationPreviewByMode,
   onOpenRelationPicker,
   onOpenRelatedMediaById,
@@ -105,7 +106,10 @@ export default function MediaViewerModal({
   onMediaRelationPickerNext,
   onMediaRelationPickerPageChange,
   onCloseMediaRelationPicker,
-  onSelectMediaRelationFromPicker
+  onSelectMediaRelationFromPicker,
+  defaultMediaFitMode = "resize",
+  showRelatedMediaStrip = true,
+  confirmDestructiveActions = true
 }) {
   if (!file) {
     return null;
@@ -156,7 +160,8 @@ export default function MediaViewerModal({
   const [tagManagerError, setTagManagerError] = useState("");
   const [pendingTagDelete, setPendingTagDelete] = useState(null);
   const [pendingMediaDelete, setPendingMediaDelete] = useState(null);
-  const [mediaFitMode, setMediaFitMode] = useState("resize");
+  const normalizedDefaultMediaFitMode = MEDIA_FIT_MODES.includes(defaultMediaFitMode) ? defaultMediaFitMode : "resize";
+  const [mediaFitMode, setMediaFitMode] = useState(normalizedDefaultMediaFitMode);
   const [mediaAssetOverflow, setMediaAssetOverflow] = useState({ x: false, y: false });
   const [imageSourceAttempt, setImageSourceAttempt] = useState("primary");
   const mediaAssetFrameRef = useRef(null);
@@ -174,6 +179,10 @@ export default function MediaViewerModal({
   const visibleRelatedMediaItems = Array.isArray(relatedMediaItems) && relatedMediaItems.length > 0
     ? relatedMediaItems
     : [{ ...file, relationSide: "current", isCurrent: true }];
+
+  useEffect(() => {
+    setMediaFitMode(normalizedDefaultMediaFitMode);
+  }, [file?.id, normalizedDefaultMediaFitMode]);
 
   const getDraftTagNamesByType = (tagTypeId) => {
     const typeTags = catalogTagsByType.get(tagTypeId) || [];
@@ -494,7 +503,7 @@ export default function MediaViewerModal({
   return (
     <>
       <div className="media-modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
-        {visibleRelatedMediaItems.length > 0 ? (
+        {showRelatedMediaStrip && visibleRelatedMediaItems.length > 0 ? (
           <div ref={relatedMediaStripRef} className="media-related-strip">
             {visibleRelatedMediaItems.map((item) => {
               const relatedId = Number(item?.id);
@@ -926,7 +935,13 @@ export default function MediaViewerModal({
                 <button
                   type="button"
                   className="media-action-btn media-action-danger app-button-icon-only"
-                  onClick={() => setPendingMediaDelete(createPendingMediaDelete(file))}
+                  onClick={() => {
+                    if (confirmDestructiveActions) {
+                      setPendingMediaDelete(createPendingMediaDelete(file));
+                      return;
+                    }
+                    void onDelete?.();
+                  }}
                   disabled={isSavingMedia || isDeletingMedia}
                   aria-label={isDeletingMedia ? "Deleting media" : "Delete media"}
                   title={isDeletingMedia ? "Deleting media" : "Delete media"}
@@ -937,12 +952,14 @@ export default function MediaViewerModal({
             )}
           </div>
 
-          <RecommendedMediaSection
-            items={recommendedMediaItems}
-            isLoading={isRecommendedMediaLoading}
-            errorMessage={recommendedMediaError}
-            onOpenMedia={onOpenRelatedMediaById}
-          />
+          {areRecommendationsEnabled ? (
+            <RecommendedMediaSection
+              items={recommendedMediaItems}
+              isLoading={isRecommendedMediaLoading}
+              errorMessage={recommendedMediaError}
+              onOpenMedia={onOpenRelatedMediaById}
+            />
+          ) : null}
 
         </div>
       </div>

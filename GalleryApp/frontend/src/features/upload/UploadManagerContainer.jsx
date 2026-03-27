@@ -19,7 +19,7 @@ import { applyGroupDraftToUploadItems } from "./utils/groupUploadDraft";
 import { parseNullableId } from "./utils/uploadHelpers";
 import AppIcon from "../shared/components/AppIcon";
 
-export default function UploadManagerContainer() {
+export default function UploadManagerContainer({ defaultGroupUploadMode = false }) {
   const { queue, state, settings, collections, dragAndDrop, background, actions, dispatch } = useUploadManager();
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -74,7 +74,7 @@ export default function UploadManagerContainer() {
     });
     setQueueState({ items: [], step: "queue", activeUploadIndex: 0, taskStatuses: [] });
     setUiState({ type: "", message: "" });
-    setSettings({ isGroupUploadEnabled: false, uploadCollectionIds: [] });
+    setSettings({ isGroupUploadEnabled: defaultGroupUploadMode, uploadCollectionIds: [] });
     setCollectionsState({ entities: [], loading: false, error: "", isPickerOpen: false });
     setDragAndDrop({ isQueueDragOver: false, isPageDragOver: false });
     setIsUploading(false);
@@ -196,6 +196,7 @@ export default function UploadManagerContainer() {
     setIsUploadOpen(true);
     setQueueState({ step: "queue" });
     setUiState({ type: "", message: "" });
+    setSettings({ isGroupUploadEnabled: defaultGroupUploadMode });
     if (collections.entities.length === 0 && !collections.loading) {
       void loadUploadCollections();
     }

@@ -40,6 +40,13 @@ test("persisted shell state accepts duplicates page", () => {
   assert.equal(loadPersistedShellState(storage).activePage, "duplicates");
 });
 
+test("persisted shell state accepts settings page", () => {
+  const storage = createStorage();
+  storage.setItem("gallery.app-shell-state", JSON.stringify({ activePage: "settings" }));
+
+  assert.equal(loadPersistedShellState(storage).activePage, "settings");
+});
+
 test("persisted shell state falls back to defaults for invalid values", () => {
   const storage = createStorage();
   storage.setItem("gallery.app-shell-state", JSON.stringify({ activePage: "unknown", inputValue: 42 }));

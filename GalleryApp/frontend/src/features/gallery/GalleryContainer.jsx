@@ -35,7 +35,7 @@ import { loadGalleryViewState, persistGalleryViewState } from "./utils/galleryVi
 import GalleryPage from "./GalleryPage";
 import AppIcon from "../shared/components/AppIcon";
 
-const PAGE_SIZE = 36;
+const DEFAULT_PAGE_SIZE = 36;
 
 const getDisplayName = (value) => {
   const fileName = String(value || "");
@@ -51,8 +51,15 @@ export default function GalleryContainer({
   searchQuery = "",
   searchSubmitSeq = 0,
   openMediaRequest = null,
-  groupRelatedMedia = false
+  groupRelatedMedia = false,
+  recommendationSettings,
+  mediaGridPageSize = DEFAULT_PAGE_SIZE,
+  defaultMediaFitMode = "resize",
+  showRelatedMediaStrip = true,
+  confirmDestructiveActions = true,
+  defaultQuickTaggingTags = ""
 }) {
+  const pageSize = Number.isInteger(mediaGridPageSize) && mediaGridPageSize > 0 ? mediaGridPageSize : DEFAULT_PAGE_SIZE;
   const initialViewState = useMemo(() => loadGalleryViewState(), []);
   const relatedMediaChainCacheRef = useRef(new Map());
   const [mediaFiles, setMediaFiles] = useState([]);
@@ -111,7 +118,7 @@ export default function GalleryContainer({
         const items = await fetchAllMediaItems({ listMedia: mediaApi.listMedia, search: searchText, pageSize: 200 });
         const normalizedItems = items.map((item) => ({ ...item, _tileUrl: item.tileUrl || item.previewUrl || item.originalUrl || item.url || "" }));
 
-        const groupedPage = buildGroupedMediaPagination(normalizedItems, page, PAGE_SIZE);
+        const groupedPage = buildGroupedMediaPagination(normalizedItems, page, pageSize);
         setMediaFiles(groupedPage.items);
         setTotalPages(groupedPage.totalPages);
         setTotalFiles(groupedPage.totalCount);
@@ -121,7 +128,7 @@ export default function GalleryContainer({
         return;
       }
 
-      const response = await mediaApi.listMedia({ page, pageSize: PAGE_SIZE, search: searchText || undefined });
+      const response = await mediaApi.listMedia({ page, pageSize, search: searchText || undefined });
       const items = Array.isArray(response?.items) ? response.items : [];
       const normalizedItems = items.map((item) => ({ ...item, _tileUrl: item.tileUrl || item.previewUrl || item.originalUrl || item.url || "" }));
       setMediaFiles(normalizedItems);
@@ -132,7 +139,7 @@ export default function GalleryContainer({
     } finally {
       setIsMediaLoading(false);
     }
-  }, [groupRelatedMedia, searchQuery]);
+  }, [groupRelatedMedia, pageSize, searchQuery]);
 
   const quickTagging = useQuickTagging({
     items: mediaFiles,
@@ -143,7 +150,8 @@ export default function GalleryContainer({
       }
     },
     updateMedia: mediaApi.updateMedia,
-    onItemsChange: setMediaFiles
+    onItemsChange: setMediaFiles,
+    defaultAddTagsInput: defaultQuickTaggingTags
   });
   const mediaReferencePicker = useMediaReferencePicker({
     valueByMode: {
@@ -169,12 +177,17 @@ export default function GalleryContainer({
     recommendedMediaError
   } = useRecommendedMedia({
     selectedMedia,
-    listRecommendedMedia: mediaApi.listRecommendedMedia
+    listRecommendedMedia: mediaApi.listRecommendedMedia,
+    settings: recommendationSettings
   });
 
   useEffect(() => {
     void loadMedia(currentPage, searchQuery);
   }, [currentPage, loadMedia, searchQuery]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [pageSize]);
 
   useEffect(() => {
     const handleRefresh = () => {
@@ -715,7 +728,13 @@ export default function GalleryContainer({
           <BulkMediaActionBar
             selectedCount={mediaSelection.selectedCount}
             onClearSelection={mediaSelection.clearSelection}
-            onDeleteSelection={() => setPendingBulkDelete(createPendingMediaDelete(mediaSelection.selectedMediaItems))}
+            onDeleteSelection={() => {
+              if (confirmDestructiveActions) {
+                setPendingBulkDelete(createPendingMediaDelete(mediaSelection.selectedMediaItems));
+                return;
+              }
+              void handleBulkDeleteMedia();
+            }}
             onEditSelection={() => void handleOpenBulkEdit()}
           />
         </>
@@ -726,6 +745,7 @@ export default function GalleryContainer({
         tagCatalog={tagCatalog}
         isLoading={isTagCatalogLoading}
         initialConfig={quickTagging.config}
+        defaultAddTagsInput={quickTagging.defaultAddTagsInput}
         onConfirm={quickTagging.confirmConfig}
         onDisable={quickTagging.disable}
         onClose={quickTagging.closeConfig}
@@ -762,6 +782,7 @@ export default function GalleryContainer({
           recommendedMediaItems={recommendedMediaItems}
           isRecommendedMediaLoading={isRecommendedMediaLoading}
           recommendedMediaError={recommendedMediaError}
+          areRecommendationsEnabled={recommendationSettings?.enabled !== false}
           relationPreviewByMode={mediaReferencePicker.previewByMode}
           onOpenRelationPicker={mediaReferencePicker.openPicker}
           onOpenRelatedMediaById={handleOpenRelatedMediaById}
@@ -786,6 +807,9 @@ export default function GalleryContainer({
           isSavingMedia={isSavingMedia}
           onDelete={handleDeleteMedia}
           isDeletingMedia={isDeletingMedia}
+          defaultMediaFitMode={defaultMediaFitMode}
+          showRelatedMediaStrip={showRelatedMediaStrip}
+          confirmDestructiveActions={confirmDestructiveActions}
         />
       ) : null}
       <CollectionPickerModal isOpen={isCollectionPickerOpen} onClose={closeCollectionPicker} initialData={{ kind: "media" }}>
@@ -810,16 +834,18 @@ export default function GalleryContainer({
         onClose={() => setIsBulkEditing(false)}
         onSave={({ items, collectionIds, relationStrategy }) => void handleBulkSaveMedia({ items, collectionIds, relationStrategy })}
       />
-      <MediaDeleteConfirmModal
-        pendingMediaDelete={pendingBulkDelete}
-        isDeletingMedia={isDeletingMedia}
-        onConfirm={() => void handleBulkDeleteMedia()}
-        onClose={() => {
-          if (!isDeletingMedia) {
-            setPendingBulkDelete(null);
-          }
-        }}
-      />
+      {confirmDestructiveActions ? (
+        <MediaDeleteConfirmModal
+          pendingMediaDelete={pendingBulkDelete}
+          isDeletingMedia={isDeletingMedia}
+          onConfirm={() => void handleBulkDeleteMedia()}
+          onClose={() => {
+            if (!isDeletingMedia) {
+              setPendingBulkDelete(null);
+            }
+          }}
+        />
+      ) : null}
     </GalleryPage>
   );
 }
