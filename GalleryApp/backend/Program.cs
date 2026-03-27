@@ -8,6 +8,7 @@ using GalleryApp.Api.Services;
 using GalleryApp.Api.Data.Repositories;
 using GalleryApp.Api.Services.MediaProcessing;
 using GalleryApp.Api.Services.Embeddings;
+using GalleryApp.Api.Infrastructure.Diagnostics;
 using GalleryApp.Api.Infrastructure.Startup;
 
 namespace GalleryApp.Api;
@@ -97,6 +98,7 @@ public class Program
         StartupProgressLog.RunStep(startupLog, "Configuring middleware and endpoints", () =>
         {
             app.UseCors("Frontend");
+            app.UseMiddleware<RequestDiagnosticsMiddleware>();
             app.UseStaticFiles(new StaticFileOptions
             {
                 FileProvider = new PhysicalFileProvider(mediaRootPath),
