@@ -1,4 +1,8 @@
 import { normalizeAppSettings } from "./utils/appSettings.js";
+import {
+  MAX_SEARCH_SUGGESTIONS_LIMIT,
+  MIN_SEARCH_SUGGESTIONS_LIMIT
+} from "../search/searchSuggestionSettings.js";
 
 export default function SettingsPage({
   appSettings,
@@ -129,6 +133,19 @@ export default function SettingsPage({
               type="checkbox"
               checked={normalizedSettings.rememberSearchHistory}
               onChange={(event) => updateSettings({ rememberSearchHistory: event.target.checked })}
+            />
+          </label>
+          <label className="settings-option">
+            <div className="settings-option-copy">
+              <span className="settings-option-title">Search suggestions limit</span>
+              <span className="settings-option-description">How many autocomplete suggestions to show at once. Suggestions appear even before you start typing.</span>
+            </div>
+            <input
+              type="number"
+              min={MIN_SEARCH_SUGGESTIONS_LIMIT}
+              max={MAX_SEARCH_SUGGESTIONS_LIMIT}
+              value={normalizedSettings.searchSuggestionsLimit}
+              onChange={(event) => updateSettings({ searchSuggestionsLimit: event.target.value })}
             />
           </label>
           <label className="settings-option settings-option-toggle">

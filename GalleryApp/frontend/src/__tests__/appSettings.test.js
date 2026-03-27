@@ -5,6 +5,7 @@ import { normalizeAppSettings } from "../features/settings/utils/appSettings.js"
 test("normalizeAppSettings applies defaults and clamps numeric values", () => {
   assert.deepEqual(normalizeAppSettings({
     defaultMediaFitMode: "unknown",
+    searchSuggestionsLimit: "999",
     mediaGridPageSize: "999",
     duplicatesPageSize: "0",
     recommendationSettings: {
@@ -16,6 +17,7 @@ test("normalizeAppSettings applies defaults and clamps numeric values", () => {
     defaultMediaFitMode: "resize",
     rememberLastOpenedPage: true,
     rememberSearchHistory: true,
+    searchSuggestionsLimit: 20,
     defaultQuickTaggingTags: "",
     defaultGroupUploadMode: false,
     mediaGridPageSize: 120,

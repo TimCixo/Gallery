@@ -37,6 +37,7 @@ test("settings page uses the dedicated icon and page layout", () => {
   assert.match(settingsPageSource, /Default media fit mode/);
   assert.match(settingsPageSource, /Remember last opened page/);
   assert.match(settingsPageSource, /Remember search history/);
+  assert.match(settingsPageSource, /Search suggestions limit/);
   assert.match(settingsPageSource, /Default quick tagging tags/);
   assert.match(settingsPageSource, /Enable group upload mode by default/);
   assert.match(settingsPageSource, /Media grid page size/);
@@ -50,6 +51,7 @@ test("settings page uses the dedicated icon and page layout", () => {
   assert.match(appSettingsSource, /defaultMediaFitMode:\s*"resize"/);
   assert.match(appSettingsSource, /rememberLastOpenedPage:\s*true/);
   assert.match(appSettingsSource, /rememberSearchHistory:\s*true/);
+  assert.match(appSettingsSource, /searchSuggestionsLimit:\s*DEFAULT_SEARCH_SUGGESTIONS_LIMIT/);
   assert.match(appSettingsSource, /defaultQuickTaggingTags:\s*""/);
   assert.match(appSettingsSource, /defaultGroupUploadMode:\s*false/);
   assert.match(appSettingsSource, /mediaGridPageSize:\s*36/);

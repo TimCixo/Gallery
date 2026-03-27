@@ -24,12 +24,10 @@ export default function SearchInput({
     label: item,
     value: item
   }));
-  const hasTypedValue = value.trim() !== "";
   const visibleSuggestions = Array.isArray(suggestions) ? suggestions : [];
-  const displayedOptions = hasTypedValue ? [...visibleSuggestions, ...historyOptions] : historyOptions;
   const sections = [];
 
-  if (hasTypedValue && visibleSuggestions.length > 0) {
+  if (visibleSuggestions.length > 0) {
     sections.push({
       key: "suggestions",
       title: "Suggestions",

@@ -31,6 +31,7 @@ export default function AppShell() {
   const initialSettingsState = useMemo(() => loadPersistedSettings(), []);
   const initialShellState = useMemo(() => loadPersistedShellState(), []);
   const [appSettings, setAppSettings] = useState(initialSettingsState);
+  const normalizedAppSettings = useMemo(() => normalizeAppSettings(appSettings), [appSettings]);
   const [activePage, setActivePage] = useState(initialSettingsState.rememberLastOpenedPage ? initialShellState.activePage : "gallery");
   const [isSlideMenuOpen, setIsSlideMenuOpen] = useState(false);
   const [inputValue, setInputValue] = useState(initialShellState.inputValue);
@@ -119,9 +120,10 @@ export default function AppShell() {
       searchTagOptions,
       searchTagTypeMap,
       baseSearchTagNames: BASE_SEARCH_TAG_NAMES,
-      mediaTagCatalog: searchTagCatalog
+      mediaTagCatalog: searchTagCatalog,
+      maxSuggestions: normalizedAppSettings.searchSuggestionsLimit
     }),
-    [searchTagCatalog, searchTagOptions, searchTagTypeMap, searchTokenRange]
+    [normalizedAppSettings.searchSuggestionsLimit, searchTagCatalog, searchTagOptions, searchTagTypeMap, searchTokenRange]
   );
   const searchHighlightSegments = useMemo(() => {
     if (!inputValue) {

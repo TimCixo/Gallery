@@ -1,10 +1,16 @@
 import { DEFAULT_RECOMMENDATION_SETTINGS, normalizeRecommendationSettings } from "./recommendationSettings.js";
+import {
+  DEFAULT_SEARCH_SUGGESTIONS_LIMIT,
+  MAX_SEARCH_SUGGESTIONS_LIMIT,
+  MIN_SEARCH_SUGGESTIONS_LIMIT
+} from "../../search/searchSuggestionSettings.js";
 
 export const DEFAULT_APP_SETTINGS = Object.freeze({
   groupRelatedMediaByDefault: false,
   defaultMediaFitMode: "resize",
   rememberLastOpenedPage: true,
   rememberSearchHistory: true,
+  searchSuggestionsLimit: DEFAULT_SEARCH_SUGGESTIONS_LIMIT,
   defaultQuickTaggingTags: "",
   defaultGroupUploadMode: false,
   mediaGridPageSize: 36,
@@ -43,6 +49,12 @@ export function normalizeAppSettings(settings) {
     defaultMediaFitMode,
     rememberLastOpenedPage: normalizeBoolean(settings?.rememberLastOpenedPage, DEFAULT_APP_SETTINGS.rememberLastOpenedPage),
     rememberSearchHistory: normalizeBoolean(settings?.rememberSearchHistory, DEFAULT_APP_SETTINGS.rememberSearchHistory),
+    searchSuggestionsLimit: normalizeNumber(
+      settings?.searchSuggestionsLimit,
+      DEFAULT_APP_SETTINGS.searchSuggestionsLimit,
+      MIN_SEARCH_SUGGESTIONS_LIMIT,
+      MAX_SEARCH_SUGGESTIONS_LIMIT
+    ),
     defaultQuickTaggingTags: normalizeString(settings?.defaultQuickTaggingTags, DEFAULT_APP_SETTINGS.defaultQuickTaggingTags).trim(),
     defaultGroupUploadMode: normalizeBoolean(settings?.defaultGroupUploadMode, DEFAULT_APP_SETTINGS.defaultGroupUploadMode),
     mediaGridPageSize: normalizeNumber(settings?.mediaGridPageSize, DEFAULT_APP_SETTINGS.mediaGridPageSize, 12, 120),

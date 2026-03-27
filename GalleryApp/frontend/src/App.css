@@ -1971,17 +1971,7 @@
   width: min(100%, 34rem);
   height: auto;
   max-height: min(24rem, calc(100vh - 2rem));
-  overflow-x: hidden;
-}
-
-.media-quick-tagging-body {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.75rem;
-  padding: 0 1rem 0.9rem;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: visible;
 }
 
 .media-quick-tagging-section {
@@ -2060,6 +2050,10 @@
 .media-quick-tagging-input-wrap {
   position: relative;
   min-width: 0;
+}
+
+.media-quick-tagging-input-wrap:focus-within {
+  z-index: 3;
 }
 
 .media-quick-tagging-input-highlight {
@@ -2188,6 +2182,16 @@
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
+}
+
+.media-modal-body.media-quick-tagging-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0 1rem 0.9rem;
+  position: relative;
+  z-index: 1;
+  overflow: visible;
 }
 
 .media-modal-footer {
@@ -3133,7 +3137,7 @@
   top: calc(100% + 0.25rem);
   left: 0;
   right: 0;
-  z-index: 30;
+  z-index: 40;
   list-style: none;
   margin: 0;
   padding: 0.25rem;

@@ -33,4 +33,5 @@ test("SearchInput includes recent history UI and clear action", () => {
   assert.match(source, /Suggestions/);
   assert.match(source, /items: historyOptions/);
   assert.match(source, /items: visibleSuggestions/);
+  assert.doesNotMatch(source, /hasTypedValue && visibleSuggestions\.length > 0/);
 });

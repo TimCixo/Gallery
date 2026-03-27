@@ -19,6 +19,7 @@ test("persisted settings round-trip recommendation options", () => {
   persistSettings({
     rememberLastOpenedPage: false,
     rememberSearchHistory: false,
+    searchSuggestionsLimit: 11,
     defaultMediaFitMode: "height",
     mediaGridPageSize: 48,
     duplicatesPageSize: 16,
@@ -39,6 +40,7 @@ test("persisted settings round-trip recommendation options", () => {
     defaultMediaFitMode: "height",
     rememberLastOpenedPage: false,
     rememberSearchHistory: false,
+    searchSuggestionsLimit: 11,
     defaultQuickTaggingTags: "author:test",
     defaultGroupUploadMode: true,
     mediaGridPageSize: 48,
@@ -67,6 +69,7 @@ test("persisted settings normalize invalid recommendation values", () => {
     defaultMediaFitMode: "resize",
     rememberLastOpenedPage: true,
     rememberSearchHistory: true,
+    searchSuggestionsLimit: 7,
     defaultQuickTaggingTags: "",
     defaultGroupUploadMode: false,
     mediaGridPageSize: 36,

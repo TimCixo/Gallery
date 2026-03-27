@@ -22,6 +22,26 @@ test("buildSearchSuggestions suggests tag names by prefix", () => {
   assert.equal(suggestions[0].kind, "tagName");
 });
 
+test("buildSearchSuggestions shows default search tag suggestions before typing", () => {
+  const suggestions = buildSearchSuggestions({
+    searchTokenRange: getSearchTokenRange("", 0),
+    searchTagOptions: ["title", "path", "description", "id", "source", "filetype", "tagtype", "artist"],
+    searchTagTypeMap: new Map([["artist", { color: "#112233" }]]),
+    baseSearchTagNames: new Set(["path", "title", "description", "id", "source", "filetype", "tagtype"]),
+    mediaTagCatalog: []
+  });
+
+  assert.deepEqual(suggestions.map((item) => item.label), [
+    "title:",
+    "path:",
+    "description:",
+    "id:",
+    "source:",
+    "filetype:",
+    "tagtype:"
+  ]);
+});
+
 test("base search tags include filetype", () => {
   assert.equal(BASE_SEARCH_TAG_OPTIONS.includes("filetype"), true);
   assert.equal(BASE_SEARCH_TAG_NAMES.has("filetype"), true);
@@ -29,17 +49,7 @@ test("base search tags include filetype", () => {
   assert.equal(BASE_SEARCH_TAG_NAMES.has("tagtype"), true);
 });
 
-test("buildSearchSuggestions stays empty for an empty token and limits autocomplete results", () => {
-  const suggestions = buildSearchSuggestions({
-    searchTokenRange: getSearchTokenRange("", 0),
-    searchTagOptions: ["title", "path", "artist", "author", "album", "age"],
-    searchTagTypeMap: new Map(),
-    baseSearchTagNames: new Set(["path", "title", "description", "id", "source"]),
-    mediaTagCatalog: []
-  });
-
-  assert.deepEqual(suggestions, []);
-
+test("buildSearchSuggestions limits autocomplete results", () => {
   const limitedSuggestions = buildSearchSuggestions({
     searchTokenRange: getSearchTokenRange("a", 1),
     searchTagOptions: ["artist", "author", "album", "age", "area", "arc"],
@@ -48,7 +58,20 @@ test("buildSearchSuggestions stays empty for an empty token and limits autocompl
     mediaTagCatalog: []
   });
 
-  assert.equal(limitedSuggestions.length, 5);
+  assert.equal(limitedSuggestions.length, 6);
+});
+
+test("buildSearchSuggestions respects custom max suggestion limit", () => {
+  const limitedSuggestions = buildSearchSuggestions({
+    searchTokenRange: getSearchTokenRange("", 0),
+    searchTagOptions: ["title", "path", "description", "id", "source", "filetype", "tagtype"],
+    searchTagTypeMap: new Map(),
+    baseSearchTagNames: new Set(["path", "title", "description", "id", "source", "filetype", "tagtype"]),
+    mediaTagCatalog: [],
+    maxSuggestions: 4
+  });
+
+  assert.deepEqual(limitedSuggestions.map((item) => item.label), ["title:", "path:", "description:", "id:"]);
 });
 
 test("buildSearchSuggestions suggests values for typed tag", () => {
@@ -89,6 +112,21 @@ test("buildSearchSuggestions suggests tag types for typed tagtype filter", () =>
     suggestions.map((item) => item.label),
     ["Artist"]
   );
+});
+
+test("buildSearchSuggestions suggests tag types before typing tagtype value", () => {
+  const suggestions = buildSearchSuggestions({
+    searchTokenRange: getSearchTokenRange("tagtype:", 8),
+    searchTagOptions: ["title", "path", "tagtype", "artist"],
+    searchTagTypeMap: new Map([
+      ["artist", { lowerName: "artist", label: "Artist", color: "#112233" }],
+      ["series", { lowerName: "series", label: "Series", color: "#223344" }]
+    ]),
+    baseSearchTagNames: new Set(["path", "title", "description", "id", "source", "tagtype"]),
+    mediaTagCatalog: []
+  });
+
+  assert.deepEqual(suggestions.map((item) => item.label), ["Artist", "Series"]);
 });
 
 test("buildSearchSuggestions ignores leading minus while keeping it in labels", () => {

@@ -1,4 +1,4 @@
-const MAX_SEARCH_SUGGESTIONS = 5;
+import { DEFAULT_SEARCH_SUGGESTIONS_LIMIT } from "../../search/searchSuggestionSettings.js";
 
 const stripSearchTokenDecorators = (token) => {
   const rawToken = String(token || "");
@@ -88,8 +88,10 @@ export const buildSearchSuggestions = ({
   searchTagOptions,
   searchTagTypeMap,
   baseSearchTagNames,
-  mediaTagCatalog
+  mediaTagCatalog,
+  maxSuggestions = DEFAULT_SEARCH_SUGGESTIONS_LIMIT
 }) => {
+  const normalizedMaxSuggestions = Math.max(1, Number.parseInt(maxSuggestions, 10) || DEFAULT_SEARCH_SUGGESTIONS_LIMIT);
   const tokenBeforeCaret = searchTokenRange.tokenBeforeCaret;
   const token = searchTokenRange.token;
   const { isExcluded, tokenWithoutDecorators: tokenBeforeCaretWithoutAtPrefix } = stripSearchTokenDecorators(tokenBeforeCaret);
@@ -104,12 +106,20 @@ export const buildSearchSuggestions = ({
 
     const typedFragment = tokenBeforeCaretWithoutAtPrefix.trim().toLowerCase();
     if (!typedFragment) {
-      return [];
+      return searchTagOptions
+        .slice(0, normalizedMaxSuggestions)
+        .map((tagName) => ({
+          kind: "tagName",
+          key: `tag-${tagName}`,
+          tagName,
+          label: `${suggestionPrefix}${tagName}:`,
+          color: searchTagTypeMap.get(tagName)?.color || ""
+        }));
     }
 
     const byTagNames = searchTagOptions
       .filter((tagName) => tagName.startsWith(typedFragment))
-      .slice(0, MAX_SEARCH_SUGGESTIONS)
+      .slice(0, normalizedMaxSuggestions)
       .map((tagName) => ({
         kind: "tagName",
         key: `tag-${tagName}`,
@@ -150,7 +160,7 @@ export const buildSearchSuggestions = ({
     });
 
     byTagPairs.sort((left, right) => left.label.localeCompare(right.label));
-    return [...byTagNames, ...byTagPairs].slice(0, MAX_SEARCH_SUGGESTIONS);
+    return [...byTagNames, ...byTagPairs].slice(0, normalizedMaxSuggestions);
   }
 
   if (!tokenBeforeCaretWithoutAtPrefix.includes(":") || separatorIndex <= 0) {
@@ -168,14 +178,11 @@ export const buildSearchSuggestions = ({
       .trimStart()
       .replace(/^"/, "")
       .toLowerCase();
-    if (!typedTagTypePrefix) {
-      return [];
-    }
 
     return Array.from(searchTagTypeMap.values())
-      .filter((item) => item.lowerName.startsWith(typedTagTypePrefix))
+      .filter((item) => !typedTagTypePrefix || item.lowerName.startsWith(typedTagTypePrefix))
       .sort((left, right) => left.label.localeCompare(right.label))
-      .slice(0, MAX_SEARCH_SUGGESTIONS)
+      .slice(0, normalizedMaxSuggestions)
       .map((item) => ({
         kind: "tagValue",
         key: `tagtype-${item.lowerName}`,
@@ -195,9 +202,6 @@ export const buildSearchSuggestions = ({
     .trimStart()
     .replace(/^"/, "")
     .toLowerCase();
-  if (!typedTagValuePrefix) {
-    return [];
-  }
 
   const candidates = [];
   const seen = new Set();
@@ -209,7 +213,7 @@ export const buildSearchSuggestions = ({
     }
 
     const normalizedCandidate = candidateName.toLowerCase();
-    if (!normalizedCandidate.startsWith(typedTagValuePrefix)) {
+    if (typedTagValuePrefix && !normalizedCandidate.startsWith(typedTagValuePrefix)) {
       return;
     }
     if (seen.has(normalizedCandidate)) {
@@ -221,7 +225,7 @@ export const buildSearchSuggestions = ({
   });
 
   candidates.sort((left, right) => left.localeCompare(right));
-  return candidates.slice(0, MAX_SEARCH_SUGGESTIONS).map((tagValue) => ({
+  return candidates.slice(0, normalizedMaxSuggestions).map((tagValue) => ({
     kind: "tagValue",
     key: `value-${tagName}-${tagValue.toLowerCase()}`,
     tagName,
