@@ -8,6 +8,7 @@ using GalleryApp.Api.Services;
 using GalleryApp.Api.Data.Repositories;
 using GalleryApp.Api.Services.MediaProcessing;
 using GalleryApp.Api.Services.Embeddings;
+using GalleryApp.Api.Infrastructure.Startup;
 
 namespace GalleryApp.Api;
 
@@ -15,6 +16,9 @@ public class Program
 {
     public static void Main(string[] args)
     {
+        var startupLog = StartupProgressLog.CreateWriter(Console.Out);
+        StartupProgressLog.WriteInfo(startupLog, "Backend startup started.");
+
         var builder = WebApplication.CreateBuilder(args);
         builder.WebHost.ConfigureKestrel(options =>
         {
@@ -27,6 +31,8 @@ public class Program
 
         var dbPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "gallery.db");
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
+        StartupProgressLog.WriteInfo(startupLog, $"Content root: {builder.Environment.ContentRootPath}");
+        StartupProgressLog.WriteInfo(startupLog, $"SQLite database: {dbPath}");
 
         var mediaRootPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "Media");
         Directory.CreateDirectory(mediaRootPath);
@@ -34,6 +40,9 @@ public class Program
         Directory.CreateDirectory(previewCachePath);
         var modelsRootPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "Models");
         Directory.CreateDirectory(modelsRootPath);
+        StartupProgressLog.WriteInfo(startupLog, $"Media root: {mediaRootPath}");
+        StartupProgressLog.WriteInfo(startupLog, $"Preview cache: {previewCachePath}");
+        StartupProgressLog.WriteInfo(startupLog, $"Embedding models: {modelsRootPath}");
 
         var connectionString = new SqliteConnectionStringBuilder
         {
@@ -69,23 +78,38 @@ public class Program
             });
         });
 
+        StartupProgressLog.WriteInfo(startupLog, "Building web application...");
         var app = builder.Build();
-        DatabaseInitializer.EnsureDatabase(app.Services);
-        app.Services.GetRequiredService<MediaSimilarityService>().BackfillMissingHashesAsync().GetAwaiter().GetResult();
-        app.Services.GetRequiredService<MediaRecommendationService>().BackfillMissingEmbeddingsAsync().GetAwaiter().GetResult();
+        StartupProgressLog.WriteInfo(startupLog, "Web application build completed.");
 
-        app.UseCors("Frontend");
-        app.UseStaticFiles(new StaticFileOptions
+        StartupProgressLog.RunStep(startupLog, "Ensuring database schema", () =>
         {
-            FileProvider = new PhysicalFileProvider(mediaRootPath),
-            RequestPath = "/media"
+            DatabaseInitializer.EnsureDatabase(app.Services);
+        });
+        StartupProgressLog.RunStep(startupLog, "Backfilling missing image hashes", () =>
+        {
+            app.Services.GetRequiredService<MediaSimilarityService>().BackfillMissingHashesAsync().GetAwaiter().GetResult();
+        });
+        StartupProgressLog.RunStep(startupLog, "Backfilling missing image embeddings", () =>
+        {
+            app.Services.GetRequiredService<MediaRecommendationService>().BackfillMissingEmbeddingsAsync().GetAwaiter().GetResult();
+        });
+        StartupProgressLog.RunStep(startupLog, "Configuring middleware and endpoints", () =>
+        {
+            app.UseCors("Frontend");
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = new PhysicalFileProvider(mediaRootPath),
+                RequestPath = "/media"
+            });
+
+            app.MapHealthEndpoints()
+                .MapMediaEndpoints()
+                .MapCollectionsEndpoints()
+                .MapTagsEndpoints();
         });
 
-        app.MapHealthEndpoints()
-            .MapMediaEndpoints()
-            .MapCollectionsEndpoints()
-            .MapTagsEndpoints();
-
+        StartupProgressLog.WriteInfo(startupLog, "Initialization complete. Starting HTTP listener.");
         app.Run();
     }
 }
