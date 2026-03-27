@@ -25,6 +25,8 @@ test("buildSearchSuggestions suggests tag names by prefix", () => {
 test("base search tags include filetype", () => {
   assert.equal(BASE_SEARCH_TAG_OPTIONS.includes("filetype"), true);
   assert.equal(BASE_SEARCH_TAG_NAMES.has("filetype"), true);
+  assert.equal(BASE_SEARCH_TAG_OPTIONS.includes("tagtype"), true);
+  assert.equal(BASE_SEARCH_TAG_NAMES.has("tagtype"), true);
 });
 
 test("buildSearchSuggestions stays empty for an empty token and limits autocomplete results", () => {
@@ -69,6 +71,26 @@ test("buildSearchSuggestions suggests values for typed tag", () => {
   assert.equal(formatSearchTagValue("Blue Sky"), '"Blue Sky"');
 });
 
+test("buildSearchSuggestions suggests tag types for typed tagtype filter", () => {
+  const suggestions = buildSearchSuggestions({
+    searchTokenRange: getSearchTokenRange("tagtype:ar", 10),
+    searchTagOptions: ["title", "path", "tagtype", "artist"],
+    searchTagTypeMap: new Map([
+      ["artist", { lowerName: "artist", label: "Artist", color: "#112233" }],
+      ["series", { lowerName: "series", label: "Series", color: "#223344" }]
+    ]),
+    baseSearchTagNames: new Set(["path", "title", "description", "id", "source", "tagtype"]),
+    mediaTagCatalog: [
+      { tagTypeName: "artist", name: "Blue Sky" }
+    ]
+  });
+
+  assert.deepEqual(
+    suggestions.map((item) => item.label),
+    ["Artist"]
+  );
+});
+
 test("buildSearchSuggestions ignores leading minus while keeping it in labels", () => {
   const suggestions = buildSearchSuggestions({
     searchTokenRange: getSearchTokenRange("-cat", 4),
@@ -109,6 +131,21 @@ test("parseSearchSegments includes color for known tag type", () => {
 
   assert.equal(segments[0].isTag, true);
   assert.equal(segments[0].color, "#112233");
+});
+
+test("parseSearchSegments treats tagtype filters as built-in search tags", () => {
+  const segments = parseSearchSegments({
+    value: "tagtype:artist -tagtype:series",
+    baseSearchTagNames: new Set(["title", "path", "tagtype"]),
+    searchTagTypeMap: new Map([["artist", { color: "#112233" }], ["series", { color: "#445566" }]]),
+    searchTagOptions: ["title", "path", "tagtype", "artist", "series"]
+  });
+
+  assert.deepEqual(segments, [
+    { text: "tagtype:artist", isTag: true, color: "" },
+    { text: " ", isTag: false },
+    { text: "-tagtype:series", isTag: true, color: "" }
+  ]);
 });
 
 test("formatSearchTagValue strips inner quotes and wraps spaces", () => {

@@ -39,6 +39,8 @@ public static class MediaSearchSqlBuilder
         AddContainsClauses(criteria.ExcludedSourceTerms, "IFNULL(m.Source, '')", exclude: true);
         AddFileTypeClauses(criteria.FileTypes);
         AddFileTypeClauses(criteria.ExcludedFileTypes, exclude: true);
+        AddTagTypeClauses(criteria.TagTypes);
+        AddTagTypeClauses(criteria.ExcludedTagTypes, exclude: true);
         AddTagClauses(criteria.TagFilters);
 
         if (criteria.Ids.Count > 0)
@@ -108,6 +110,26 @@ public static class MediaSearchSqlBuilder
                     )
                     """;
                 whereClauses.Add(filter.Exclude ? $"NOT {existsClause}" : existsClause);
+            }
+        }
+
+        void AddTagTypeClauses(IEnumerable<string> tagTypes, bool exclude = false)
+        {
+            foreach (var tagType in tagTypes.Where(value => !string.IsNullOrWhiteSpace(value)))
+            {
+                var typeParamName = $"$p{parameterIndex++}";
+                command.Parameters.AddWithValue(typeParamName, tagType.Trim().ToLowerInvariant());
+                var existsClause = $"""
+                    EXISTS (
+                        SELECT 1
+                        FROM MediaTags mt
+                        INNER JOIN Tags t ON t.Id = mt.TagId
+                        INNER JOIN TagTypes tt ON tt.Id = t.TagTypeId
+                        WHERE mt.MediaId = m.Id
+                          AND LOWER(tt.Name) = {typeParamName}
+                    )
+                    """;
+                whereClauses.Add(exclude ? $"NOT {existsClause}" : existsClause);
             }
         }
 

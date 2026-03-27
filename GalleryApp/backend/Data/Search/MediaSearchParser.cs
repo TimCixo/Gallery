@@ -148,6 +148,9 @@ public static class MediaSearchParser
                 case "filetype":
                     (isExcluded ? criteria.ExcludedFileTypes : criteria.FileTypes).Add(value);
                     break;
+                case "tagtype":
+                    (isExcluded ? criteria.ExcludedTagTypes : criteria.TagTypes).Add(value);
+                    break;
                 case "id":
                     if (long.TryParse(value, out var parsedId) && parsedId > 0)
                     {

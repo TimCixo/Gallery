@@ -6,7 +6,8 @@ export const BASE_SEARCH_TAG_DEFINITIONS = [
   { name: "description", syntax: "description:value" },
   { name: "id", syntax: "id:value" },
   { name: "source", syntax: "source:value" },
-  { name: "filetype", syntax: "filetype:image/video/gif" }
+  { name: "filetype", syntax: "filetype:image/video/gif" },
+  { name: "tagtype", syntax: "tagtype:value" }
 ];
 
 export const BASE_SEARCH_TAG_OPTIONS = BASE_SEARCH_TAG_DEFINITIONS.map((item) => item.name);

@@ -12,6 +12,8 @@ public sealed class MediaSearchCriteria
     public List<string> ExcludedSourceTerms { get; } = [];
     public List<string> FileTypes { get; } = [];
     public List<string> ExcludedFileTypes { get; } = [];
+    public List<string> TagTypes { get; } = [];
+    public List<string> ExcludedTagTypes { get; } = [];
     public List<long> Ids { get; } = [];
     public List<long> ExcludedIds { get; } = [];
     public List<MediaSearchTagFilter> TagFilters { get; } = [];
@@ -27,6 +29,8 @@ public sealed class MediaSearchCriteria
         || ExcludedSourceTerms.Count > 0
         || FileTypes.Count > 0
         || ExcludedFileTypes.Count > 0
+        || TagTypes.Count > 0
+        || ExcludedTagTypes.Count > 0
         || Ids.Count > 0
         || ExcludedIds.Count > 0
         || TagFilters.Count > 0;

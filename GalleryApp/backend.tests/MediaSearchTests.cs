@@ -42,6 +42,19 @@ public class MediaSearchTests
     }
 
     [Fact]
+    public void ParseMediaSearchCriteria_includes_tagtype_filters()
+    {
+        var criteria = MediaSearchParser.ParseMediaSearchCriteria("tagtype:artist -tagtype:series artist:cat");
+
+        Assert.Equal(["artist"], criteria.TagTypes);
+        Assert.Equal(["series"], criteria.ExcludedTagTypes);
+        Assert.Single(criteria.TagFilters);
+        Assert.Equal("artist", criteria.TagFilters[0].TagTypeName);
+        Assert.Equal("cat", criteria.TagFilters[0].TagName);
+        Assert.False(criteria.TagFilters[0].Exclude);
+    }
+
+    [Fact]
     public void BuildMediaSearchWhereClauses_uses_not_exists_for_negative_tag_filters()
     {
         using var connection = new SqliteConnection("Data Source=:memory:");
@@ -56,6 +69,43 @@ public class MediaSearchTests
         Assert.Single(whereClauses);
         Assert.Contains("NOT EXISTS", whereClauses[0]);
         Assert.Equal(2, command.Parameters.Count);
+    }
+
+    [Fact]
+    public void BuildMediaSearchWhereClauses_uses_exists_for_tagtype_filters()
+    {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        connection.Open();
+        using var command = connection.CreateCommand();
+
+        var criteria = new MediaSearchCriteria();
+        criteria.TagTypes.Add("artist");
+
+        var whereClauses = MediaSearchSqlBuilder.BuildMediaSearchWhereClauses(command, criteria);
+
+        Assert.Single(whereClauses);
+        Assert.Contains("EXISTS", whereClauses[0]);
+        Assert.DoesNotContain("LIKE", whereClauses[0]);
+        Assert.Single(command.Parameters);
+        Assert.Equal("artist", command.Parameters[0].Value);
+    }
+
+    [Fact]
+    public void BuildMediaSearchWhereClauses_uses_not_exists_for_negative_tagtype_filters()
+    {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        connection.Open();
+        using var command = connection.CreateCommand();
+
+        var criteria = new MediaSearchCriteria();
+        criteria.ExcludedTagTypes.Add("artist");
+
+        var whereClauses = MediaSearchSqlBuilder.BuildMediaSearchWhereClauses(command, criteria);
+
+        Assert.Single(whereClauses);
+        Assert.Contains("NOT EXISTS", whereClauses[0]);
+        Assert.Single(command.Parameters);
+        Assert.Equal("artist", command.Parameters[0].Value);
     }
 
     [Fact]

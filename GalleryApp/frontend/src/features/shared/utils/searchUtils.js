@@ -158,7 +158,35 @@ export const buildSearchSuggestions = ({
   }
 
   const tagName = tokenWithoutAtPrefix.slice(0, separatorIndex).trim().toLowerCase();
-  if (!tagName || baseSearchTagNames.has(tagName) || !searchTagTypeMap.has(tagName)) {
+  if (!tagName) {
+    return [];
+  }
+
+  if (tagName === "tagtype") {
+    const typedTagTypePrefix = tokenBeforeCaretWithoutAtPrefix
+      .slice(tokenBeforeCaretWithoutAtPrefix.indexOf(":") + 1)
+      .trimStart()
+      .replace(/^"/, "")
+      .toLowerCase();
+    if (!typedTagTypePrefix) {
+      return [];
+    }
+
+    return Array.from(searchTagTypeMap.values())
+      .filter((item) => item.lowerName.startsWith(typedTagTypePrefix))
+      .sort((left, right) => left.label.localeCompare(right.label))
+      .slice(0, MAX_SEARCH_SUGGESTIONS)
+      .map((item) => ({
+        kind: "tagValue",
+        key: `tagtype-${item.lowerName}`,
+        tagName,
+        tagValue: item.label,
+        label: `${suggestionPrefix}${item.label}`,
+        color: ""
+      }));
+  }
+
+  if (baseSearchTagNames.has(tagName) || !searchTagTypeMap.has(tagName)) {
     return [];
   }
 
