@@ -28,7 +28,7 @@ test("AppShell exposes duplicates in the slide menu and renders duplicates conta
   assert.match(appShellSource, /const openDuplicatesPage = \(\) => \{/);
   assert.match(appShellSource, /<AppIcon name="duplicate" alt="" aria-hidden="true" \/>/);
   assert.match(appShellSource, /<span>Duplicates<\/span>/);
-  assert.match(appShellSource, /activePage === "duplicates" \? \(\s*<DuplicatesContainer[\s\S]*recommendationSettings=\{appSettings\.recommendationSettings\}[\s\S]*duplicatesPageSize=\{appSettings\.duplicatesPageSize\}/);
+  assert.match(appShellSource, /activePage === "duplicates" \? \(\s*<DuplicatesContainer[\s\S]*recommendationSettings=\{appSettings\.recommendationSettings\}[\s\S]*duplicatesPageSize=\{appSettings\.duplicatesPageSize\}[\s\S]*showHiddenDuplicateGroups=\{showHiddenDuplicateGroups\}/);
 });
 
 test("duplicates page uses a dedicated grouped container and api", () => {
@@ -49,6 +49,8 @@ test("duplicates page uses a dedicated grouped container and api", () => {
   assert.match(duplicatesContainerSource, /onPrev=\{\(\) => handleNavigateSelectedMedia\(-1\)\}/);
   assert.match(duplicatesContainerSource, /onNext=\{\(\) => handleNavigateSelectedMedia\(1\)\}/);
   assert.match(duplicatesContainerSource, /canNavigate=\{canNavigateSelectedMedia\}/);
+  assert.match(duplicatesContainerSource, /showHiddenDuplicateGroups \|\| activeItems\.length !== 1/);
+  assert.match(duplicatesContainerSource, /hiddenGroupsCount/);
   assert.doesNotMatch(duplicatesContainerSource, /FavoritesContainer/);
   assert.match(duplicatesApiSource, /listDuplicateGroups/);
   assert.match(duplicatesApiSource, /excludeDuplicateMedia/);
@@ -62,6 +64,7 @@ test("duplicates page uses a dedicated grouped container and api", () => {
 test("duplicates page renders grouped cards with exclude, restore, merge and delete actions", () => {
   assert.match(duplicatesPageSource, /Loading duplicate groups/);
   assert.match(duplicatesPageSource, /No duplicate groups found/);
+  assert.match(duplicatesPageSource, /All duplicate groups on this page are hidden/);
   assert.match(duplicatesPageSource, /DuplicateGroupCard/);
   assert.match(duplicateGroupCardSource, /Delete duplicates/);
   assert.match(duplicateGroupCardSource, /Merge/);

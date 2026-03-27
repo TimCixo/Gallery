@@ -15,9 +15,12 @@ test("AppShell renders a filter icon button next to the top search submit button
   assert.match(appShellSource, /AppIcon name="filter"/);
   assert.match(appShellSource, /top-filter-control/);
   assert.match(appShellSource, /groupRelatedMedia=\{groupRelatedMedia\}/);
+  assert.match(appShellSource, /showHiddenDuplicateGroups=\{showHiddenDuplicateGroups\}/);
 });
 
-test("MediaFilterPopover exposes the group related media checkbox", () => {
+test("MediaFilterPopover exposes both gallery and duplicates filter modes", () => {
   assert.match(popoverSource, /type="checkbox"/);
-  assert.match(popoverSource, /Групувати медіа/);
+  assert.match(popoverSource, /Group/);
+  assert.match(popoverSource, /Show hidden/);
+  assert.match(popoverSource, /activePage === "duplicates"/);
 });

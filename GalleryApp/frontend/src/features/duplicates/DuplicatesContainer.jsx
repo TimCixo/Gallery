@@ -46,7 +46,8 @@ export default function DuplicatesContainer({
   duplicatesPageSize = DEFAULT_PAGE_SIZE,
   defaultMediaFitMode = "resize",
   showRelatedMediaStrip = true,
-  confirmDestructiveActions = true
+  confirmDestructiveActions = true,
+  showHiddenDuplicateGroups = false
 }) {
   const pageSize = Number.isInteger(duplicatesPageSize) && duplicatesPageSize > 0 ? duplicatesPageSize : DEFAULT_PAGE_SIZE;
   const [groups, setGroups] = useState([]);
@@ -87,6 +88,20 @@ export default function DuplicatesContainer({
 
   const flattenItems = useMemo(
     () => groups.flatMap((group) => [...(group.items || []), ...(group.excludedItems || [])]),
+    [groups]
+  );
+  const visibleGroups = useMemo(
+    () => groups.filter((group) => {
+      const activeItems = Array.isArray(group?.items) ? group.items : [];
+      return showHiddenDuplicateGroups || activeItems.length !== 1;
+    }),
+    [groups, showHiddenDuplicateGroups]
+  );
+  const hiddenGroupsCount = useMemo(
+    () => groups.reduce((count, group) => {
+      const activeItems = Array.isArray(group?.items) ? group.items : [];
+      return count + (activeItems.length === 1 ? 1 : 0);
+    }, 0),
     [groups]
   );
   const selectedMediaGroup = useMemo(() => {
@@ -556,7 +571,9 @@ export default function DuplicatesContainer({
         errorMessage={errorMessage}
         isLoading={isLoading}
         totalCount={totalCount}
-        groups={groups}
+        groups={visibleGroups}
+        hiddenGroupsCount={hiddenGroupsCount}
+        showHiddenDuplicateGroups={showHiddenDuplicateGroups}
         renderPagination={renderPagination}
         getSelectedParentId={getSelectedParentId}
         actionGroupKey={actionGroupKey}

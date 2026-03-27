@@ -43,6 +43,7 @@ export default function AppShell() {
   const [searchSubmitSeq, setSearchSubmitSeq] = useState(0);
   const [openMediaRequest, setOpenMediaRequest] = useState({ token: 0, media: null });
   const [groupRelatedMedia, setGroupRelatedMedia] = useState(initialSettingsState.groupRelatedMediaByDefault);
+  const [showHiddenDuplicateGroups, setShowHiddenDuplicateGroups] = useState(false);
   const [isMediaFilterOpen, setIsMediaFilterOpen] = useState(false);
   const prevActivePageRef = useRef("gallery");
   const mediaFilterButtonRef = useRef(null);
@@ -310,6 +311,9 @@ export default function AppShell() {
               onClose={() => setIsMediaFilterOpen(false)}
               groupRelatedMedia={groupRelatedMedia}
               onGroupRelatedMediaChange={setGroupRelatedMedia}
+              showHiddenDuplicateGroups={showHiddenDuplicateGroups}
+              onShowHiddenDuplicateGroupsChange={setShowHiddenDuplicateGroups}
+              activePage={activePage}
             />
           </div>
         </form>
@@ -391,6 +395,7 @@ export default function AppShell() {
           defaultMediaFitMode={appSettings.defaultMediaFitMode}
           showRelatedMediaStrip={appSettings.showRelatedMediaStrip}
           confirmDestructiveActions={appSettings.confirmDestructiveActions}
+          showHiddenDuplicateGroups={showHiddenDuplicateGroups}
         />
       ) : null}
       {activePage === "collections" ? (

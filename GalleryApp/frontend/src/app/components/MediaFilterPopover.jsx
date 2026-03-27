@@ -5,7 +5,10 @@ export default function MediaFilterPopover({
   buttonRef,
   onClose,
   groupRelatedMedia,
-  onGroupRelatedMediaChange
+  onGroupRelatedMediaChange,
+  showHiddenDuplicateGroups,
+  onShowHiddenDuplicateGroupsChange,
+  activePage
 }) {
   useEffect(() => {
     if (!isOpen) {
@@ -36,14 +39,25 @@ export default function MediaFilterPopover({
   return (
     <div className="top-filter-popover-wrap">
       <div className="top-filter-popover" role="dialog" aria-modal="false" aria-label="Media filters">
-        <label className="top-filter-checkbox">
-          <input
-            type="checkbox"
-            checked={groupRelatedMedia}
-            onChange={(event) => onGroupRelatedMediaChange?.(event.target.checked)}
-          />
-          <span>Групувати медіа</span>
-        </label>
+        {activePage === "duplicates" ? (
+          <label className="top-filter-checkbox">
+            <input
+              type="checkbox"
+              checked={showHiddenDuplicateGroups}
+              onChange={(event) => onShowHiddenDuplicateGroupsChange?.(event.target.checked)}
+            />
+            <span>Show hidden</span>
+          </label>
+        ) : (
+          <label className="top-filter-checkbox">
+            <input
+              type="checkbox"
+              checked={groupRelatedMedia}
+              onChange={(event) => onGroupRelatedMediaChange?.(event.target.checked)}
+            />
+            <span>Group</span>
+          </label>
+        )}
       </div>
     </div>
   );

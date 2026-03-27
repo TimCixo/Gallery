@@ -5,6 +5,8 @@ export default function DuplicatesPage({
   isLoading,
   totalCount,
   groups,
+  hiddenGroupsCount,
+  showHiddenDuplicateGroups,
   renderPagination,
   getSelectedParentId,
   actionGroupKey,
@@ -20,6 +22,9 @@ export default function DuplicatesPage({
       {errorMessage ? <p className="media-state error">{errorMessage}</p> : null}
       {!errorMessage && isLoading && totalCount === 0 ? <p className="media-state">Loading duplicate groups...</p> : null}
       {!errorMessage && !isLoading && totalCount === 0 ? <p className="media-state">No duplicate groups found.</p> : null}
+      {!errorMessage && !isLoading && totalCount > 0 && groups.length === 0 && !showHiddenDuplicateGroups ? (
+        <p className="media-state">All duplicate groups on this page are hidden. Hidden groups: {hiddenGroupsCount}.</p>
+      ) : null}
       {!errorMessage && totalCount > 0 ? <div className="media-pagination-toolbar">{renderPagination()}</div> : null}
       {!errorMessage && totalCount > 0 ? (
         <>
