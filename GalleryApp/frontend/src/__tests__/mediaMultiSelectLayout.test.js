@@ -62,13 +62,13 @@ test("bulk media action bar exposes cancel delete and edit actions", () => {
   assert.match(quickTaggingActionSource, /if \(isSelectionMode\) \{\s*return null;\s*\}/);
   assert.match(quickTaggingActionSource, /aria-label="Open quick tagging"/);
   assert.match(quickTaggingModalSource, /Tags to add/);
-  assert.match(quickTaggingModalSource, /Tags to exclude from grid/);
+  assert.doesNotMatch(quickTaggingModalSource, /Tags to exclude from grid/);
   assert.match(quickTaggingModalSource, /Enable quick tagging/);
   assert.match(quickTaggingModalSource, /Update quick tagging/);
   assert.doesNotMatch(quickTaggingModalSource, /Configure tags to add and tags that should be hidden from the grid while tagging is active\./);
   assert.match(quickTaggingModalSource, /<TagNamesAutocompleteInput/);
   assert.match(quickTaggingModalSource, /placeholder="author:artist3 character:some_character"/);
-  assert.match(quickTaggingModalSource, /placeholder="status:done status:archived"/);
+  assert.doesNotMatch(quickTaggingModalSource, /placeholder="status:done status:archived"/);
   assert.match(tagNamesAutocompleteInputSource, /AutocompleteTextField/);
   assert.match(tagNamesAutocompleteInputSource, /dropdownClassName="media-tag-dropdown"/);
   assert.match(tagNamesAutocompleteInputSource, /parseSearchSegments/);
@@ -172,7 +172,11 @@ test("multi-select styles highlight selected media and bulk actions", () => {
   assert.match(appCss, /\.media-quick-tagging-modal/);
   assert.match(appCss, /\.media-quick-tagging-body/);
   assert.match(appCss, /\.media-quick-tagging-modal\s*\{[\s\S]*overflow-x:\s*hidden/);
+  assert.match(appCss, /\.media-quick-tagging-modal\s*\{[\s\S]*width:\s*min\(100%, 34rem\)/);
+  assert.match(appCss, /\.media-quick-tagging-modal\s*\{[\s\S]*height:\s*auto/);
+  assert.match(appCss, /\.media-quick-tagging-modal\s*\{[\s\S]*max-height:\s*min\(24rem, calc\(100vh - 2rem\)\)/);
   assert.match(appCss, /\.media-quick-tagging-body\s*\{[\s\S]*overflow-x:\s*hidden/);
+  assert.match(appCss, /\.media-quick-tagging-body\s*\{[\s\S]*padding:\s*0 1rem 0\.9rem/);
   assert.match(appCss, /\.media-quick-tagging-field/);
   assert.match(appCss, /\.media-quick-tagging-field \.collections-input/);
   assert.match(appCss, /\.media-quick-tagging-input-highlight/);

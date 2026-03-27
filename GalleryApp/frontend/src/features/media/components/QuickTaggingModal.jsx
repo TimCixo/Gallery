@@ -15,8 +15,7 @@ export default function QuickTaggingModal({
   onClose
 }) {
   const [draft, setDraft] = useState(() => ({
-    addTagsInput: resolveTagIdsToTokens(initialConfig?.addTagIds, tagCatalog).join(" "),
-    excludedTagsInput: resolveTagIdsToTokens(initialConfig?.excludedTagIds, tagCatalog).join(" ")
+    addTagsInput: resolveTagIdsToTokens(initialConfig?.addTagIds, tagCatalog).join(" ")
   }));
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -25,8 +24,7 @@ export default function QuickTaggingModal({
       return;
     }
     setDraft({
-      addTagsInput: resolveTagIdsToTokens(initialConfig?.addTagIds, tagCatalog).join(" "),
-      excludedTagsInput: resolveTagIdsToTokens(initialConfig?.excludedTagIds, tagCatalog).join(" ")
+      addTagsInput: resolveTagIdsToTokens(initialConfig?.addTagIds, tagCatalog).join(" ")
     });
     setErrorMessage("");
   }, [initialConfig, isOpen, tagCatalog]);
@@ -45,10 +43,8 @@ export default function QuickTaggingModal({
 
   const handleConfirm = () => {
     const addTagIds = resolveTagTokensToIds(parseTagNamesList(draft.addTagsInput), tagCatalog);
-    const excludedTagIds = resolveTagTokensToIds(parseTagNamesList(draft.excludedTagsInput), tagCatalog);
     const normalizedConfig = createQuickTaggingConfig({
-      addTagIds,
-      excludedTagIds
+      addTagIds
     });
 
     if (normalizedConfig.addTagIds.length === 0) {
@@ -88,15 +84,6 @@ export default function QuickTaggingModal({
                 setErrorMessage("");
               }}
               placeholder="author:artist3 character:some_character"
-              tagCatalog={tagCatalog}
-              disabled={isLoading}
-            />
-            <TagNamesAutocompleteInput
-              id="quick-tagging-exclude-tags"
-              label="Tags to exclude from grid"
-              value={draft.excludedTagsInput}
-              onChange={(nextValue) => setDraft((current) => ({ ...current, excludedTagsInput: nextValue }))}
-              placeholder="status:done status:archived"
               tagCatalog={tagCatalog}
               disabled={isLoading}
             />
