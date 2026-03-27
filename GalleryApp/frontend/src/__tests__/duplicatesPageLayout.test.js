@@ -32,7 +32,8 @@ test("AppShell exposes duplicates in the slide menu and renders duplicates conta
 });
 
 test("duplicates page uses a dedicated grouped container and api", () => {
-  assert.match(duplicatesContainerSource, /duplicatesApi\.listDuplicateGroups/);
+  assert.match(duplicatesContainerSource, /fetchAllDuplicateGroups/);
+  assert.match(duplicatesContainerSource, /listDuplicateGroups: duplicatesApi\.listDuplicateGroups/);
   assert.match(duplicatesContainerSource, /MediaDeleteConfirmModal/);
   assert.match(duplicatesContainerSource, /MediaViewerModal/);
   assert.match(duplicatesContainerSource, /buildMediaUpdatePayload/);
@@ -51,6 +52,8 @@ test("duplicates page uses a dedicated grouped container and api", () => {
   assert.match(duplicatesContainerSource, /canNavigate=\{canNavigateSelectedMedia\}/);
   assert.match(duplicatesContainerSource, /showHiddenDuplicateGroups \|\| activeItems\.length !== 1/);
   assert.match(duplicatesContainerSource, /hiddenGroupsCount/);
+  assert.match(duplicatesContainerSource, /const totalPages = totalCount === 0 \? 0 : Math\.ceil\(totalCount \/ pageSize\)/);
+  assert.match(duplicatesContainerSource, /filteredGroups\.slice/);
   assert.doesNotMatch(duplicatesContainerSource, /FavoritesContainer/);
   assert.match(duplicatesApiSource, /listDuplicateGroups/);
   assert.match(duplicatesApiSource, /excludeDuplicateMedia/);
@@ -65,6 +68,8 @@ test("duplicates page renders grouped cards with exclude, restore, merge and del
   assert.match(duplicatesPageSource, /Loading duplicate groups/);
   assert.match(duplicatesPageSource, /No duplicate groups found/);
   assert.match(duplicatesPageSource, /All duplicate groups on this page are hidden/);
+  assert.match(duplicatesPageSource, /const hasVisibleGroups = groups\.length > 0/);
+  assert.match(duplicatesPageSource, /totalCount > 0 && hasVisibleGroups/);
   assert.match(duplicatesPageSource, /DuplicateGroupCard/);
   assert.match(duplicateGroupCardSource, /Delete duplicates/);
   assert.match(duplicateGroupCardSource, /Merge/);

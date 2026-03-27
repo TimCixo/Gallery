@@ -17,6 +17,8 @@ export default function DuplicatesPage({
   onMergeRequest,
   onDeleteRequest
 }) {
+  const hasVisibleGroups = groups.length > 0;
+
   return (
     <section className="duplicates-page">
       {errorMessage ? <p className="media-state error">{errorMessage}</p> : null}
@@ -25,8 +27,8 @@ export default function DuplicatesPage({
       {!errorMessage && !isLoading && totalCount > 0 && groups.length === 0 && !showHiddenDuplicateGroups ? (
         <p className="media-state">All duplicate groups on this page are hidden. Hidden groups: {hiddenGroupsCount}.</p>
       ) : null}
-      {!errorMessage && totalCount > 0 ? <div className="media-pagination-toolbar">{renderPagination()}</div> : null}
-      {!errorMessage && totalCount > 0 ? (
+      {!errorMessage && totalCount > 0 && hasVisibleGroups ? <div className="media-pagination-toolbar">{renderPagination()}</div> : null}
+      {!errorMessage && totalCount > 0 && hasVisibleGroups ? (
         <>
           <div className="duplicate-groups">
             {groups.map((group) => (

@@ -20,8 +20,10 @@ import CollectionPickerModal from "../collections/components/CollectionPickerMod
 import CollectionPickerDialogContent from "../collections/components/CollectionPickerDialogContent";
 import AppIcon from "../shared/components/AppIcon";
 import DuplicatesPage from "./DuplicatesPage";
+import { fetchAllDuplicateGroups } from "./utils/fetchAllDuplicateGroups";
 
 const DEFAULT_PAGE_SIZE = 12;
+const DUPLICATE_GROUPS_FETCH_PAGE_SIZE = 100;
 
 const getDisplayName = (value) => {
   const fileName = String(value || "");
@@ -50,10 +52,8 @@ export default function DuplicatesContainer({
   showHiddenDuplicateGroups = false
 }) {
   const pageSize = Number.isInteger(duplicatesPageSize) && duplicatesPageSize > 0 ? duplicatesPageSize : DEFAULT_PAGE_SIZE;
-  const [groups, setGroups] = useState([]);
+  const [allGroups, setAllGroups] = useState([]);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [pageJumpInput, setPageJumpInput] = useState("1");
@@ -86,22 +86,33 @@ export default function DuplicatesContainer({
     settings: recommendationSettings
   });
 
-  const flattenItems = useMemo(
-    () => groups.flatMap((group) => [...(group.items || []), ...(group.excludedItems || [])]),
-    [groups]
-  );
-  const visibleGroups = useMemo(
-    () => groups.filter((group) => {
+  const filteredGroups = useMemo(
+    () => allGroups.filter((group) => {
       const activeItems = Array.isArray(group?.items) ? group.items : [];
       return showHiddenDuplicateGroups || activeItems.length !== 1;
     }),
-    [groups, showHiddenDuplicateGroups]
+    [allGroups, showHiddenDuplicateGroups]
   );
   const hiddenGroupsCount = useMemo(
-    () => groups.reduce((count, group) => {
+    () => allGroups.reduce((count, group) => {
       const activeItems = Array.isArray(group?.items) ? group.items : [];
       return count + (activeItems.length === 1 ? 1 : 0);
     }, 0),
+    [allGroups]
+  );
+  const totalCount = filteredGroups.length;
+  const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize);
+  const effectivePage = totalPages === 0 ? 1 : Math.min(page, totalPages);
+  const groups = useMemo(() => {
+    if (totalPages === 0) {
+      return [];
+    }
+
+    const startIndex = (effectivePage - 1) * pageSize;
+    return filteredGroups.slice(startIndex, startIndex + pageSize);
+  }, [effectivePage, filteredGroups, pageSize, totalPages]);
+  const flattenItems = useMemo(
+    () => groups.flatMap((group) => [...(group.items || []), ...(group.excludedItems || [])]),
     [groups]
   );
   const selectedMediaGroup = useMemo(() => {
@@ -144,15 +155,15 @@ export default function DuplicatesContainer({
     });
   }, []);
 
-  const loadGroups = useCallback(async (nextPage) => {
+  const loadGroups = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage("");
     try {
-      const response = await duplicatesApi.listDuplicateGroups({ page: nextPage, pageSize });
-      const nextGroups = Array.isArray(response?.items) ? response.items : [];
-      setGroups(nextGroups);
-      setTotalPages(Number(response?.totalPages || 0));
-      setTotalCount(Number(response?.totalCount || nextGroups.length));
+      const nextGroups = await fetchAllDuplicateGroups({
+        listDuplicateGroups: duplicatesApi.listDuplicateGroups,
+        pageSize: DUPLICATE_GROUPS_FETCH_PAGE_SIZE
+      });
+      setAllGroups(nextGroups);
       setParentSelectionByGroupKey((current) => {
         const nextState = { ...current };
         nextGroups.forEach((group) => {
@@ -164,23 +175,27 @@ export default function DuplicatesContainer({
         return nextState;
       });
     } catch (error) {
-      setGroups([]);
-      setTotalPages(0);
-      setTotalCount(0);
+      setAllGroups([]);
       setErrorMessage(error instanceof Error ? error.message : "Failed to load duplicate groups.");
     } finally {
       setIsLoading(false);
       setActionGroupKey("");
     }
-  }, [pageSize]);
+  }, []);
 
   useEffect(() => {
-    void loadGroups(page);
-  }, [page, loadGroups]);
+    void loadGroups();
+  }, [loadGroups]);
 
   useEffect(() => {
     setPage(1);
-  }, [pageSize]);
+  }, [pageSize, showHiddenDuplicateGroups]);
+
+  useEffect(() => {
+    if (page !== effectivePage) {
+      setPage(effectivePage);
+    }
+  }, [effectivePage, page]);
 
   useEffect(() => {
     setPageJumpInput(String(page));
@@ -461,7 +476,7 @@ export default function DuplicatesContainer({
       setMediaModalError,
       applyLocalFavoriteState: (nextIsFavorite, mediaId) => {
         setSelectedMedia((current) => (current && current.id === mediaId ? { ...current, isFavorite: nextIsFavorite } : current));
-        setGroups((current) => patchGroupsByMediaId(current, mediaId, { isFavorite: nextIsFavorite }));
+      setAllGroups((current) => patchGroupsByMediaId(current, mediaId, { isFavorite: nextIsFavorite }));
       },
       onSuccess: () => window.dispatchEvent(new CustomEvent("gallery:media-updated"))
     });
@@ -487,7 +502,7 @@ export default function DuplicatesContainer({
     try {
       await mediaApi.updateMedia(selectedMedia.id, buildMediaUpdatePayload(mediaDraft, toNullableId));
       setIsEditingMedia(false);
-      await loadGroups(page);
+      await loadGroups();
       window.dispatchEvent(new CustomEvent("gallery:media-updated"));
     } catch (error) {
       setMediaModalError(error instanceof Error ? error.message : "Failed to update media.");
@@ -506,7 +521,7 @@ export default function DuplicatesContainer({
     try {
       await mediaApi.deleteMedia(selectedMedia.id);
       setSelectedMedia(null);
-      await loadGroups(page);
+      await loadGroups();
       window.dispatchEvent(new CustomEvent("gallery:media-updated"));
     } catch (error) {
       setMediaModalError(error instanceof Error ? error.message : "Failed to delete media.");
@@ -520,7 +535,7 @@ export default function DuplicatesContainer({
     setMediaModalError("");
     try {
       await duplicatesApi.excludeDuplicateMedia(groupKey, mediaId);
-      await loadGroups(page);
+      await loadGroups();
     } catch (error) {
       setMediaModalError(error instanceof Error ? error.message : "Failed to exclude media.");
       setActionGroupKey("");
@@ -532,7 +547,7 @@ export default function DuplicatesContainer({
     setMediaModalError("");
     try {
       await duplicatesApi.restoreDuplicateMedia(groupKey, mediaId);
-      await loadGroups(page);
+      await loadGroups();
     } catch (error) {
       setMediaModalError(error instanceof Error ? error.message : "Failed to restore media.");
       setActionGroupKey("");
@@ -557,7 +572,7 @@ export default function DuplicatesContainer({
       }
 
       setPendingGroupAction(null);
-      await loadGroups(page);
+      await loadGroups();
       window.dispatchEvent(new CustomEvent("gallery:media-updated"));
     } catch (error) {
       setMediaModalError(error instanceof Error ? error.message : "Failed to apply duplicate group action.");
@@ -571,7 +586,7 @@ export default function DuplicatesContainer({
         errorMessage={errorMessage}
         isLoading={isLoading}
         totalCount={totalCount}
-        groups={visibleGroups}
+        groups={groups}
         hiddenGroupsCount={hiddenGroupsCount}
         showHiddenDuplicateGroups={showHiddenDuplicateGroups}
         renderPagination={renderPagination}
