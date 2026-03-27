@@ -33,13 +33,14 @@ export const mediaApi = {
       throw toServiceError(error, "Failed to fetch favorites.", "FAVORITES_LIST_FAILED");
     }
   },
-  listSimilarMedia: async (mediaId, { signal, timeoutMs } = {}) => {
+  listRecommendedMedia: async (mediaId, { signal, timeoutMs } = {}) => {
     try {
       return await requestJson(`/api/media/${mediaId}/similar`, { signal, timeoutMs });
     } catch (error) {
-      throw toServiceError(error, "Failed to fetch similar media.", "SIMILAR_MEDIA_LIST_FAILED");
+      throw toServiceError(error, "Failed to fetch recommended media.", "RECOMMENDED_MEDIA_LIST_FAILED");
     }
   },
+  listSimilarMedia: async (mediaId, options = {}) => mediaApi.listRecommendedMedia(mediaId, options),
   setFavorite: async (mediaId, isFavorite) => {
     try {
       return await requestJson(`/api/media/${mediaId}/favorite`, {

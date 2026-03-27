@@ -1,5 +1,10 @@
 # Gallery
 
+## Recommendations Update
+
+- Image recommendations use ONNX Runtime embeddings stored in SQLite.
+- Media viewer metadata now includes a `Recommended media` block rendered from backend similarity results.
+
 Gallery - локальний full-stack застосунок для керування медіаархівом: зображеннями, відео, колекціями, тегами, вибраним, завантаженням і групами точних дублікатів.
 
 ## Стек

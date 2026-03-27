@@ -15,6 +15,7 @@ import QuickTaggingModal from "../media/components/QuickTaggingModal";
 import { useMediaReferencePicker } from "../media/hooks/useMediaReferencePicker";
 import { useMediaMultiSelect } from "../media/hooks/useMediaMultiSelect";
 import { useQuickTagging } from "../media/hooks/useQuickTagging";
+import { useRecommendedMedia } from "../media/hooks/useRecommendedMedia";
 import {
   deleteBulkSelectedMedia,
   deleteSelectedMedia,
@@ -162,6 +163,14 @@ export default function GalleryContainer({
   });
   const visibleMediaFiles = useMemo(() => quickTagging.visibleItems, [quickTagging.visibleItems]);
   const mediaSelection = useMediaMultiSelect(visibleMediaFiles);
+  const {
+    recommendedMediaItems,
+    isRecommendedMediaLoading,
+    recommendedMediaError
+  } = useRecommendedMedia({
+    selectedMedia,
+    listRecommendedMedia: mediaApi.listRecommendedMedia
+  });
 
   useEffect(() => {
     void loadMedia(currentPage, searchQuery);
@@ -750,6 +759,9 @@ export default function GalleryContainer({
             return { ...current, tagIds: hasTag ? currentIds.filter((id) => id !== tagId) : [...currentIds, tagId] };
           })}
           relatedMediaItems={relatedMediaItems}
+          recommendedMediaItems={recommendedMediaItems}
+          isRecommendedMediaLoading={isRecommendedMediaLoading}
+          recommendedMediaError={recommendedMediaError}
           relationPreviewByMode={mediaReferencePicker.previewByMode}
           onOpenRelationPicker={mediaReferencePicker.openPicker}
           onOpenRelatedMediaById={handleOpenRelatedMediaById}

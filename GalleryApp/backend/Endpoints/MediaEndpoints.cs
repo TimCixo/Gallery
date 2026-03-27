@@ -46,14 +46,14 @@ app.MapGet("/api/media", (int? page, int? pageSize, string? search) =>
     return Results.Ok(pagedResult);
 });
 
-app.MapGet("/api/media/{id:long}/similar", async (long id, MediaSimilarityService mediaSimilarityService, MediaQueryService mediaQueryService, HttpContext httpContext) =>
+app.MapGet("/api/media/{id:long}/similar", async (long id, MediaRecommendationService mediaRecommendationService, MediaQueryService mediaQueryService, HttpContext httpContext) =>
 {
     if (id <= 0)
     {
         return Results.BadRequest(new { error = "Invalid media id." });
     }
 
-    var items = await mediaSimilarityService.GetSimilarMediaAsync(id, cancellationToken: httpContext.RequestAborted);
+    var items = await mediaRecommendationService.GetRecommendedMediaAsync(id, cancellationToken: httpContext.RequestAborted);
     mediaQueryService.WarmPagePreviews(items.Select(item => item.Item.RelativePath));
     return Results.Ok(new { items });
 });
@@ -614,6 +614,7 @@ var uploadEndpoint = app.MapPost("/api/upload", async (HttpRequest request, Prev
     await using var dbConnection = new SqliteConnection(connectionString);
     await dbConnection.OpenAsync();
     var mediaSimilarityService = app.ServiceProvider.GetRequiredService<MediaSimilarityService>();
+    var mediaRecommendationService = app.ServiceProvider.GetRequiredService<MediaRecommendationService>();
 
     foreach (var file in form.Files)
     {
@@ -670,6 +671,7 @@ var uploadEndpoint = app.MapPost("/api/upload", async (HttpRequest request, Prev
             if (MediaFileHelper.IsImageFile(Path.GetExtension(destinationPath).ToLowerInvariant()))
             {
                 await mediaSimilarityService.UpdateImageHashAsync(mediaId, relativePath, request.HttpContext.RequestAborted);
+                await mediaRecommendationService.UpdateEmbeddingAsync(mediaId, relativePath, request.HttpContext.RequestAborted);
             }
             await previewCacheService.WarmAsync(relativePath, destinationPath, Path.GetExtension(destinationPath).ToLowerInvariant(), request.HttpContext.RequestAborted);
         }

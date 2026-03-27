@@ -1,5 +1,10 @@
 # Frontend
 
+## Recommendations Update
+
+- Media viewer metadata renders a `Recommended media` section under action buttons.
+- Frontend loads recommendation items through `src/features/media/hooks/useRecommendedMedia.js`.
+
 Frontend Gallery - це React/Vite-клієнт для галереї, favorites, collections, tags, upload workflow, пошуку та керування exact duplicates.
 
 ## Стек

@@ -13,6 +13,7 @@ import {
 } from "../media/utils/mediaMutationHelpers";
 import { buildRelatedMediaChain } from "../media/utils/relatedMediaChain";
 import { useMediaReferencePicker } from "../media/hooks/useMediaReferencePicker";
+import { useRecommendedMedia } from "../media/hooks/useRecommendedMedia";
 import MediaDeleteConfirmModal from "../media/components/MediaDeleteConfirmModal";
 import MediaViewerModal from "../media/components/MediaViewerModal";
 import CollectionPickerModal from "../collections/components/CollectionPickerModal";
@@ -67,6 +68,14 @@ export default function DuplicatesContainer() {
   const [isCollectionPickerLoading, setIsCollectionPickerLoading] = useState(false);
   const [isAddingMediaToCollection, setIsAddingMediaToCollection] = useState(false);
   const [relatedMediaItems, setRelatedMediaItems] = useState([]);
+  const {
+    recommendedMediaItems,
+    isRecommendedMediaLoading,
+    recommendedMediaError
+  } = useRecommendedMedia({
+    selectedMedia,
+    listRecommendedMedia: mediaApi.listRecommendedMedia
+  });
 
   const flattenItems = useMemo(
     () => groups.flatMap((group) => [...(group.items || []), ...(group.excludedItems || [])]),
@@ -611,6 +620,9 @@ export default function DuplicatesContainer() {
             return { ...current, tagIds: hasTag ? currentIds.filter((id) => id !== tagId) : [...currentIds, tagId] };
           })}
           relatedMediaItems={relatedMediaItems}
+          recommendedMediaItems={recommendedMediaItems}
+          isRecommendedMediaLoading={isRecommendedMediaLoading}
+          recommendedMediaError={recommendedMediaError}
           relationPreviewByMode={mediaReferencePicker.previewByMode}
           onOpenRelationPicker={mediaReferencePicker.openPicker}
           onOpenRelatedMediaById={handleOpenRelatedMediaById}

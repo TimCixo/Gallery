@@ -3,9 +3,11 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.FileProviders;
 using GalleryApp.Api.Data;
 using GalleryApp.Api.Endpoints;
+using GalleryApp.Api.Infrastructure.Embeddings;
 using GalleryApp.Api.Services;
 using GalleryApp.Api.Data.Repositories;
 using GalleryApp.Api.Services.MediaProcessing;
+using GalleryApp.Api.Services.Embeddings;
 
 namespace GalleryApp.Api;
 
@@ -30,6 +32,8 @@ public class Program
         Directory.CreateDirectory(mediaRootPath);
         var previewCachePath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "PreviewCache");
         Directory.CreateDirectory(previewCachePath);
+        var modelsRootPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "Models");
+        Directory.CreateDirectory(modelsRootPath);
 
         var connectionString = new SqliteConnectionStringBuilder
         {
@@ -38,12 +42,20 @@ public class Program
 
         builder.Services.AddSingleton(connectionString);
         builder.Services.AddSingleton(new MediaStorageOptions(mediaRootPath, previewCachePath));
+        builder.Services.AddSingleton(new MediaEmbeddingOptions(
+            modelsRootPath,
+            Path.Combine(modelsRootPath, "clip-vit-base-patch32-vision-quantized.onnx"),
+            "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/vision_model_quantized.onnx?download=true"));
+        builder.Services.AddSingleton<HttpClient>();
         builder.Services.AddSingleton<MediaRepository>();
+        builder.Services.AddSingleton<MediaEmbeddingRepository>();
         builder.Services.AddSingleton<ImageHashService>();
+        builder.Services.AddSingleton<IImageEmbeddingGenerator, OnnxImageEmbeddingGenerator>();
         builder.Services.AddSingleton<IMediaProcessingService, MediaProcessingService>();
         builder.Services.AddSingleton<MediaQueryService>();
         builder.Services.AddSingleton<DuplicateMediaService>();
         builder.Services.AddSingleton<MediaSimilarityService>();
+        builder.Services.AddSingleton<MediaRecommendationService>();
         builder.Services.AddSingleton<PreviewCacheService>();
 
         builder.Services.AddCors(options =>
@@ -60,6 +72,7 @@ public class Program
         var app = builder.Build();
         DatabaseInitializer.EnsureDatabase(app.Services);
         app.Services.GetRequiredService<MediaSimilarityService>().BackfillMissingHashesAsync().GetAwaiter().GetResult();
+        app.Services.GetRequiredService<MediaRecommendationService>().BackfillMissingEmbeddingsAsync().GetAwaiter().GetResult();
 
         app.UseCors("Frontend");
         app.UseStaticFiles(new StaticFileOptions

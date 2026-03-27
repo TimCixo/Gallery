@@ -1,5 +1,11 @@
 # Backend
 
+## Recommendations Update
+
+- Backend stores image embeddings in SQLite table `MediaEmbeddings`.
+- `GET /api/media/{id}/similar` now returns embedding-based recommendations.
+- Embeddings are backfilled for existing image media and generated for new uploads.
+
 Backend Gallery - це ASP.NET Core Minimal API застосунок, який обслуговує медіа, колекції, favorites, tags, upload, preview generation і SQLite-персистентність, включно з grouped exact duplicates.
 
 ## Стек

@@ -20,6 +20,7 @@ import QuickTaggingModal from "../media/components/QuickTaggingModal";
 import { useMediaReferencePicker } from "../media/hooks/useMediaReferencePicker";
 import { useMediaMultiSelect } from "../media/hooks/useMediaMultiSelect";
 import { useQuickTagging } from "../media/hooks/useQuickTagging";
+import { useRecommendedMedia } from "../media/hooks/useRecommendedMedia";
 import {
   deleteBulkSelectedMedia,
   deleteSelectedMedia,
@@ -96,6 +97,14 @@ export default function CollectionsContainer({ searchQuery = "" }) {
       setIsTagCatalogLoading
     });
   }, []);
+  const {
+    recommendedMediaItems,
+    isRecommendedMediaLoading,
+    recommendedMediaError
+  } = useRecommendedMedia({
+    selectedMedia,
+    listRecommendedMedia: mediaApi.listRecommendedMedia
+  });
 
   const loadCollections = useCallback(async () => {
     setIsCollectionsLoading(true);
@@ -928,6 +937,9 @@ export default function CollectionsContainer({ searchQuery = "" }) {
             return { ...current, tagIds: hasTag ? currentIds.filter((id) => id !== tagId) : [...currentIds, tagId] };
           })}
           relatedMediaItems={relatedMediaItems}
+          recommendedMediaItems={recommendedMediaItems}
+          isRecommendedMediaLoading={isRecommendedMediaLoading}
+          recommendedMediaError={recommendedMediaError}
           relationPreviewByMode={mediaReferencePicker.previewByMode}
           onOpenRelationPicker={mediaReferencePicker.openPicker}
           onOpenRelatedMediaById={handleOpenRelatedMediaById}

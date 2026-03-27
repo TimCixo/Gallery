@@ -10,6 +10,7 @@ import MediaEditorPanel from "./MediaEditorPanel";
 import MediaDeleteConfirmModal from "./MediaDeleteConfirmModal";
 import MediaRelationPickerDialogContent from "./MediaRelationPickerDialogContent";
 import MediaRelationPickerModal from "./MediaRelationPickerModal";
+import RecommendedMediaSection from "./RecommendedMediaSection";
 import { getNextMediaFitMode } from "../utils/mediaFitMode";
 
 function renderSource(source) {
@@ -84,6 +85,9 @@ export default function MediaViewerModal({
   onToggleTag,
   onRefreshTagCatalog,
   relatedMediaItems,
+  recommendedMediaItems,
+  isRecommendedMediaLoading,
+  recommendedMediaError,
   relationPreviewByMode,
   onOpenRelationPicker,
   onOpenRelatedMediaById,
@@ -932,6 +936,13 @@ export default function MediaViewerModal({
               </>
             )}
           </div>
+
+          <RecommendedMediaSection
+            items={recommendedMediaItems}
+            isLoading={isRecommendedMediaLoading}
+            errorMessage={recommendedMediaError}
+            onOpenMedia={onOpenRelatedMediaById}
+          />
 
         </div>
       </div>
