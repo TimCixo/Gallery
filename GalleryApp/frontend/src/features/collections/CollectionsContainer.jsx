@@ -33,6 +33,7 @@ import {
   refreshMediaTagCatalog,
   toggleSelectedMediaFavorite as toggleMediaFavorite
 } from "../media/utils/mediaMutationHelpers";
+import { resolvePagedMediaNavigation } from "../media/utils/pagedMediaNavigation";
 import { buildRelatedMediaChain } from "../media/utils/relatedMediaChain";
 import CollectionsPage from "./CollectionsPage";
 import AppIcon from "../shared/components/AppIcon";
@@ -97,6 +98,7 @@ export default function CollectionsContainer({
   const [relatedMediaItems, setRelatedMediaItems] = useState([]);
   const [pendingBulkDelete, setPendingBulkDelete] = useState(null);
   const [isBulkEditing, setIsBulkEditing] = useState(false);
+  const [pendingMediaNavigation, setPendingMediaNavigation] = useState(null);
 
   const refreshTagCatalog = useCallback(async () => {
     await refreshMediaTagCatalog({
@@ -267,19 +269,64 @@ export default function CollectionsContainer({
       ? visibleCollectionFiles.findIndex((file) => file.id === selectedMedia.id || file.relativePath === selectedMedia.relativePath)
       : -1
   ), [selectedMedia, visibleCollectionFiles]);
-  const canNavigateSelectedMedia = selectedMediaIndex >= 0 && visibleCollectionFiles.length > 1;
+  const canNavigateSelectedMedia = selectedMediaIndex >= 0 && collectionFilesTotalPages > 0;
 
   const handleNavigateSelectedMedia = (offset) => {
     if (!canNavigateSelectedMedia || !Number.isInteger(offset) || offset === 0) {
       return;
     }
 
-    const nextIndex = (selectedMediaIndex + offset + visibleCollectionFiles.length) % visibleCollectionFiles.length;
-    const nextItem = visibleCollectionFiles[nextIndex];
+    const navigation = resolvePagedMediaNavigation({
+      currentIndex: selectedMediaIndex,
+      itemCount: visibleCollectionFiles.length,
+      currentPage: collectionFilesPage,
+      totalPages: collectionFilesTotalPages,
+      offset
+    });
+    if (!navigation) {
+      return;
+    }
+
+    if (navigation.type === "item") {
+      const nextItem = visibleCollectionFiles[navigation.index];
+      if (nextItem) {
+        setSelectedMedia(nextItem);
+      }
+      return;
+    }
+
+    setPendingMediaNavigation({
+      ...navigation,
+      sourceMediaId: selectedMedia?.id ?? null
+    });
+    void loadCollectionMedia(selectedCollection.id, navigation.page);
+  };
+
+  useEffect(() => {
+    if (
+      !pendingMediaNavigation
+      || pendingMediaNavigation.type !== "page"
+      || isCollectionFilesLoading
+      || collectionFilesPage !== pendingMediaNavigation.page
+    ) {
+      return;
+    }
+
+    if (
+      pendingMediaNavigation.sourceMediaId
+      && visibleCollectionFiles.some((item) => item.id === pendingMediaNavigation.sourceMediaId)
+    ) {
+      return;
+    }
+
+    const nextItem = pendingMediaNavigation.select === "last"
+      ? visibleCollectionFiles[visibleCollectionFiles.length - 1]
+      : visibleCollectionFiles[0];
     if (nextItem) {
       setSelectedMedia(nextItem);
     }
-  };
+    setPendingMediaNavigation(null);
+  }, [collectionFilesPage, isCollectionFilesLoading, pendingMediaNavigation, visibleCollectionFiles]);
 
   useEffect(() => {
     if (!selectedCollection) {

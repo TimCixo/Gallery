@@ -28,6 +28,7 @@ import {
   refreshMediaTagCatalog,
   toggleSelectedMediaFavorite as toggleMediaFavorite
 } from "../media/utils/mediaMutationHelpers";
+import { resolvePagedMediaNavigation } from "../media/utils/pagedMediaNavigation";
 import { buildRelatedMediaChain } from "../media/utils/relatedMediaChain";
 import FavoritesPage from "./FavoritesPage";
 import AppIcon from "../shared/components/AppIcon";
@@ -79,6 +80,7 @@ export default function FavoritesContainer({
   const [relatedMediaItems, setRelatedMediaItems] = useState([]);
   const [pendingBulkDelete, setPendingBulkDelete] = useState(null);
   const [isBulkEditing, setIsBulkEditing] = useState(false);
+  const [pendingMediaNavigation, setPendingMediaNavigation] = useState(null);
 
   const refreshTagCatalog = useCallback(async () => {
     await refreshMediaTagCatalog({
@@ -182,19 +184,64 @@ export default function FavoritesContainer({
       ? visibleFavoriteFiles.findIndex((file) => file.id === selectedMedia.id || file.relativePath === selectedMedia.relativePath)
       : -1
   ), [selectedMedia, visibleFavoriteFiles]);
-  const canNavigateSelectedMedia = selectedMediaIndex >= 0 && visibleFavoriteFiles.length > 1;
+  const canNavigateSelectedMedia = selectedMediaIndex >= 0 && favoritesTotalPages > 0;
 
   const handleNavigateSelectedMedia = useCallback((offset) => {
     if (!canNavigateSelectedMedia || !Number.isInteger(offset) || offset === 0) {
       return;
     }
 
-    const nextIndex = (selectedMediaIndex + offset + visibleFavoriteFiles.length) % visibleFavoriteFiles.length;
-    const nextItem = visibleFavoriteFiles[nextIndex];
+    const navigation = resolvePagedMediaNavigation({
+      currentIndex: selectedMediaIndex,
+      itemCount: visibleFavoriteFiles.length,
+      currentPage: favoritesPage,
+      totalPages: favoritesTotalPages,
+      offset
+    });
+    if (!navigation) {
+      return;
+    }
+
+    if (navigation.type === "item") {
+      const nextItem = visibleFavoriteFiles[navigation.index];
+      if (nextItem) {
+        setSelectedMedia(nextItem);
+      }
+      return;
+    }
+
+    setPendingMediaNavigation({
+      ...navigation,
+      sourceMediaId: selectedMedia?.id ?? null
+    });
+    setFavoritesPage(navigation.page);
+  }, [canNavigateSelectedMedia, favoritesPage, favoritesTotalPages, selectedMedia?.id, selectedMediaIndex, visibleFavoriteFiles]);
+
+  useEffect(() => {
+    if (
+      !pendingMediaNavigation
+      || pendingMediaNavigation.type !== "page"
+      || isFavoritesLoading
+      || favoritesPage !== pendingMediaNavigation.page
+    ) {
+      return;
+    }
+
+    if (
+      pendingMediaNavigation.sourceMediaId
+      && visibleFavoriteFiles.some((item) => item.id === pendingMediaNavigation.sourceMediaId)
+    ) {
+      return;
+    }
+
+    const nextItem = pendingMediaNavigation.select === "last"
+      ? visibleFavoriteFiles[visibleFavoriteFiles.length - 1]
+      : visibleFavoriteFiles[0];
     if (nextItem) {
       setSelectedMedia(nextItem);
     }
-  }, [canNavigateSelectedMedia, selectedMediaIndex, visibleFavoriteFiles]);
+    setPendingMediaNavigation(null);
+  }, [favoritesPage, isFavoritesLoading, pendingMediaNavigation, visibleFavoriteFiles]);
 
   useEffect(() => {
     if (!selectedMedia) {
