@@ -89,3 +89,8 @@ backend/
 - Backend-модулі: [../../Docs/Backend/Modules.md](../../Docs/Backend/Modules.md)
 - Runtime і storage backend: [../../Docs/Backend/Runtime-and-Storage.md](../../Docs/Backend/Runtime-and-Storage.md)
 - Frontend: [../frontend/README.md](../frontend/README.md)
+## Collection Media Ordering
+
+- `GET /api/collections/{id}/media` keeps the existing base collection order between unrelated items (`m.Id DESC`).
+- When linked media from the same collection already have `Parent/Child` relations, backend returns them as one contiguous chain: `parent -> child -> child...`.
+- This ordering is display-only and does not rewrite or repair `Parent/Child` relations in the database.

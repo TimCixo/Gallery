@@ -106,46 +106,15 @@ public sealed class MediaRepository(string connectionString)
     {
         using var connection = new SqliteConnection(connectionString);
         connection.Open();
-
-        using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT
-                m.Id,
-                m.Path,
-                m.Title,
-                m.Description,
-                m.Source,
-                m.Parent,
-                m.Child,
-                EXISTS (
-                    SELECT 1
-                    FROM CollectionsMedia cmFav
-                    INNER JOIN Collections cFav ON cFav.Id = cmFav.CollectionId
-                    WHERE cmFav.MediaId = m.Id AND cFav.Lable = 'Favorites'
-                ) AS IsFavorite
-            FROM CollectionsMedia cm
-            INNER JOIN Media m ON m.Id = cm.MediaId
-            WHERE cm.CollectionId = $collectionId
-            ORDER BY m.Id DESC;
-            """;
-        command.Parameters.AddWithValue("$collectionId", collectionId);
-        return ReadMediaRows(command);
+        return GetOrderedCollectionMedia(connection, collectionId);
     }
 
     public PagedMediaRows GetPagedCollectionMedia(long collectionId, int page, int pageSize)
     {
         using var connection = new SqliteConnection(connectionString);
         connection.Open();
-
-        using var countCommand = connection.CreateCommand();
-        countCommand.CommandText = """
-            SELECT COUNT(*)
-            FROM CollectionsMedia cm
-            INNER JOIN Media m ON m.Id = cm.MediaId
-            WHERE cm.CollectionId = $collectionId;
-            """;
-        countCommand.Parameters.AddWithValue("$collectionId", collectionId);
-        var totalCount = Convert.ToInt32(countCommand.ExecuteScalar());
+        var orderedRows = GetOrderedCollectionMedia(connection, collectionId);
+        var totalCount = orderedRows.Count;
         var totalPages = totalCount == 0
             ? 0
             : (int)Math.Ceiling(totalCount / (double)pageSize);
@@ -155,33 +124,11 @@ public sealed class MediaRepository(string connectionString)
         var offset = totalPages == 0
             ? 0
             : (effectivePage - 1) * pageSize;
+        var rows = totalCount == 0
+            ? []
+            : orderedRows.Skip(offset).Take(pageSize).ToList();
 
-        using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT
-                m.Id,
-                m.Path,
-                m.Title,
-                m.Description,
-                m.Source,
-                m.Parent,
-                m.Child,
-                EXISTS (
-                    SELECT 1
-                    FROM CollectionsMedia cmFav
-                    INNER JOIN Collections cFav ON cFav.Id = cmFav.CollectionId
-                    WHERE cmFav.MediaId = m.Id AND cFav.Lable = 'Favorites'
-                ) AS IsFavorite
-            FROM CollectionsMedia cm
-            INNER JOIN Media m ON m.Id = cm.MediaId
-            WHERE cm.CollectionId = $collectionId
-            ORDER BY m.Id DESC
-            LIMIT $limit OFFSET $offset;
-            """;
-        command.Parameters.AddWithValue("$collectionId", collectionId);
-        command.Parameters.AddWithValue("$limit", pageSize);
-        command.Parameters.AddWithValue("$offset", offset);
-        return new PagedMediaRows(effectivePage, pageSize, totalCount, totalPages, ReadMediaRows(command));
+        return new PagedMediaRows(effectivePage, pageSize, totalCount, totalPages, rows);
     }
 
     public IReadOnlyDictionary<long, IReadOnlyList<MediaTagListItem>> GetMediaTags(IReadOnlyCollection<long> mediaIds)
@@ -601,6 +548,34 @@ public sealed class MediaRepository(string connectionString)
         deleteCommand.Parameters.AddWithValue("$id", id);
         deleteCommand.ExecuteNonQuery();
         transaction.Commit();
+    }
+
+    private static List<MediaRow> GetOrderedCollectionMedia(SqliteConnection connection, long collectionId)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT
+                m.Id,
+                m.Path,
+                m.Title,
+                m.Description,
+                m.Source,
+                m.Parent,
+                m.Child,
+                EXISTS (
+                    SELECT 1
+                    FROM CollectionsMedia cmFav
+                    INNER JOIN Collections cFav ON cFav.Id = cmFav.CollectionId
+                    WHERE cmFav.MediaId = m.Id AND cFav.Lable = 'Favorites'
+                ) AS IsFavorite
+            FROM CollectionsMedia cm
+            INNER JOIN Media m ON m.Id = cm.MediaId
+            WHERE cm.CollectionId = $collectionId
+            ORDER BY m.Id DESC;
+            """;
+        command.Parameters.AddWithValue("$collectionId", collectionId);
+
+        return CollectionMediaOrderer.Order(ReadMediaRows(command));
     }
 
     private static List<MediaRow> ReadMediaRows(SqliteCommand command)
