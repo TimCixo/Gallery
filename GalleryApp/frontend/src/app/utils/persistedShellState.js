@@ -7,7 +7,8 @@ const DEFAULT_SHELL_STATE = {
   inputValue: "",
   submittedText: "",
   searchHistory: [],
-  groupRelatedMedia: false
+  groupRelatedMedia: false,
+  excludeCollectionMedia: false
 };
 
 export function loadPersistedShellState(storage = globalThis?.sessionStorage) {
@@ -31,7 +32,8 @@ export function loadPersistedShellState(storage = globalThis?.sessionStorage) {
       inputValue: String(parsed?.inputValue || ""),
       submittedText: String(parsed?.submittedText || ""),
       searchHistory: normalizeSearchHistory(parsed?.searchHistory),
-      groupRelatedMedia: parsed?.groupRelatedMedia === true
+      groupRelatedMedia: parsed?.groupRelatedMedia === true,
+      excludeCollectionMedia: parsed?.excludeCollectionMedia === true
     };
   } catch {
     return { ...DEFAULT_SHELL_STATE };
@@ -48,6 +50,7 @@ export function persistShellState(state, storage = globalThis?.sessionStorage) {
     inputValue: String(state?.inputValue || ""),
     submittedText: String(state?.submittedText || ""),
     searchHistory: normalizeSearchHistory(state?.searchHistory),
-    groupRelatedMedia: state?.groupRelatedMedia === true
+    groupRelatedMedia: state?.groupRelatedMedia === true,
+    excludeCollectionMedia: state?.excludeCollectionMedia === true
   }));
 }

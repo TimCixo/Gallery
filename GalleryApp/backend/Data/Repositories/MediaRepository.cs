@@ -6,7 +6,7 @@ namespace GalleryApp.Api.Data.Repositories;
 
 public sealed class MediaRepository(string connectionString)
 {
-    public sealed record MediaRow(long Id, string Path, string? Title, string? Description, string? Source, long? Parent, long? Child, bool IsFavorite);
+    public sealed record MediaRow(long Id, string Path, string? Title, string? Description, string? Source, long? Parent, long? Child, bool IsFavorite, bool HasCollections);
     public sealed record MediaHashRow(long Id, string Path, string? ImageHash);
     public sealed record PagedMediaRows(int Page, int PageSize, int TotalCount, int TotalPages, List<MediaRow> Rows);
 
@@ -35,7 +35,12 @@ public sealed class MediaRepository(string connectionString)
                     FROM CollectionsMedia cm
                     INNER JOIN Collections c ON c.Id = cm.CollectionId
                     WHERE cm.MediaId = m.Id AND c.Lable = 'Favorites'
-                ) AS IsFavorite
+                ) AS IsFavorite,
+                EXISTS (
+                    SELECT 1
+                    FROM CollectionsMedia cmAny
+                    WHERE cmAny.MediaId = m.Id
+                ) AS HasCollections
             FROM Media m
             {whereSql}
             ORDER BY m.Id DESC;
@@ -90,7 +95,12 @@ public sealed class MediaRepository(string connectionString)
                     FROM CollectionsMedia cm
                     INNER JOIN Collections c ON c.Id = cm.CollectionId
                     WHERE cm.MediaId = m.Id AND c.Lable = 'Favorites'
-                ) AS IsFavorite
+                ) AS IsFavorite,
+                EXISTS (
+                    SELECT 1
+                    FROM CollectionsMedia cmAny
+                    WHERE cmAny.MediaId = m.Id
+                ) AS HasCollections
             FROM Media m
             {whereSql}
             ORDER BY m.Id DESC
@@ -402,7 +412,12 @@ public sealed class MediaRepository(string connectionString)
                     FROM CollectionsMedia cm
                     INNER JOIN Collections c ON c.Id = cm.CollectionId
                     WHERE cm.MediaId = m.Id AND c.Lable = 'Favorites'
-                ) AS IsFavorite
+                ) AS IsFavorite,
+                EXISTS (
+                    SELECT 1
+                    FROM CollectionsMedia cmAny
+                    WHERE cmAny.MediaId = m.Id
+                ) AS HasCollections
             FROM Media m
             WHERE m.Id = $id
             LIMIT 1;
@@ -445,7 +460,12 @@ public sealed class MediaRepository(string connectionString)
                     FROM CollectionsMedia cm
                     INNER JOIN Collections c ON c.Id = cm.CollectionId
                     WHERE cm.MediaId = m.Id AND c.Lable = 'Favorites'
-                ) AS IsFavorite
+                ) AS IsFavorite,
+                EXISTS (
+                    SELECT 1
+                    FROM CollectionsMedia cmAny
+                    WHERE cmAny.MediaId = m.Id
+                ) AS HasCollections
             FROM Media m
             WHERE m.Id IN ({string.Join(", ", idParameters)});
             """;
@@ -567,7 +587,12 @@ public sealed class MediaRepository(string connectionString)
                     FROM CollectionsMedia cmFav
                     INNER JOIN Collections cFav ON cFav.Id = cmFav.CollectionId
                     WHERE cmFav.MediaId = m.Id AND cFav.Lable = 'Favorites'
-                ) AS IsFavorite
+                ) AS IsFavorite,
+                EXISTS (
+                    SELECT 1
+                    FROM CollectionsMedia cmAny
+                    WHERE cmAny.MediaId = m.Id
+                ) AS HasCollections
             FROM CollectionsMedia cm
             INNER JOIN Media m ON m.Id = cm.MediaId
             WHERE cm.CollectionId = $collectionId
@@ -589,6 +614,7 @@ public sealed class MediaRepository(string connectionString)
         var parentOrdinal = reader.GetOrdinal("Parent");
         var childOrdinal = reader.GetOrdinal("Child");
         var favoriteOrdinal = reader.GetOrdinal("IsFavorite");
+        var hasCollectionsOrdinal = reader.GetOrdinal("HasCollections");
 
         var result = new List<MediaRow>();
         while (reader.Read())
@@ -601,7 +627,8 @@ public sealed class MediaRepository(string connectionString)
                 reader.IsDBNull(sourceOrdinal) ? null : reader.GetString(sourceOrdinal),
                 reader.IsDBNull(parentOrdinal) ? null : reader.GetInt64(parentOrdinal),
                 reader.IsDBNull(childOrdinal) ? null : reader.GetInt64(childOrdinal),
-                !reader.IsDBNull(favoriteOrdinal) && reader.GetInt64(favoriteOrdinal) == 1));
+                !reader.IsDBNull(favoriteOrdinal) && reader.GetInt64(favoriteOrdinal) == 1,
+                !reader.IsDBNull(hasCollectionsOrdinal) && reader.GetInt64(hasCollectionsOrdinal) == 1));
         }
 
         return result;

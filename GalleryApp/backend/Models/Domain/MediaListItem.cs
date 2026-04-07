@@ -10,6 +10,7 @@ public sealed record MediaListItem(
     long? Parent,
     long? Child,
     bool IsFavorite,
+    bool HasCollections,
     string DisplayUrl,
     string OriginalUrl,
     string TileUrl,

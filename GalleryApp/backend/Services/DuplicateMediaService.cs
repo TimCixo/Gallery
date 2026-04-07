@@ -12,7 +12,7 @@ public sealed class DuplicateMediaService(
     MediaStorageOptions mediaStorageOptions)
 {
     private sealed record DuplicateGroupSummary(string ImageHash, long MaxMediaId);
-    private sealed record DuplicateMemberRow(long Id, string Path, string? Title, string? Description, string? Source, long? Parent, long? Child, bool IsFavorite, string ImageHash);
+    private sealed record DuplicateMemberRow(long Id, string Path, string? Title, string? Description, string? Source, long? Parent, long? Child, bool IsFavorite, bool HasCollections, string ImageHash);
     private sealed record DuplicateGroupState(string GroupKey, List<DuplicateMemberRow> Members, HashSet<long> ExcludedMediaIds)
     {
         public List<DuplicateMemberRow> ActiveMembers =>
@@ -217,7 +217,7 @@ public sealed class DuplicateMediaService(
     }
 
     private static MediaRepository.MediaRow ToMediaRow(DuplicateMemberRow member) =>
-        new(member.Id, member.Path, member.Title, member.Description, member.Source, member.Parent, member.Child, member.IsFavorite);
+        new(member.Id, member.Path, member.Title, member.Description, member.Source, member.Parent, member.Child, member.IsFavorite, member.HasCollections);
 
     private static int GetDuplicateGroupCount(SqliteConnection connection)
     {
@@ -298,6 +298,11 @@ public sealed class DuplicateMediaService(
                     INNER JOIN Collections c ON c.Id = cm.CollectionId
                     WHERE cm.MediaId = m.Id AND c.Lable = 'Favorites'
                 ) AS IsFavorite,
+                EXISTS (
+                    SELECT 1
+                    FROM CollectionsMedia cmAny
+                    WHERE cmAny.MediaId = m.Id
+                ) AS HasCollections,
                 m.ImageHash
             FROM Media m
             WHERE m.ImageHash IN ({string.Join(", ", groupKeyParameters)})
@@ -317,6 +322,7 @@ public sealed class DuplicateMediaService(
                 reader.IsDBNull(reader.GetOrdinal("Parent")) ? null : reader.GetInt64(reader.GetOrdinal("Parent")),
                 reader.IsDBNull(reader.GetOrdinal("Child")) ? null : reader.GetInt64(reader.GetOrdinal("Child")),
                 reader.GetInt64(reader.GetOrdinal("IsFavorite")) == 1,
+                reader.GetInt64(reader.GetOrdinal("HasCollections")) == 1,
                 reader.GetString(reader.GetOrdinal("ImageHash"))));
         }
 
@@ -399,6 +405,11 @@ public sealed class DuplicateMediaService(
                     INNER JOIN Collections c ON c.Id = cm.CollectionId
                     WHERE cm.MediaId = m.Id AND c.Lable = 'Favorites'
                 ) AS IsFavorite,
+                EXISTS (
+                    SELECT 1
+                    FROM CollectionsMedia cmAny
+                    WHERE cmAny.MediaId = m.Id
+                ) AS HasCollections,
                 m.ImageHash
             FROM Media m
             WHERE m.ImageHash = $groupKey
@@ -419,6 +430,7 @@ public sealed class DuplicateMediaService(
                 reader.IsDBNull(reader.GetOrdinal("Parent")) ? null : reader.GetInt64(reader.GetOrdinal("Parent")),
                 reader.IsDBNull(reader.GetOrdinal("Child")) ? null : reader.GetInt64(reader.GetOrdinal("Child")),
                 reader.GetInt64(reader.GetOrdinal("IsFavorite")) == 1,
+                reader.GetInt64(reader.GetOrdinal("HasCollections")) == 1,
                 reader.GetString(reader.GetOrdinal("ImageHash"))));
         }
 

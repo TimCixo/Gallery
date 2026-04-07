@@ -34,6 +34,7 @@ internal static class MediaListItemBuilder
             row.Parent,
             row.Child,
             row.IsFavorite,
+            row.HasCollections,
             displayUrl,
             originalUrl,
             tileUrl,

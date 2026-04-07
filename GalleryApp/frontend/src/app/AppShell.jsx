@@ -42,7 +42,10 @@ export default function AppShell() {
   const [searchTagCatalog, setSearchTagCatalog] = useState([]);
   const [searchSubmitSeq, setSearchSubmitSeq] = useState(0);
   const [openMediaRequest, setOpenMediaRequest] = useState({ token: 0, media: null });
-  const [groupRelatedMedia, setGroupRelatedMedia] = useState(initialSettingsState.groupRelatedMediaByDefault);
+  const [groupRelatedMedia, setGroupRelatedMedia] = useState(
+    initialShellState.groupRelatedMedia || initialSettingsState.groupRelatedMediaByDefault
+  );
+  const [excludeCollectionMedia, setExcludeCollectionMedia] = useState(initialShellState.excludeCollectionMedia);
   const [showHiddenDuplicateGroups, setShowHiddenDuplicateGroups] = useState(false);
   const [isMediaFilterOpen, setIsMediaFilterOpen] = useState(false);
   const prevActivePageRef = useRef("gallery");
@@ -73,9 +76,10 @@ export default function AppShell() {
       inputValue,
       submittedText,
       searchHistory: appSettings.rememberSearchHistory ? searchHistory : [],
-      groupRelatedMedia
+      groupRelatedMedia,
+      excludeCollectionMedia
     });
-  }, [activePage, appSettings.rememberLastOpenedPage, appSettings.rememberSearchHistory, groupRelatedMedia, inputValue, submittedText, searchHistory]);
+  }, [activePage, appSettings.rememberLastOpenedPage, appSettings.rememberSearchHistory, excludeCollectionMedia, groupRelatedMedia, inputValue, submittedText, searchHistory]);
 
   useEffect(() => {
     persistSettings(appSettings);
@@ -311,6 +315,8 @@ export default function AppShell() {
               onClose={() => setIsMediaFilterOpen(false)}
               groupRelatedMedia={groupRelatedMedia}
               onGroupRelatedMediaChange={setGroupRelatedMedia}
+              excludeCollectionMedia={excludeCollectionMedia}
+              onExcludeCollectionMediaChange={setExcludeCollectionMedia}
               showHiddenDuplicateGroups={showHiddenDuplicateGroups}
               onShowHiddenDuplicateGroupsChange={setShowHiddenDuplicateGroups}
               activePage={activePage}
@@ -370,6 +376,7 @@ export default function AppShell() {
           searchSubmitSeq={searchSubmitSeq}
           openMediaRequest={openMediaRequest}
           groupRelatedMedia={groupRelatedMedia}
+          excludeCollectionMedia={excludeCollectionMedia}
           recommendationSettings={appSettings.recommendationSettings}
           mediaGridPageSize={appSettings.mediaGridPageSize}
           defaultMediaFitMode={appSettings.defaultMediaFitMode}

@@ -142,6 +142,8 @@
 }
 
 .top-filter-popover {
+  display: grid;
+  gap: 0.7rem;
   min-width: 13rem;
   padding: 0.8rem 0.9rem;
   border: 1px solid #d5dbe1;

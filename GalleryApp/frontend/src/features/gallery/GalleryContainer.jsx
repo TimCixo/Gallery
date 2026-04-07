@@ -31,7 +31,9 @@ import {
 import { resolvePagedMediaNavigation } from "../media/utils/pagedMediaNavigation";
 import { buildRelatedMediaChain } from "../media/utils/relatedMediaChain";
 import { fetchAllMediaItems } from "./utils/fetchAllMediaItems";
+import { filterMediaItemsByCollectionState } from "./utils/filterMediaItemsByCollectionState";
 import { buildGroupedMediaPagination } from "./utils/groupRelatedMediaPagination";
+import { paginateMediaItems } from "./utils/paginateMediaItems";
 import { loadGalleryViewState, persistGalleryViewState } from "./utils/galleryViewState";
 import GalleryPage from "./GalleryPage";
 import AppIcon from "../shared/components/AppIcon";
@@ -53,6 +55,7 @@ export default function GalleryContainer({
   searchSubmitSeq = 0,
   openMediaRequest = null,
   groupRelatedMedia = false,
+  excludeCollectionMedia = false,
   recommendationSettings,
   mediaGridPageSize = DEFAULT_PAGE_SIZE,
   defaultMediaFitMode = "resize",
@@ -116,16 +119,19 @@ export default function GalleryContainer({
     setIsMediaLoading(true);
     setMediaError("");
     try {
-      if (groupRelatedMedia) {
+      if (groupRelatedMedia || excludeCollectionMedia) {
         const items = await fetchAllMediaItems({ listMedia: mediaApi.listMedia, search: searchText, pageSize: 200 });
         const normalizedItems = items.map((item) => ({ ...item, _tileUrl: item.tileUrl || item.previewUrl || item.originalUrl || item.url || "" }));
+        const filteredItems = filterMediaItemsByCollectionState(normalizedItems, excludeCollectionMedia);
 
-        const groupedPage = buildGroupedMediaPagination(normalizedItems, page, pageSize);
-        setMediaFiles(groupedPage.items);
-        setTotalPages(groupedPage.totalPages);
-        setTotalFiles(groupedPage.totalCount);
-        if (groupedPage.page !== page) {
-          setCurrentPage(groupedPage.page);
+        const pagedResult = groupRelatedMedia
+          ? buildGroupedMediaPagination(filteredItems, page, pageSize)
+          : paginateMediaItems(filteredItems, page, pageSize);
+        setMediaFiles(pagedResult.items);
+        setTotalPages(pagedResult.totalPages);
+        setTotalFiles(pagedResult.totalCount);
+        if (pagedResult.page !== page) {
+          setCurrentPage(pagedResult.page);
         }
         return;
       }
@@ -141,7 +147,7 @@ export default function GalleryContainer({
     } finally {
       setIsMediaLoading(false);
     }
-  }, [groupRelatedMedia, pageSize, searchQuery]);
+  }, [excludeCollectionMedia, groupRelatedMedia, pageSize, searchQuery]);
 
   const quickTagging = useQuickTagging({
     items: mediaFiles,

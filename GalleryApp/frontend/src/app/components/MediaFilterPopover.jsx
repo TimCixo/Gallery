@@ -6,6 +6,8 @@ export default function MediaFilterPopover({
   onClose,
   groupRelatedMedia,
   onGroupRelatedMediaChange,
+  excludeCollectionMedia,
+  onExcludeCollectionMediaChange,
   showHiddenDuplicateGroups,
   onShowHiddenDuplicateGroupsChange,
   activePage
@@ -49,14 +51,26 @@ export default function MediaFilterPopover({
             <span>Show hidden</span>
           </label>
         ) : (
-          <label className="top-filter-checkbox">
-            <input
-              type="checkbox"
-              checked={groupRelatedMedia}
-              onChange={(event) => onGroupRelatedMediaChange?.(event.target.checked)}
-            />
-            <span>Group</span>
-          </label>
+          <>
+            <label className="top-filter-checkbox">
+              <input
+                type="checkbox"
+                checked={groupRelatedMedia}
+                onChange={(event) => onGroupRelatedMediaChange?.(event.target.checked)}
+              />
+              <span>Group</span>
+            </label>
+            {activePage === "gallery" ? (
+              <label className="top-filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={excludeCollectionMedia}
+                  onChange={(event) => onExcludeCollectionMediaChange?.(event.target.checked)}
+                />
+                <span>Without collections</span>
+              </label>
+            ) : null}
+          </>
         )}
       </div>
     </div>
