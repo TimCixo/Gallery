@@ -14,3 +14,4 @@ GalleryApp/backend/App_Data/*
 GalleryApp/App_Data/*
 !GalleryApp/App_Data/.gitkeep
 tmp/
+.env
